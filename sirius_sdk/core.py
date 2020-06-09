@@ -1,7 +1,31 @@
-from typing import Optional
+from abc import ABC, abstractmethod
+from typing import Optional, Any
 
 
-class BaseConnector:
+class ReadOnlyChannel(ABC):
 
-    def __init__(self, timeout: Optional[int]):
-        pass
+    @abstractmethod
+    async def read(self) -> Any:
+        raise NotImplemented()
+
+
+class WriteOnlyChannel(ABC):
+
+    @abstractmethod
+    async def write(self, data: Any) -> bool:
+        raise NotImplemented()
+    
+    
+class BaseConnector(ReadOnlyChannel, WriteOnlyChannel):
+
+    @abstractmethod
+    async def open(self):
+        raise NotImplemented()
+
+    @abstractmethod
+    async def close(self):
+        raise NotImplemented()
+
+
+
+
