@@ -37,8 +37,8 @@ class BaseWebSocketConnector(BaseConnector):
             await self._ws.close()
             self._ws = None
 
-    async def read(self) -> Any:
-        msg = await self._ws.receive()
+    async def read(self, timeout: int=None) -> Any:
+        msg = await self._ws.receive(timeout=timeout)
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
             raise ConnectionClosed()
         elif msg.type in [aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY]:
@@ -47,7 +47,13 @@ class BaseWebSocketConnector(BaseConnector):
             raise ErrorIO
 
     async def write(self, data: Any):
-        pass
+        if isinstance(data, dict):
+            payload = json.dumps(data).encode(self.ENC)
+        elif isinstance(data, bytes):
+            payload = data
+        else:
+            raise UnsupportedData()
+        await self._ws.send_bytes(payload)
 
     @classmethod
     def parse(cls, payload: Union[str, bytes]):
@@ -75,3 +81,13 @@ class RPCWebSocketConnector(BaseWebSocketConnector):
     @classmethod
     def url_path(cls):
         return '/rpc'
+
+
+class EventsWebSocketConnector(BaseWebSocketConnector):
+
+    def __init__(self, address: str, credentials: bytes, timeout: float = BaseWebSocketConnector.DEF_TIMEOUT):
+        super().__init__(address, credentials, timeout)
+
+    @classmethod
+    def url_path(cls):
+        return '/events$'
