@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 import aiohttp
 
 from .exceptions import *
-from .core import BaseConnector
+from .base import BaseConnector, AddressedTunnel
 
 
 class BaseWebSocketConnector(BaseConnector):

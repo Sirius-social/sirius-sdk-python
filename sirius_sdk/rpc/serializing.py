@@ -1,10 +1,10 @@
 import base64
 from typing import Any
 
-from ..wallet.abstract.cache import CacheOptions, PurgeOptions
-from ..wallet.abstract.non_secrets import RetrieveRecordOptions
-from ..wallet.abstract.ledger import NYMRole, PoolAction
-from ..wallet.abstract import KeyDerivationMethod
+from sirius_sdk.agent.wallet.abstract import CacheOptions, PurgeOptions
+from sirius_sdk.agent.wallet.abstract import RetrieveRecordOptions
+from sirius_sdk.agent.wallet.abstract import NYMRole, PoolAction
+from sirius_sdk.agent.wallet.abstract import KeyDerivationMethod
 from ..rpc.futures import Future
 
 
