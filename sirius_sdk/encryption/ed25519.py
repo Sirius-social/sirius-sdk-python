@@ -6,6 +6,13 @@ from .custom import *
 from ..exceptions import SiriusCryptoError
 
 
+def ensure_is_bytes(b58_or_bytes: Union[str, bytes]) -> bytes:
+    if isinstance(b58_or_bytes, str):
+        return b58_to_bytes(b58_or_bytes)
+    else:
+        return b58_or_bytes
+
+
 def prepare_pack_recipient_keys(
         to_verkeys: Sequence[bytes],
         from_verkey: bytes = None,
@@ -14,14 +21,10 @@ def prepare_pack_recipient_keys(
     """
     Assemble the recipients block of a packed message.
 
-    Args:
-        to_verkeys: Verkeys of recipients
-        from_verkey: Sender Verkey needed to authcrypt package
-        from_sigkey: Sender Sigkey needed to authcrypt package
-
-    Returns:
-        A tuple of (json result, key)
-
+    :param to_verkeys: Verkeys of recipients
+    :param from_verkey: Sender Verkey needed to authcrypt package
+    :param from_sigkey: Sender Sigkey needed to authcrypt package
+    :return A tuple of (json result, key)
     """
     if from_verkey is not None and from_sigkey is None or \
             from_sigkey is not None and from_verkey is None:
@@ -100,16 +103,12 @@ def locate_pack_recipient_key(
     Decode the encryption key and sender verification key from a
     corresponding recipient block, if any is defined.
 
-    Args:
-        recipients: Recipients to locate
-        find_key: Function used to find private key
+    :param recipients: Recipients to locate
+    :param my_verkey: Verkey needed to auth-decrypt
+    :param my_sigkey: Sigkey needed to auth-decrypt
+    :return A tuple of (cek, sender_vk, recip_vk_b58)
 
-    Returns:
-        A tuple of (cek, sender_vk, recip_vk_b58)
-
-    Raises:
-        ValueError: If no corresponding recipient key found
-
+    Raises: ValueError: If no corresponding recipient key found
     """
     not_found = []
     for recip in recipients:
@@ -165,14 +164,10 @@ def encrypt_plaintext(
     """
     Encrypt the payload of a packed message.
 
-    Args:
-        message: Message to encrypt
-        add_data:
-        key: Key used for encryption
-
-    Returns:
-        A tuple of (ciphertext, nonce, tag)
-
+    :param message: Message to encrypt
+    :param add_data: additional data
+    :param key: Key used for encryption
+    :return A tuple of (ciphertext, nonce, tag)
     """
     nonce = nacl.utils.random(
         nacl.bindings.crypto_aead_chacha20poly1305_ietf_NPUBBYTES
@@ -193,15 +188,11 @@ def decrypt_plaintext(
     """
     Decrypt the payload of a packed message.
 
-    Args:
-        ciphertext:
-        recips_bin:
-        nonce:
-        key:
-
-    Returns:
-        The decrypted string
-
+    :param ciphertext
+    :param recips_bin
+    :param nonce
+    :param key
+    :return The decrypted string
     """
     output = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
         ciphertext, recips_bin, nonce, key
@@ -211,26 +202,25 @@ def decrypt_plaintext(
 
 def pack_message(
         message: str,
-        to_verkeys: Sequence[bytes],
-        from_verkey: bytes = None,
-        from_sigkey: bytes = None,
-        *,
-        dump: bool = True
+        to_verkeys: Sequence[Union[bytes, str]],
+        from_verkey: Union[bytes, str] = None,
+        from_sigkey: Union[bytes, str] = None
 ) -> bytes:
     """
     Assemble a packed message for a set of recipients, optionally including
     the sender.
 
-    Args:
-        message: The message to pack
-        to_verkeys: The verkeys to pack the message for
-        from_verkey: The sender verkey
-        from_sigkey: The sender sigkey
-
-    Returns:
-        The encoded message
-
+    :param message: The message to pack
+    :param to_verkeys: (Sequence of bytes or base58 string) The verkeys to pack the message for
+    :param from_verkey: (bytes or base58 string) The sender verkey
+    :param from_sigkey: (bytes or base58 string) The sender sigkey
+    :return The encoded message
     """
+
+    to_verkeys = [ensure_is_bytes(vk) for vk in to_verkeys]
+    from_verkey = ensure_is_bytes(from_verkey)
+    from_sigkey = ensure_is_bytes(from_sigkey)
+
     recips_json, cek = prepare_pack_recipient_keys(
         to_verkeys,
         from_verkey,
@@ -252,13 +242,11 @@ def pack_message(
             ("tag", bytes_to_b64(tag, urlsafe=True)),
         ]
     )
-    if dump:
-        return json.dumps(data).encode("ascii")
-    return data
+    return json.dumps(data).encode("ascii")
 
 
 def unpack_message(
-        enc_message: Union[bytes, dict], my_verkey: bytes, my_sigkey: bytes
+        enc_message: Union[bytes, dict], my_verkey: Union[bytes, str], my_sigkey: Union[bytes, str]
 ) -> (str, Optional[str], str):
     """
     Decode a packed message.
@@ -267,13 +255,10 @@ def unpack_message(
     verification key of the sender (if available), and verification key of the
     recipient.
 
-    Args:
-        enc_message: The encrypted message
-        find_key: Function to retrieve private key
-
-    Returns:
-        A tuple of (message, sender_vk, recip_vk)
-
+    :param enc_message: The encrypted message
+    :param my_verkey: (bytes or base58 string) Verkey for decrypt
+    :param my_sigkey: (bytes or base58 string) Sigkey for decrypt
+    :return A tuple of (message, sender_vk, recip_vk)
     Raises:
         ValueError: If the packed message is invalid
         ValueError: If the packed message reipients are invalid
@@ -281,6 +266,9 @@ def unpack_message(
         ValueError: If the sender's public key was not provided
 
     """
+    my_verkey = ensure_is_bytes(my_verkey)
+    my_sigkey = ensure_is_bytes(my_sigkey)
+
     if not isinstance(enc_message, bytes) and \
             not isinstance(enc_message, dict):
         raise TypeError(
