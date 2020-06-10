@@ -31,4 +31,4 @@ class KeyDerivationMethod(Enum):
             raise RuntimeError('Unexpected value "%s"' % buffer)
 
 
-__all__ = ["did", "cache", "crypto", "ledger", "pairwise", "anoncreds", "non_secrets", "KeyDerivationMethod"]
+__all__ = ["KeyDerivationMethod"]
