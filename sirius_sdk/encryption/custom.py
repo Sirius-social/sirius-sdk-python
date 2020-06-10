@@ -7,7 +7,7 @@ import nacl.bindings
 import nacl.exceptions
 import nacl.utils
 
-from ..exceptions import SiriusCryptoError
+from ..errors.exceptions import SiriusCryptoError
 
 
 def b64_to_bytes(value: Union[str, bytes], urlsafe: bool=False) -> bytes:

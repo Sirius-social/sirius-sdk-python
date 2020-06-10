@@ -4,8 +4,8 @@ import base64
 import logging
 import datetime
 
-from ..exceptions import *
-from ..indy_exceptions import *
+from ..errors.exceptions import *
+from ..errors.indy_exceptions import *
 from .tunnel import AddressedTunnel
 
 MSG_TYPE = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/future'

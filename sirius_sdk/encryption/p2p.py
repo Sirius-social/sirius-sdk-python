@@ -1,7 +1,7 @@
 import json
 from typing import Tuple, Union
 
-from ..exceptions import SiriusCryptoError
+from ..errors.exceptions import SiriusCryptoError
 from . import pack_message, unpack_message
 
 
@@ -31,7 +31,7 @@ class P2PConnection:
         Encrypt message
 
         :param message:
-        :return:
+        :return: encrypted message
         """
         packed = pack_message(
             message=json.dumps(message),

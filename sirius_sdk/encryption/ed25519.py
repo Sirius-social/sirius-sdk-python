@@ -3,7 +3,7 @@ from typing import Sequence
 from collections import OrderedDict
 
 from .custom import *
-from ..exceptions import SiriusCryptoError
+from ..errors.exceptions import SiriusCryptoError
 
 
 def ensure_is_bytes(b58_or_bytes: Union[str, bytes]) -> bytes:
