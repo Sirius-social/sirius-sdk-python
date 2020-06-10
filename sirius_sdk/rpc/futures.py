@@ -6,8 +6,7 @@ import datetime
 
 from ..exceptions import *
 from ..indy_exceptions import *
-from ..base import AddressedTunnel
-
+from .tunnel import AddressedTunnel
 
 MSG_TYPE = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/future'
 

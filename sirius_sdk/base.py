@@ -16,21 +16,6 @@ class WriteOnlyChannel(ABC):
         raise NotImplemented()
 
 
-class AddressedTunnel(ReadOnlyChannel):
-
-    def __init__(self, address: str, input_: ReadOnlyChannel, output_: WriteOnlyChannel):
-        self.__address = address
-        self.__input = input_
-        self.__output = output_
-
-    @property
-    def address(self):
-        return self.__address
-
-    async def read(self, timeout: int=None) -> Any:
-        return await self.__input.read(timeout)
-
-    
 class BaseConnector(ReadOnlyChannel, WriteOnlyChannel):
 
     @abstractmethod

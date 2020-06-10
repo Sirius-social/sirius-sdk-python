@@ -6,7 +6,8 @@ from urllib.parse import urljoin
 import aiohttp
 
 from .exceptions import *
-from .base import BaseConnector, AddressedTunnel
+from .base import BaseConnector
+from sirius_sdk.rpc.tunnel import AddressedTunnel
 
 
 class BaseWebSocketConnector(BaseConnector):
