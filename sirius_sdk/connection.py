@@ -41,11 +41,11 @@ class BaseWebSocketConnector(BaseConnector):
     async def read(self, timeout: int=None) -> Any:
         msg = await self._ws.receive(timeout=timeout)
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
-            raise ConnectionClosed()
+            raise SiriusConnectionClosed()
         elif msg.type in [aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY]:
             return self.parse(msg.data)
         elif msg.type == aiohttp.WSMsgType.ERROR:
-            raise ErrorIO
+            raise SiriusIOError
 
     async def write(self, data: Any):
         if isinstance(data, dict):
@@ -53,7 +53,7 @@ class BaseWebSocketConnector(BaseConnector):
         elif isinstance(data, bytes):
             payload = data
         else:
-            raise UnsupportedData()
+            raise SiriusUnsupportedData()
         await self._ws.send_bytes(payload)
 
     @classmethod
@@ -64,9 +64,9 @@ class BaseWebSocketConnector(BaseConnector):
             elif isinstance(payload, bytes):
                 return json.loads(payload.decode(cls.ENC))
             else:
-                raise InvalidPayloadStructure()
+                raise SiriusInvalidPayloadStructure()
         except json.JSONDecodeError:
-            raise InvalidPayloadStructure()
+            raise SiriusInvalidPayloadStructure()
 
     @classmethod
     @abstractmethod

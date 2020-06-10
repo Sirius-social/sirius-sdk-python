@@ -69,12 +69,12 @@ class Future:
                         '\n Expected id: "%s"' % self.__id
                     )
             return False
-        except TimeoutIO:
+        except SiriusTimeoutIO:
             return False
 
     def get_value(self):
         if self.__read_ok is False:
-            raise ValueIsEmpty
+            raise SiriusValueIsEmpty
         return self._value
 
     def has_exception(self):
@@ -92,7 +92,7 @@ class Future:
                 )
                 return exc
             else:
-                return PromiseContextException(
+                return SiriusPromiseContextException(
                     class_name=self.__exception['class_name'], printable=self.__exception['printable']
                 )
         else:
@@ -102,4 +102,4 @@ class Future:
         if self.has_exception():
             raise self.exception
         else:
-            raise ExceptionIsEmpty
+            raise SiriusExceptionIsEmpty()
