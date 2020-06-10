@@ -18,7 +18,8 @@ class BaseWebSocketConnector(BaseConnector):
         self.__session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=timeout),
             headers={
-                'credentials': credentials.decode('ascii')
+                'credentials': credentials.decode('ascii'),
+                'origin': address
             }
         )
         self._url = urljoin(address, self.url_path())
@@ -76,11 +77,21 @@ class BaseWebSocketConnector(BaseConnector):
 class RPCWebSocketConnector(BaseWebSocketConnector):
 
     def __init__(self, address: str, credentials: bytes, timeout: float = BaseWebSocketConnector.DEF_TIMEOUT):
+        self.__context = None
         super().__init__(address, credentials, timeout)
 
     @classmethod
     def url_path(cls):
         return '/rpc'
+
+    async def open(self):
+        if not self.is_open:
+            await super().open()
+            self.__context = await self.read()
+
+    @property
+    def context(self):
+        return self.__context
 
 
 class EventsWebSocketConnector(BaseWebSocketConnector):
