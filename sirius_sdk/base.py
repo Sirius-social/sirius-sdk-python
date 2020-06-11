@@ -57,7 +57,7 @@ class BaseConnector(ReadOnlyChannel, WriteOnlyChannel):
         raise NotImplemented()
 
 
-class BaseWebSocketConnector(BaseConnector):
+class WebSocketConnector(BaseConnector):
 
     DEF_TIMEOUT = 30.0
     ENC = 'utf-8'

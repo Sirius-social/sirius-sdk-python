@@ -12,6 +12,14 @@ class SiriusTimeoutIO(BaseSiriusException):
     pass
 
 
+class SiriusRPCError(BaseSiriusException):
+    pass
+
+
+class SiriusTimeoutRPC(SiriusRPCError):
+    pass
+
+
 class SiriusIOError(BaseSiriusException):
     pass
 
