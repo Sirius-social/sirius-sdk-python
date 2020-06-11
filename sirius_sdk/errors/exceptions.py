@@ -1,5 +1,7 @@
 class BaseSiriusException(Exception):
-    pass
+
+    def __str__(self):
+        return self.__doc__ or super().__str__()
 
 
 class SiriusConnectionClosed(BaseSiriusException):
@@ -22,11 +24,11 @@ class SiriusUnsupportedData(BaseSiriusException):
     pass
 
 
-class SiriusValueIsEmpty(BaseSiriusException):
+class SiriusPendingOperation(BaseSiriusException):
     pass
 
 
-class SiriusExceptionIsEmpty(BaseSiriusException):
+class SiriusValueEmpty(BaseSiriusException):
     pass
 
 

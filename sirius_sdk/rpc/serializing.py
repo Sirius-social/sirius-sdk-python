@@ -16,7 +16,12 @@ CLS_MAP = {
 CLS_MAP_REVERT = {v: k for k, v in CLS_MAP.items()}
 
 
-def serialize_variable(var: Any):
+def serialize_variable(var: Any) -> (str, Any):
+    """Serialize input variable to JSON-compatible string
+
+    :param var: input variable
+    :return: tuple (type, variable serialized dump)
+    """
     if isinstance(var, CacheOptions):
         return CLS_MAP_REVERT[CacheOptions], var.serialize()
     elif isinstance(var, PurgeOptions):
@@ -35,7 +40,13 @@ def serialize_variable(var: Any):
         return None, var
 
 
-def deserialize_variable(payload: Any, typ: str=None):
+def deserialize_variable(payload: Any, typ: str=None) -> Any:
+    """Deserialize variable from string according to type
+
+    :param payload: input variable
+    :param typ: variable type
+    :return: deserialized variable
+    """
     if typ is None:
         return payload
     elif typ == 'application/base64':
@@ -69,6 +80,14 @@ def deincapsulate_param(packet: dict):
 
 
 def build_request(msg_type: str, future: Future, params: dict) -> dict:
+    """
+
+    :param msg_type: Aries RFCs attribute
+        https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
+    :param future: Future to check response routine is completed
+    :param params: RPC call params
+    :return: RPC service packet
+    """
     return {
         '@type': msg_type,
         '@promise': future.promise,

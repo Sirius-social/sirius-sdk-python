@@ -3,6 +3,7 @@ import json
 import base64
 import logging
 import datetime
+from typing import Any, Optional
 
 from ..errors.exceptions import *
 from ..errors.indy_exceptions import *
@@ -12,8 +13,24 @@ MSG_TYPE = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/future'
 
 
 class Future:
+    """Futures and Promises pattern.
+    (http://dist-prog-book.com/chapter/2/futures.html)
+
+
+    Server point has internal communication schemas and communication addresses for
+    Aries super-protocol/sub-protocol behaviour
+    (https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols).
+
+    Future hide communication addresses specifics of server-side service (cloud agent) and pairwise configuration
+    of communication between sdk-side and agent-side logic, allowing to take attention on
+    response awaiting routines.
+    """
 
     def __init__(self, tunnel: AddressedTunnel, expiration_time: datetime.datetime=None):
+        """
+        :param tunnel: communication tunnel for server-side cloud agent
+        :param expiration_time: time of response expiration
+        """
         self.__id = uuid.uuid4().hex
         self._value = None
         self.__read_ok = False
@@ -23,14 +40,19 @@ class Future:
 
     @property
     def promise(self):
+        """
+        Promise info builder
+
+        :return: serialized promise dump
+        """
         return {
             'id': self.__id,
             'channel_address': self.__tunnel.address,
             'expiration_stamp': self.__expiration_stamp.timestamp() if self.__expiration_stamp else None
         }
 
-    async def wait(self, timeout: int):
-        """
+    async def wait(self, timeout: int) -> bool:
+        """Wait for response
 
         :param timeout: waiting timeout in seconds
         :return: True/False
@@ -71,16 +93,34 @@ class Future:
         except SiriusTimeoutIO:
             return False
 
-    def get_value(self):
+    def get_value(self) -> Any:
+        """Get response value.
+
+        :return: value
+        :raises:
+           - SiriusPendingOperation: response was not received yet. Call walt(0) to safely check value persists.
+        """
         if self.__read_ok is False:
-            raise SiriusValueIsEmpty
+            raise SiriusPendingOperation()
         return self._value
 
-    def has_exception(self):
+    def has_exception(self) -> bool:
+        """Check if response was interrupted with exception
+
+        :return: True if request have done with exception
+        :raises:
+           - SiriusPendingOperation: response was not received yet. Call walt(0) to safely check value persists.
+        """
+        if self.__read_ok is False:
+            raise SiriusPendingOperation()
         return self.__exception is not None
 
     @property
-    def exception(self):
+    def exception(self) -> Optional[Exception]:
+        """Get exception that have interrupted response routine on server-side.
+
+        :return: Exception instance or None if it does not exists
+        """
         if self.has_exception():
             if self.__exception['indy']:
                 indy_exc = self.__exception['indy']
@@ -98,7 +138,12 @@ class Future:
             return None
 
     def raise_exception(self):
+        """Raise exception if exists
+
+        :raises:
+           - SiriusValueEmpty: raises if exception is empty
+        """
         if self.has_exception():
             raise self.exception
         else:
-            raise SiriusExceptionIsEmpty()
+            raise SiriusValueEmpty()
