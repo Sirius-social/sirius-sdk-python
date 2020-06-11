@@ -62,15 +62,15 @@ class BaseWebSocketConnector(BaseConnector):
     DEF_TIMEOUT = 30.0
     ENC = 'utf-8'
 
-    def __init__(self, address: str, credentials: bytes, timeout: float=DEF_TIMEOUT):
+    def __init__(self, server_address: str, path: str, credentials: bytes, timeout: float=DEF_TIMEOUT):
         self.__session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=timeout),
             headers={
-                'credentials': credentials.decode('ascii'),
-                'origin': address
+                'origin': server_address,
+                'credentials': credentials.decode('ascii')
             }
         )
-        self._url = urljoin(address, self.url_path())
+        self._url = urljoin(server_address, path)
         self._ws = None
 
     @property
@@ -115,28 +115,3 @@ class BaseWebSocketConnector(BaseConnector):
                 raise SiriusInvalidPayloadStructure()
         except json.JSONDecodeError:
             raise SiriusInvalidPayloadStructure()
-
-    @classmethod
-    @abstractmethod
-    def url_path(cls) -> str:
-        raise NotImplemented()
-
-
-class RPCWebSocketConnector(BaseWebSocketConnector):
-
-    def __init__(self, address: str, credentials: bytes, timeout: float = BaseWebSocketConnector.DEF_TIMEOUT):
-        self.__context = None
-        super().__init__(address, credentials, timeout)
-
-    @classmethod
-    def url_path(cls):
-        return '/rpc'
-
-    async def open(self):
-        if not self.is_open:
-            await super().open()
-            self.__context = await self.read()
-
-    @property
-    def context(self):
-        return self.__context
