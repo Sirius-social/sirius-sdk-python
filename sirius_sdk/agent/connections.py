@@ -55,7 +55,8 @@ class BaseAgentConnection(ABC):
         """
         instance = cls(server_address, credentials, p2p)
         await instance._connector.open()
-        context = await instance._connector.read(timeout=cls.IO_TIMEOUT)
+        payload = await instance._connector.read(timeout=cls.IO_TIMEOUT)
+        context = Message.deserialize(payload.decode())
         msg_type = context.get('@type', None)
         if msg_type is None:
             raise RuntimeError('message @type is empty')
@@ -100,7 +101,7 @@ class AgentRPC(BaseAgentConnection):
             future=future,
             params=params or {}
         )
-        if not await self.__tunnel_rpc.write(request):
+        if not await self.__tunnel_rpc.post(request):
             raise SiriusRPCError()
         success = await future.wait(timeout=self.IO_TIMEOUT)
         if success:

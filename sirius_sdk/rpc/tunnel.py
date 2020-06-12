@@ -1,14 +1,16 @@
 import json
-from typing import Any
 
 from ..encryption import P2PConnection
 from ..base import ReadOnlyChannel, WriteOnlyChannel
 from ..messaging import Message
+from ..errors.exceptions import *
 
 
-class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
+class AddressedTunnel:
     """Transport abstraction that help build tunnels (p2p pairwise relationships) over channel layer.
     """
+
+    ENC = 'utf-8'
 
     class Context:
         """Tunnel instance context"""
@@ -37,7 +39,7 @@ class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
     def context(self):
         return self.__context
 
-    async def read(self, timeout: int=None) -> Message:
+    async def receive(self, timeout: int=None) -> Message:
         """
         Read message.
 
@@ -54,7 +56,7 @@ class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
             try:
                 payload = json.loads(payload)
             except Exception as e:
-                raise ValueError("Invalid packed message") from e
+                raise SiriusInvalidPayloadStructure("Invalid packed message") from e
         if 'protected' in payload:
             unpacked = self.__p2p.unpack(payload)
             self.__context.encrypted = True
@@ -63,11 +65,14 @@ class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
             self.__context.encrypted = False
             return Message(payload)
 
-    async def write(self, message: Message) -> bool:
+    async def post(self, message: Message, encrypt: bool=True) -> bool:
         """Write message
 
         :param message: message to send
         :return: operation success
         """
-        enc_message = self.__p2p.pack(message)
-        return await self.__output.write(enc_message)
+        if encrypt:
+            payload = self.__p2p.pack(message)
+        else:
+            payload = message.serialize().encode(self.ENC)
+        return await self.__output.write(payload)

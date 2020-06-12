@@ -13,11 +13,11 @@ class ReadOnlyChannel(ABC):
     """
 
     @abstractmethod
-    async def read(self, timeout: int=None) -> Any:
+    async def read(self, timeout: int=None) -> bytes:
         """Read message packet
 
         :param timeout: Operation timeout is sec
-        :return: message packet
+        :return: chunk of data stream
         """
         raise NotImplemented()
 
@@ -27,7 +27,7 @@ class WriteOnlyChannel(ABC):
     """
 
     @abstractmethod
-    async def write(self, data: Any) -> bool:
+    async def write(self, data: bytes) -> bool:
         """
         Write message packet
 
@@ -85,12 +85,14 @@ class WebSocketConnector(BaseConnector):
             await self._ws.close()
             self._ws = None
 
-    async def read(self, timeout: int=None) -> Message:
+    async def read(self, timeout: int=None) -> bytes:
         msg = await self._ws.receive(timeout=timeout)
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
             raise SiriusConnectionClosed()
-        elif msg.type in [aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY]:
-            return self.parse(msg.data)
+        elif msg.type == aiohttp.WSMsgType.TEXT:
+            return msg.data.encode(self.ENC)
+        elif msg.type == aiohttp.WSMsgType.BINARY:
+            return msg.data
         elif msg.type == aiohttp.WSMsgType.ERROR:
             raise SiriusIOError()
 
@@ -101,15 +103,3 @@ class WebSocketConnector(BaseConnector):
             payload = message
         await self._ws.send_bytes(payload)
         return True
-
-    @classmethod
-    def parse(cls, payload: Union[str, bytes]) -> Message:
-        try:
-            if isinstance(payload, str):
-                return Message.deserialize(payload)
-            elif isinstance(payload, bytes):
-                return Message.deserialize(payload.decode(cls.ENC))
-            else:
-                raise SiriusInvalidPayloadStructure()
-        except SiriusInvalidMessage:
-            raise SiriusInvalidPayloadStructure()

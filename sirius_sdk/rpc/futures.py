@@ -69,7 +69,7 @@ class Future:
             while datetime.datetime.now() < expires_time:
                 timedelta = expires_time - datetime.datetime.now()
                 timeout = max(timedelta.seconds, 0)
-                payload = await self.__tunnel.read(timeout)
+                payload = await self.__tunnel.receive(timeout)
                 if (payload.get('@type') == MSG_TYPE) and (payload.get('@id') == self.__id):
                     exception = payload['exception']
                     if exception:
