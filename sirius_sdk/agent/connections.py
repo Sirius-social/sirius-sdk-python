@@ -1,3 +1,6 @@
+import json
+import hashlib
+import asyncio
 import datetime
 from typing import List, Any
 from abc import ABC, abstractmethod
@@ -84,7 +87,7 @@ class AgentRPC(BaseAgentConnection):
     def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection):
         super().__init__(server_address, credentials, p2p)
         self.__tunnel_rpc = None
-        self.__tunnel_subprotocol = None
+        self.__tunnel_coprotocols = None
         self.__endpoints = []
 
     @property
@@ -133,7 +136,7 @@ class AgentRPC(BaseAgentConnection):
         self.__tunnel_rpc = AddressedTunnel(
             address=channel_rpc, input_=self._connector, output_=self._connector, p2p=self._p2p
         )
-        self.__tunnel_subprotocol = AddressedTunnel(
+        self.__tunnel_coprotocols = AddressedTunnel(
             address=channel_sub_protocol, input_=self._connector, output_=self._connector, p2p=self._p2p
         )
         # Extract active endpoints
@@ -168,3 +171,49 @@ class AgentEvents(BaseAgentConnection):
     @classmethod
     def _path(cls):
         return '/events'
+
+
+class CoProtocolsObserver:
+    """https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
+    """
+
+    class Condition:
+        """Condition is amount of rules that communication actor set to filter response beside message streams
+        of coprotocols
+
+        https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
+        """
+
+        def __init__(self, thid: str):
+            """
+            :param thid: thread id of responded message
+                See docs:  https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading#threaded-messages
+            """
+            self.thid = thid
+
+        @property
+        def unique_id(self):
+            dump = json.dumps({'thid': self.thid}).encode()
+            value = hashlib.sha1(dump).hexdigest()
+            return value
+
+        def check(self, message: Message) -> bool:
+            thread_id = message.get('~thread', {}).get('thid', None)
+            return thread_id == self.thid
+
+    def __init__(self, tunnel: AddressedTunnel):
+        self.__messages_stream = tunnel
+        self.__subscribers = {}
+
+    async def poll(self, timeout: int, cond: Condition) -> bool:
+        expires_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+        while datetime.datetime.now() < expires_time:
+            timedelta = expires_time - datetime.datetime.now()
+            timeout = max(timedelta.seconds, 0)
+            message = await self.__messages_stream.receive(timeout)
+
+
+class SubProtocol:
+
+    def __init__(self):
+        pass
