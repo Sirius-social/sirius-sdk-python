@@ -1,12 +1,11 @@
-import json
 from abc import ABC, abstractmethod
 from typing import Any, Union
 from urllib.parse import urljoin
 
 import aiohttp
 
-from sirius_sdk.errors.exceptions import SiriusConnectionClosed, SiriusIOError, SiriusUnsupportedData, \
-    SiriusInvalidPayloadStructure
+from .messaging import Message
+from .errors.exceptions import *
 
 
 class ReadOnlyChannel(ABC):
@@ -86,32 +85,31 @@ class WebSocketConnector(BaseConnector):
             await self._ws.close()
             self._ws = None
 
-    async def read(self, timeout: int=None) -> Any:
+    async def read(self, timeout: int=None) -> Message:
         msg = await self._ws.receive(timeout=timeout)
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
             raise SiriusConnectionClosed()
         elif msg.type in [aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY]:
             return self.parse(msg.data)
         elif msg.type == aiohttp.WSMsgType.ERROR:
-            raise SiriusIOError
+            raise SiriusIOError()
 
-    async def write(self, data: Any):
-        if isinstance(data, dict):
-            payload = json.dumps(data).encode(self.ENC)
-        elif isinstance(data, bytes):
-            payload = data
+    async def write(self, message: Union[Message, bytes]) -> bool:
+        if isinstance(message, Message):
+            payload = message.serialize().encode(self.ENC)
         else:
-            raise SiriusUnsupportedData()
+            payload = message
         await self._ws.send_bytes(payload)
+        return True
 
     @classmethod
-    def parse(cls, payload: Union[str, bytes]):
+    def parse(cls, payload: Union[str, bytes]) -> Message:
         try:
             if isinstance(payload, str):
-                return json.loads(payload)
+                return Message.deserialize(payload)
             elif isinstance(payload, bytes):
-                return json.loads(payload.decode(cls.ENC))
+                return Message.deserialize(payload.decode(cls.ENC))
             else:
                 raise SiriusInvalidPayloadStructure()
-        except json.JSONDecodeError:
+        except SiriusInvalidMessage:
             raise SiriusInvalidPayloadStructure()

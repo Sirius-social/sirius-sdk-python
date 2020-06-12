@@ -50,3 +50,11 @@ class SiriusPromiseContextException(BaseSiriusException):
 
 class SiriusCryptoError(BaseSiriusException):
     """ Failed crypto call. """
+
+
+class SiriusInvalidMessage(Exception):
+    """ Thrown when message is malformed. """
+
+
+class SiriusInvalidType(Exception):
+    """ When type is unparsable or invalid. """

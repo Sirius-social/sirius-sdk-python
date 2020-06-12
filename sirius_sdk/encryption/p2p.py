@@ -12,7 +12,7 @@ class P2PConnection:
 
     def __init__(self, my_keys: Tuple[str, str], their_verkey: str):
         """
-        :param my_keys: (verkey, sigkey) for decrypt messages
+        :param my_keys: (verkey, sigkey) for encrypt/decrypt operations
         :param their_verkey: verkey of the counterparty
         """
         self.__my_keys = my_keys

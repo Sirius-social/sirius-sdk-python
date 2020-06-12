@@ -3,6 +3,7 @@ from typing import Any
 
 from ..encryption import P2PConnection
 from ..base import ReadOnlyChannel, WriteOnlyChannel
+from ..messaging import Message
 
 
 class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
@@ -36,7 +37,7 @@ class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
     def context(self):
         return self.__context
 
-    async def read(self, timeout: int=None) -> dict:
+    async def read(self, timeout: int=None) -> Message:
         """
         Read message.
 
@@ -57,12 +58,12 @@ class AddressedTunnel(ReadOnlyChannel, WriteOnlyChannel):
         if 'protected' in payload:
             unpacked = self.__p2p.unpack(payload)
             self.__context.encrypted = True
-            return unpacked
+            return Message(unpacked)
         else:
             self.__context.encrypted = False
-            return payload
+            return Message(payload)
 
-    async def write(self, message: dict) -> bool:
+    async def write(self, message: Message) -> bool:
         """Write message
 
         :param message: message to send
