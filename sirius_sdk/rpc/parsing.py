@@ -3,6 +3,8 @@ from typing import Any
 
 from ..agent.wallet import CacheOptions, PurgeOptions, RetrieveRecordOptions, NYMRole, PoolAction, KeyDerivationMethod
 from ..rpc.futures import Future
+from ..messaging import Message
+from ..errors.exceptions import SiriusInvalidType
 
 
 CLS_MAP = {
@@ -79,7 +81,7 @@ def deincapsulate_param(packet: dict):
     return deserialize_variable(packet['payload'], packet['mime_type'])
 
 
-def build_request(msg_type: str, future: Future, params: dict) -> dict:
+def build_request(msg_type: str, future: Future, params: dict) -> Message:
     """
 
     :param msg_type: Aries RFCs attribute
@@ -88,8 +90,14 @@ def build_request(msg_type: str, future: Future, params: dict) -> dict:
     :param params: RPC call params
     :return: RPC service packet
     """
-    return {
+    if 'sirius_rpc' not in msg_type.split('/'):
+        raise SiriusInvalidType('Expected sirius_rpc protocol')
+    return Message({
         '@type': msg_type,
         '@promise': future.promise,
         'params': {k: incapsulate_param(v) for k, v in params.items()}
-    }
+    })
+
+
+def build_response():
+    pass

@@ -1,5 +1,5 @@
 from .futures import Future
-from .serializing import build_request
+from .parsing import build_request
 from .tunnel import AddressedTunnel
 
 

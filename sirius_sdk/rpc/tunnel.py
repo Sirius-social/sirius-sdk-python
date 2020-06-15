@@ -69,6 +69,7 @@ class AddressedTunnel:
         """Write message
 
         :param message: message to send
+        :param encrypt: do encryption
         :return: operation success
         """
         if encrypt:

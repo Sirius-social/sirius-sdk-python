@@ -70,7 +70,7 @@ class Future:
                 timedelta = expires_time - datetime.datetime.now()
                 timeout = max(timedelta.seconds, 0)
                 payload = await self.__tunnel.receive(timeout)
-                if (payload.get('@type') == MSG_TYPE) and (payload.get('@id') == self.__id):
+                if (payload.get('@type') == MSG_TYPE) and (payload.get('~thread', {}).get('thid', None) == self.__id):
                     exception = payload['exception']
                     if exception:
                         self.__exception = exception

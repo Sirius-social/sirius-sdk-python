@@ -40,6 +40,10 @@ class SiriusValueEmpty(BaseSiriusException):
     pass
 
 
+class SiriusAlreadyTriggered(BaseSiriusException):
+    pass
+
+
 class SiriusPromiseContextException(BaseSiriusException):
 
     def __init__(self, class_name: str, printable: str, *args, **kwargs):
