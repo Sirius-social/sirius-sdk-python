@@ -106,6 +106,8 @@ class AgentRPC(BaseAgentConnection):
         )
         if not await self.__tunnel_rpc.post(request):
             raise SiriusRPCError()
+        # packet = await self.__tunnel_rpc.
+
         success = await future.wait(timeout=self.IO_TIMEOUT)
         if success:
             if future.has_exception():

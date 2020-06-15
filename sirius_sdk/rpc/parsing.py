@@ -3,8 +3,11 @@ from typing import Any
 
 from ..agent.wallet import CacheOptions, PurgeOptions, RetrieveRecordOptions, NYMRole, PoolAction, KeyDerivationMethod
 from ..rpc.futures import Future
-from ..messaging import Message
-from ..errors.exceptions import SiriusInvalidType
+from ..messaging import Message, Type
+from ..errors.exceptions import SiriusInvalidType, SiriusInvalidPayloadStructure
+
+
+MSG_TYPE_FUTURE = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/future'
 
 
 CLS_MAP = {
@@ -90,8 +93,9 @@ def build_request(msg_type: str, future: Future, params: dict) -> Message:
     :param params: RPC call params
     :return: RPC service packet
     """
-    if 'sirius_rpc' not in msg_type.split('/'):
-        raise SiriusInvalidType('Expected sirius_rpc protocol')
+    typ = Type.from_str(msg_type)
+    if typ.protocol != 'sirius_rpc':
+        raise SiriusInvalidType('Expect sirius_rpc protocol')
     return Message({
         '@type': msg_type,
         '@promise': future.promise,
@@ -99,5 +103,26 @@ def build_request(msg_type: str, future: Future, params: dict) -> Message:
     })
 
 
-def build_response():
-    pass
+def build_response(packet: Message):
+    if packet.get('@type') == MSG_TYPE_FUTURE:
+        if packet.get('~thread', None) is not None:
+            parsed = {
+                'exception': None,
+                'value': None
+            }
+            exception = packet['exception']
+            if exception:
+                parsed['exception'] = exception
+            else:
+                value = packet['value']
+                if packet['is_tuple']:
+                    parsed['value'] = tuple(value)
+                elif packet['is_bytes']:
+                    parsed['value'] = base64.b64decode(value.encode('ascii'))
+                else:
+                    parsed['value'] = value
+            return parsed
+        else:
+            raise SiriusInvalidPayloadStructure('Expect ~thread decorator')
+    else:
+        raise SiriusInvalidType('Expect message type "%s"' % MSG_TYPE_FUTURE)
