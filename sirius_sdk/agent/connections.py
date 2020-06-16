@@ -2,8 +2,8 @@ import json
 import hashlib
 import asyncio
 import datetime
-from typing import List, Any
 from abc import ABC, abstractmethod
+from typing import List, Any, Union, Optional
 
 from ..base import WebSocketConnector
 from ..encryption import P2PConnection
@@ -48,6 +48,12 @@ class BaseAgentConnection(ABC):
             timeout=self.IO_TIMEOUT
         )
         self._p2p = p2p
+
+    def __del__(self):
+        asyncio.ensure_future(self.close())
+
+    async def close(self):
+        await self._connector.close()
 
     @classmethod
     async def create(cls, server_address: str, credentials: bytes, p2p: P2PConnection):
@@ -95,6 +101,12 @@ class AgentRPC(BaseAgentConnection):
         return self.__endpoints
 
     async def remote_call(self, msg_type: str, params: dict=None) -> Any:
+        """Call Agent services
+
+        :param msg_type:
+        :param params:
+        :return:
+        """
         future = Future(
             tunnel=self.__tunnel_rpc,
             expiration_time=datetime.datetime.now() + datetime.timedelta(seconds=self.IO_TIMEOUT)
@@ -106,8 +118,6 @@ class AgentRPC(BaseAgentConnection):
         )
         if not await self.__tunnel_rpc.post(request):
             raise SiriusRPCError()
-        # packet = await self.__tunnel_rpc.
-
         success = await future.wait(timeout=self.IO_TIMEOUT)
         if success:
             if future.has_exception():
@@ -116,6 +126,51 @@ class AgentRPC(BaseAgentConnection):
                 return future.get_value()
         else:
             raise SiriusTimeoutRPC()
+        
+    async def send_message(
+            self, message: Message,
+            their_vk: Union[List[str], str], endpoint: str,
+            my_vk: Optional[str], routing_keys: Optional[List[str]], coprotocol: bool=False
+    ) -> Optional[Message]:
+        """Send Message to other Indy compatible agent
+        
+        :param message: message
+        :param their_vk: Verkey of recipients
+        :param endpoint: Endpoint Address of recipient
+        :param my_vk: Verkey of sender (None for anocrypt mode)
+        :param routing_keys: Routing keys if it is exists
+        :param coprotocol: True if message is part of co-protocol stream
+        :return: Response message if coprotocol is True
+        """
+        if isinstance(their_vk, str):
+            recipient_verkeys = [their_vk]
+        else:
+            recipient_verkeys = their_vk
+        params = {
+            'message': message,
+            'routing_keys': routing_keys or [],
+            'recipient_verkeys': recipient_verkeys,
+            'sender_verkey': my_vk,
+            'endpoint_address': endpoint
+        }
+        if coprotocol:
+            params['coprotocol'] = {
+                'thid': message.id,
+                'ttl': self.IO_TIMEOUT,
+                'channel_address': self.__tunnel_coprotocols.address
+            }
+        success, err_message = await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message',
+            params=params
+        )
+        if err_message:
+            raise SiriusRPCError(err_message)
+        else:
+            if coprotocol:
+                response = await self.__tunnel_coprotocols.receive(timeout=self.IO_TIMEOUT)
+                return response
+            else:
+                return None
 
     @classmethod
     def _path(cls):
@@ -170,52 +225,31 @@ class AgentEvents(BaseAgentConnection):
     Reactive nature of Smart-Contract design
     """
 
+    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection):
+        super().__init__(server_address, credentials, p2p)
+        self.__tunnel = None
+        self.__balancing_group = None
+
+    @property
+    def balancing_group(self) -> str:
+        return self.__balancing_group
+
+    async def pull(self) -> Message:
+        data = await self._connector.read(timeout=self.IO_TIMEOUT)
+        payload = Message(data.decode(self._connector.ENC))
+        if 'protected' in payload:
+            message, sender_vk, recip_vk = self._p2p.unpack(payload)
+            return Message(message)
+        else:
+            return Message(payload)
+
     @classmethod
     def _path(cls):
         return '/events'
 
-
-class CoProtocolsObserver:
-    """https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
-    """
-
-    class Condition:
-        """Condition is amount of rules that communication actor set to filter response beside message streams
-        of coprotocols
-
-        https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
-        """
-
-        def __init__(self, thid: str):
-            """
-            :param thid: thread id of responded message
-                See docs:  https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading#threaded-messages
-            """
-            self.thid = thid
-
-        @property
-        def unique_id(self):
-            dump = json.dumps({'thid': self.thid}).encode()
-            value = hashlib.sha1(dump).hexdigest()
-            return value
-
-        def check(self, message: Message) -> bool:
-            thread_id = message.get('~thread', {}).get('thid', None)
-            return thread_id == self.thid
-
-    def __init__(self, tunnel: AddressedTunnel):
-        self.__messages_stream = tunnel
-        self.__subscribers = {}
-
-    async def poll(self, timeout: int, cond: Condition) -> bool:
-        expires_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
-        while datetime.datetime.now() < expires_time:
-            timedelta = expires_time - datetime.datetime.now()
-            timeout = max(timedelta.seconds, 0)
-            message = await self.__messages_stream.receive(timeout)
-
-
-class SubProtocol:
-
-    def __init__(self):
-        pass
+    async def _setup(self, context: Message):
+        # Extract load balancing info
+        balancing = context.get('~balancing', [])
+        for balance in balancing:
+            if balance['id'] == 'kafka':
+                self.__balancing_group = balance['data']['json']['group_id']
