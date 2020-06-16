@@ -236,9 +236,12 @@ class AgentEvents(BaseAgentConnection):
 
     async def pull(self) -> Message:
         data = await self._connector.read(timeout=self.IO_TIMEOUT)
-        payload = Message(data.decode(self._connector.ENC))
+        try:
+            payload = json.loads(data.decode(self._connector.ENC))
+        except json.JSONDecodeError:
+            raise SiriusInvalidPayloadStructure()
         if 'protected' in payload:
-            message, sender_vk, recip_vk = self._p2p.unpack(payload)
+            message = self._p2p.unpack(payload)
             return Message(message)
         else:
             return Message(payload)
