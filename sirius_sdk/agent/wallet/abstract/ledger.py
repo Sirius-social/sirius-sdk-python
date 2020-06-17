@@ -260,7 +260,7 @@ class AbstractLedger(ABC):
 
     @abstractmethod
     async def build_nym_request(
-            submitter_did: str, target_did: str, ver_key:str=None,
+            self, submitter_did: str, target_did: str, ver_key:str=None,
             alias: str=None, role: NYMRole=None
     ) -> dict:
         """
@@ -302,7 +302,7 @@ class AbstractLedger(ABC):
 
     @abstractmethod
     async def build_get_attrib_request(
-            submitter_did: Optional[str], target_did: str, raw: str=None, xhash: str=None, enc: str=None
+            self, submitter_did: Optional[str], target_did: str, raw: str=None, xhash: str=None, enc: str=None
     ) -> dict:
         """
         Builds a GET_ATTRIB request. Request to get information about an Attribute for the specified DID.

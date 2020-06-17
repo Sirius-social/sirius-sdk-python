@@ -106,6 +106,8 @@ class AgentRPC(BaseAgentConnection):
         :param params:
         :return:
         """
+        if not self._connector.is_open:
+            raise SiriusConnectionClosed('Open agent connection at first')
         future = Future(
             tunnel=self.__tunnel_rpc,
             expiration_time=datetime.datetime.now() + datetime.timedelta(seconds=self.IO_TIMEOUT)
@@ -141,6 +143,8 @@ class AgentRPC(BaseAgentConnection):
         :param coprotocol: True if message is part of co-protocol stream
         :return: Response message if coprotocol is True
         """
+        if not self._connector.is_open:
+            raise SiriusConnectionClosed('Open agent connection at first')
         if isinstance(their_vk, str):
             recipient_verkeys = [their_vk]
         else:
@@ -234,6 +238,8 @@ class AgentEvents(BaseAgentConnection):
         return self.__balancing_group
 
     async def pull(self) -> Message:
+        if not self._connector.is_open:
+            raise SiriusConnectionClosed('Open agent connection at first')
         data = await self._connector.read(timeout=self.IO_TIMEOUT)
         try:
             payload = json.loads(data.decode(self._connector.ENC))
