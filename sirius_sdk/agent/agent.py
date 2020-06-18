@@ -134,3 +134,9 @@ class Agent:
         if self.__events:
             await self.__events.close()
         self.__wallet = None
+
+    async def ping(self) -> bool:
+        success = await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/ping_agent'
+        )
+        return success
