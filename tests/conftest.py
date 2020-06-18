@@ -1,8 +1,8 @@
 import pytest
 
 from sirius_sdk.rpc import AddressedTunnel
-from sirius_sdk.tests.helpers import InMemoryChannel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
+from .helpers import InMemoryChannel
 
 
 @pytest.fixture()
