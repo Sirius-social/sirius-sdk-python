@@ -26,7 +26,7 @@ class Future:
     response awaiting routines.
     """
 
-    def __init__(self, tunnel: AddressedTunnel, expiration_time: datetime.datetime=None):
+    def __init__(self, tunnel: AddressedTunnel, expiration_utc: datetime.datetime=None):
         """
         :param tunnel: communication tunnel for server-side cloud agent
         :param expiration_time: time of response expiration
@@ -36,7 +36,7 @@ class Future:
         self.__read_ok = False
         self.__tunnel = tunnel
         self.__exception = None
-        self.__expiration_stamp = expiration_time
+        self.__expiration_stamp = expiration_utc
 
     @property
     def promise(self):
@@ -90,7 +90,7 @@ class Future:
                         '\n Expected id: "%s"' % self.__id
                     )
             return False
-        except SiriusTimeoutIO():
+        except SiriusTimeoutIO:
             return False
 
     def get_value(self) -> Any:
