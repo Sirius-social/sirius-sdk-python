@@ -18,11 +18,13 @@ class Agent:
         return self.__wallet
 
     async def open(self):
-        rpc = AgentRPC.create(self.__server_address, self.__credentials, self.__p2p)
-        self.__wallet = DynamicWallet(rpc=rpc)
-        self.__rpc = rpc
+        self.__rpc = await AgentRPC.create(self.__server_address, self.__credentials, self.__p2p)
+        self.__events = await AgentEvents.create(self.__server_address, self.__credentials, self.__p2p)
+        self.__wallet = DynamicWallet(rpc=self.__rpc)
 
     async def close(self):
         if self.__rpc:
             await self.__rpc.close()
-            self.__wallet = None
+        if self.__events:
+            await self.__events.close()
+        self.__wallet = None
