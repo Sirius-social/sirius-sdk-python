@@ -90,7 +90,7 @@ class Future:
                         '\n Expected id: "%s"' % self.__id
                     )
             return False
-        except SiriusTimeoutIO:
+        except SiriusTimeoutIO():
             return False
 
     def get_value(self) -> Any:

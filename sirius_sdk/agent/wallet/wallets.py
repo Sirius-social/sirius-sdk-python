@@ -4,6 +4,7 @@ from .impl.cache import CacheProxy
 from .impl.crypto import CryptoProxy
 from .impl.ledger import LedgerProxy
 from .impl.pairwise import PairwiseProxy
+from .impl.anoncreds import AnonCredsProxy
 from .impl.non_secrets import NonSecretsProxy
 
 
@@ -16,6 +17,7 @@ class DynamicWallet:
         self.__pairwise = PairwiseProxy(rpc)
         self.__non_secrets = NonSecretsProxy(rpc)
         self.__ledger = LedgerProxy(rpc)
+        self.__anoncreds = AnonCredsProxy(rpc)
 
     @property
     def did(self) -> DIDProxy:
@@ -36,6 +38,10 @@ class DynamicWallet:
     @property
     def pairwise(self) -> PairwiseProxy:
         return self.__pairwise
+
+    @property
+    def anoncreds(self) -> AnonCredsProxy:
+        return self.__anoncreds
 
     @property
     def non_secrets(self) -> NonSecretsProxy:

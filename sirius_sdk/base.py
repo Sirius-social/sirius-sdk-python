@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Union
 from urllib.parse import urljoin
@@ -86,7 +87,10 @@ class WebSocketConnector(BaseConnector):
             self._ws = None
 
     async def read(self, timeout: int=None) -> bytes:
-        msg = await self._ws.receive(timeout=timeout)
+        try:
+            msg = await self._ws.receive(timeout=timeout)
+        except asyncio.TimeoutError as e:
+            raise SiriusTimeoutIO() from e
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
             raise SiriusConnectionClosed()
         elif msg.type == aiohttp.WSMsgType.TEXT:

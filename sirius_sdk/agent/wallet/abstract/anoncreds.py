@@ -861,7 +861,7 @@ class AbstractAnonCreds(ABC):
 
     @abstractmethod
     async def verifier_verify_proof(
-            proof_request: dict, proof: dict, schemas: dict, credential_defs: dict,
+            self, proof_request: dict, proof: dict, schemas: dict, credential_defs: dict,
             rev_reg_defs: dict, rev_regs: dict
     ) -> bool:
         """

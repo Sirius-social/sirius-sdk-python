@@ -39,14 +39,15 @@ class BaseAgentConnection(ABC):
     IO_TIMEOUT = 30
     MSG_TYPE_CONTEXT = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/context'
 
-    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection):
+    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection, timeout: int=IO_TIMEOUT):
         self._connector = WebSocketConnector(
             server_address=server_address,
             path=self._path(),
             credentials=credentials,
-            timeout=self.IO_TIMEOUT
+            timeout=timeout
         )
         self._p2p = p2p
+        self._timeout = timeout
 
     def __del__(self):
         asyncio.ensure_future(self.close())
@@ -55,7 +56,7 @@ class BaseAgentConnection(ABC):
         await self._connector.close()
 
     @classmethod
-    async def create(cls, server_address: str, credentials: bytes, p2p: P2PConnection):
+    async def create(cls, server_address: str, credentials: bytes, p2p: P2PConnection, timeout: int=IO_TIMEOUT):
         """
         :param server_address: address of the server, example: https://server.com
         :param credentials: encrypted credentials to access cloud-based services
@@ -63,7 +64,7 @@ class BaseAgentConnection(ABC):
         """
         instance = cls(server_address, credentials, p2p)
         await instance._connector.open()
-        payload = await instance._connector.read(timeout=cls.IO_TIMEOUT)
+        payload = await instance._connector.read(timeout=timeout)
         context = Message.deserialize(payload.decode())
         msg_type = context.get('@type', None)
         if msg_type is None:
@@ -110,7 +111,7 @@ class AgentRPC(BaseAgentConnection):
             raise SiriusConnectionClosed('Open agent connection at first')
         future = Future(
             tunnel=self.__tunnel_rpc,
-            expiration_time=datetime.datetime.now() + datetime.timedelta(seconds=self.IO_TIMEOUT)
+            expiration_time=datetime.datetime.now() + datetime.timedelta(seconds=self._timeout)
         )
         request = build_request(
             msg_type=msg_type,
@@ -119,7 +120,7 @@ class AgentRPC(BaseAgentConnection):
         )
         if not await self.__tunnel_rpc.post(request):
             raise SiriusRPCError()
-        success = await future.wait(timeout=self.IO_TIMEOUT)
+        success = await future.wait(timeout=self._timeout)
         if success:
             if future.has_exception():
                 future.raise_exception()
@@ -159,7 +160,7 @@ class AgentRPC(BaseAgentConnection):
         if coprotocol:
             params['coprotocol'] = {
                 'thid': message.id,
-                'ttl': self.IO_TIMEOUT,
+                'ttl': self._timeout,
                 'channel_address': self.__tunnel_coprotocols.address
             }
         success, err_message = await self.remote_call(
@@ -170,7 +171,7 @@ class AgentRPC(BaseAgentConnection):
             raise SiriusRPCError(err_message)
         else:
             if coprotocol:
-                response = await self.__tunnel_coprotocols.receive(timeout=self.IO_TIMEOUT)
+                response = await self.__tunnel_coprotocols.receive(timeout=self._timeout)
                 return response
             else:
                 return None
@@ -240,7 +241,7 @@ class AgentEvents(BaseAgentConnection):
     async def pull(self) -> Message:
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
-        data = await self._connector.read(timeout=self.IO_TIMEOUT)
+        data = await self._connector.read(timeout=self._timeout)
         try:
             payload = json.loads(data.decode(self._connector.ENC))
         except json.JSONDecodeError:
