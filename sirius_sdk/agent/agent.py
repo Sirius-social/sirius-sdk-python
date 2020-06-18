@@ -3,6 +3,7 @@ from typing import List, Union, Optional
 from ..messaging import Message, Type
 from ..encryption import P2PConnection
 from ..errors.exceptions import SiriusTimeoutIO
+from .pairwise import Pairwise
 from .wallet.wallets import DynamicWallet
 from .connections import AgentRPC, AgentEvents
 
@@ -25,7 +26,7 @@ class CoProtocol:
         self.__pthid = pthid
         self.__rpc = None
 
-    async def open(self):
+    async def start(self):
         self.__rpc = await AgentRPC.create(
             self.__server_address,
             self.__credentials,
@@ -33,7 +34,7 @@ class CoProtocol:
             self.__timeout
         )
 
-    async def close(self):
+    async def stop(self):
         if self.__rpc:
             await self.__rpc.close()
 
@@ -45,7 +46,8 @@ class CoProtocol:
             self.__prepare_message(message)
             answer = await self.__rpc.send_message(
                 message=message, their_vk=their_vk, endpoint=endpoint,
-                my_vk=my_vk, routing_keys=routing_keys, coprotocol=True
+                my_vk=my_vk, routing_keys=routing_keys, 
+                coprotocol=True, coprotocol_thid=self.__thid
             )
             typ = Type.from_str(answer.type)
             order = self.__received_orders.get(typ.doc_uri, 0)
@@ -53,6 +55,15 @@ class CoProtocol:
             return True, answer
         except SiriusTimeoutIO:
             return False, None
+
+    async def send_to(self, message: Message, to: Pairwise) -> (bool, Message):
+        return await self.send(
+            message=message,
+            their_vk=to.their.verkey,
+            endpoint=to.their.endpoint,
+            my_vk=to.me.verkey,
+            routing_keys=to.their.routing_keys
+        )
 
     async def post(
             self, message: Message, their_vk: Union[List[str], str],
@@ -62,6 +73,15 @@ class CoProtocol:
         await self.__rpc.send_message(
             message=message, their_vk=their_vk, endpoint=endpoint,
             my_vk=my_vk, routing_keys=routing_keys, coprotocol=False
+        )
+
+    async def post_to(self, message: Message, to: Pairwise):
+        await self.post(
+            message=message,
+            their_vk=to.their.verkey,
+            endpoint=to.their.endpoint,
+            my_vk=to.me.verkey,
+            routing_keys=to.their.routing_keys
         )
 
     def __prepare_message(self, message: Message):
@@ -90,6 +110,18 @@ class Agent:
     @property
     def wallet(self) -> DynamicWallet:
         return self.__wallet
+
+    async def spawn(self, thid: str, timeout: int=None, pthid: str=None) -> CoProtocol:
+        protocol = CoProtocol(
+            thid=thid,
+            server_address=self.__server_address,
+            credentials=self.__credentials,
+            p2p=self.__p2p,
+            pthid=pthid,
+            timeout=timeout
+        )
+        await protocol.start()
+        return protocol
 
     async def open(self):
         self.__rpc = await AgentRPC.create(self.__server_address, self.__credentials, self.__p2p)

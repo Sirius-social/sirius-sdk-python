@@ -11,6 +11,7 @@ from .impl.non_secrets import NonSecretsProxy
 class DynamicWallet:
 
     def __init(self, rpc: AgentRPC):
+        self.__rpc = rpc
         self.__did = DIDProxy(rpc)
         self.__crypto = CryptoProxy(rpc)
         self.__cache = CacheProxy(rpc)
@@ -46,3 +47,9 @@ class DynamicWallet:
     @property
     def non_secrets(self) -> NonSecretsProxy:
         return self.__non_secrets
+
+    async def generate_wallet_key(self, seed: str = None) -> str:
+        return await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/generate_wallet_key',
+            params=dict(seed=seed)
+        )

@@ -132,7 +132,8 @@ class AgentRPC(BaseAgentConnection):
     async def send_message(
             self, message: Message,
             their_vk: Union[List[str], str], endpoint: str,
-            my_vk: Optional[str], routing_keys: Optional[List[str]], coprotocol: bool=False
+            my_vk: Optional[str], routing_keys: Optional[List[str]],
+            coprotocol: bool=False, coprotocol_thid: str=None
     ) -> Optional[Message]:
         """Send Message to other Indy compatible agent
         
@@ -142,6 +143,10 @@ class AgentRPC(BaseAgentConnection):
         :param my_vk: Verkey of sender (None for anocrypt mode)
         :param routing_keys: Routing keys if it is exists
         :param coprotocol: True if message is part of co-protocol stream
+        :param coprotocol_thid: Thread id of co-protocol
+            See:
+             - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
+             - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
         :return: Response message if coprotocol is True
         """
         if not self._connector.is_open:
@@ -159,7 +164,7 @@ class AgentRPC(BaseAgentConnection):
         }
         if coprotocol:
             params['coprotocol'] = {
-                'thid': message.id,
+                'thid': coprotocol_thid or message.id,
                 'ttl': self._timeout,
                 'channel_address': self.__tunnel_coprotocols.address
             }
