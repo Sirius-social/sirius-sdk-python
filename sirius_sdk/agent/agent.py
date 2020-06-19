@@ -17,7 +17,7 @@ class CoProtocol:
     Approach advantages:
       - developer build smart-contract logic in block-style that is easy to maintain and control
       - human-friendly source code of state machines in procedural style
-      - program that is running in separate coroutine: lightweight abstraction to start/kill/state-detection logic thread
+      - program that is running in separate coroutine: lightweight abstraction to start/kill/state-detection work thread
     See details:
       - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
       - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
@@ -62,12 +62,19 @@ class CoProtocol:
         """
         Send message and wait answer
 
-        :param message:
-        :param their_vk:
-        :param endpoint:
-        :param my_vk:
-        :param routing_keys:
-        :return:
+        :param message: Message
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
+        :param their_vk: Verkey of recipient
+        :param endpoint: Endpoint address of recipient
+        :param my_vk: VerKEy of Sender (AuthCrypt mode)
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/features/0019-encryption-envelope#authcrypt-mode-vs-anoncrypt-mode
+        :param routing_keys: Routing key of recipient
+        :return: Tuple (
+          OpSuccess: True if operation was end with success
+          Response message Response message fron recipient
+        )
         """
         try:
             self.__prepare_message(message)
@@ -87,9 +94,14 @@ class CoProtocol:
         """
         Send message to estableshed Pairwise connection and wait answer
 
-        :param message:
-        :param to:
-        :return:
+        :param message: Message
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
+        :param to: Established Pairwise connection
+        :return: Tuple (
+          OpSuccess: True if operation was end with success
+          Response message Response message fron recipient
+        )
         """
         return await self.send(
             message=message,
@@ -103,6 +115,18 @@ class CoProtocol:
             self, message: Message, their_vk: Union[List[str], str],
             endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]]
     ):
+        """Post message and don't wait answer
+
+        :param message: Message
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
+        :param their_vk: Verkey of recipient
+        :param endpoint: Endpoint address of recipient
+        :param my_vk: VerKEy of Sender (AuthCrypt mode)
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/features/0019-encryption-envelope#authcrypt-mode-vs-anoncrypt-mode
+        :param routing_keys: Routing key of recipient
+        """
         self.__prepare_message(message)
         await self.__rpc.send_message(
             message=message, their_vk=their_vk, endpoint=endpoint,
@@ -110,6 +134,13 @@ class CoProtocol:
         )
 
     async def post_to(self, message: Message, to: Pairwise):
+        """Post message to Pairwise connection and don't wait answer
+
+        :param message: Message
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
+        :param to: Established Pairwise connection
+        """
         await self.post(
             message=message,
             their_vk=to.their.verkey,
