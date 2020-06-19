@@ -5,10 +5,22 @@ from ..encryption import P2PConnection
 from ..errors.exceptions import SiriusTimeoutIO
 from .pairwise import Pairwise
 from .wallet.wallets import DynamicWallet
-from .connections import AgentRPC, AgentEvents
+from .connections import AgentRPC, AgentEvents, BaseAgentConnection
 
 
 class CoProtocol:
+
+    """Abstraction peer-to-peer application-level protocols in the context of interactions among agent-like things.
+
+    Sirius SDK protocol is high-level abstraction over Sirius transport architecture.
+    Approach advantages:
+      - developer build smart-contract logic in block-style that is easy to maintain and control
+      - human-friendly source code of state machines in procedural style
+      - program that is running in separate coroutine: lightweight abstraction to start/kill/state-detection logic thread
+    See details:
+      - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
+      - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
+    """
 
     THREAD_DECORATOR = '~thread'
 
@@ -25,6 +37,7 @@ class CoProtocol:
         self.__thid = thid
         self.__pthid = pthid
         self.__rpc = None
+        self.__wallet = None
 
     async def start(self):
         self.__rpc = await AgentRPC.create(
@@ -33,10 +46,12 @@ class CoProtocol:
             self.__p2p,
             self.__timeout
         )
+        self.__wallet = DynamicWallet(self.__rpc)
 
     async def stop(self):
         if self.__rpc:
             await self.__rpc.close()
+        self.__wallet = None
 
     async def send(
             self, message: Message, their_vk: Union[List[str], str],
@@ -98,20 +113,43 @@ class CoProtocol:
 
 
 class Agent:
+    """
+    Agent connection in the self-sovereign identity ecosystem.
 
-    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection):
+    Managing an identity is complex. It is implementation of tools to help you to develop SSI Smart-Contracts logic.
+    See details:
+      - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0004-agents
+    """
+
+    def __init__(
+            self, server_address: str, credentials: bytes,
+            p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT
+    ):
+        """
+        :param server_address: example https://my-cloud-provider.com
+        :param credentials: credentials that point websocket connection to your agent and server-side services like
+          routing keys maintenance ant etc.
+        :param p2p: encrypted connection to establish tunnel to Agent that is running on server-side
+        """
         self.__server_address = server_address
         self.__credentials = credentials
         self.__p2p = p2p
         self.__rpc = None
         self.__events = None
         self.__wallet = None
+        self.__timeout = timeout
 
     @property
     def wallet(self) -> DynamicWallet:
+        """Indy wallet keys/schemas/CredDefs maintenance"""
         return self.__wallet
 
     async def spawn(self, thid: str, timeout: int=None, pthid: str=None) -> CoProtocol:
+        """Spawn parallel protocol thread in running program
+
+        See details:
+          - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
+        """
         protocol = CoProtocol(
             thid=thid,
             server_address=self.__server_address,
@@ -124,8 +162,8 @@ class Agent:
         return protocol
 
     async def open(self):
-        self.__rpc = await AgentRPC.create(self.__server_address, self.__credentials, self.__p2p)
-        self.__events = await AgentEvents.create(self.__server_address, self.__credentials, self.__p2p)
+        self.__rpc = await AgentRPC.create(self.__server_address, self.__credentials, self.__p2p, self.__timeout)
+        self.__events = await AgentEvents.create(self.__server_address, self.__credentials, self.__p2p, self.__timeout)
         self.__wallet = DynamicWallet(rpc=self.__rpc)
 
     async def close(self):

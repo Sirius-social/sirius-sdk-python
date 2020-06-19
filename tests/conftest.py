@@ -1,11 +1,13 @@
 import asyncio
-import functools
 
 import pytest
 
 from sirius_sdk.rpc import AddressedTunnel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
 from .helpers import InMemoryChannel, ServerTestSuite
+
+
+SERVER_SUITE = None
 
 
 def pytest_configure():
@@ -45,8 +47,10 @@ def p2p() -> dict:
 
 
 @pytest.fixture()
-@functools.lru_cache()
 def test_suite() -> ServerTestSuite:
-    suite = ServerTestSuite()
-    asyncio.get_event_loop().run_until_complete(suite.ensure_is_alive())
-    return suite
+    global SERVER_SUITE
+    if not isinstance(SERVER_SUITE, ServerTestSuite):
+        suite = ServerTestSuite()
+        asyncio.get_event_loop().run_until_complete(suite.ensure_is_alive())
+        SERVER_SUITE = suite
+    return SERVER_SUITE
