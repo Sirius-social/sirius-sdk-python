@@ -11,7 +11,7 @@ SERVER_SUITE = None
 
 
 def pytest_configure():
-    pytest.test_suite_baseurl = 'http://localhost'
+    pytest.test_suite_baseurl = 'http://agent'
 
 
 @pytest.fixture()

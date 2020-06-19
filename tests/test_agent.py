@@ -1,4 +1,4 @@
-import json
+import asyncio
 
 import pytest
 
@@ -14,7 +14,7 @@ async def test__all_agents_ping(test_suite: ServerTestSuite):
             server_address=params['server_address'],
             credentials=params['credentials'],
             p2p=params['p2p'],
-            timeout=5
+            timeout=5,
         )
         await agent.open()
         try:
@@ -31,7 +31,7 @@ async def test_agents_wallet(test_suite: ServerTestSuite):
         server_address=params['server_address'],
         credentials=params['credentials'],
         p2p=params['p2p'],
-        timeout=5
+        timeout=5,
     )
     await agent.open()
     try:
