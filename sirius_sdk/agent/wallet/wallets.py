@@ -10,7 +10,7 @@ from .impl.non_secrets import NonSecretsProxy
 
 class DynamicWallet:
 
-    def __init(self, rpc: AgentRPC):
+    def __init__(self, rpc: AgentRPC):
         self.__rpc = rpc
         self.__did = DIDProxy(rpc)
         self.__crypto = CryptoProxy(rpc)

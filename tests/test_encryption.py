@@ -1,8 +1,11 @@
 import json
 
+import pytest
+
 from sirius_sdk.encryption import create_keypair, pack_message, unpack_message, bytes_to_b58, P2PConnection
 
 
+@pytest.mark.asyncio
 def test_sane():
     verkey, sigkey = create_keypair(b'000000000000000000000000000SEED1')
     verkey_recipient = bytes_to_b58(verkey)
