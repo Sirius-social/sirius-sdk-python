@@ -40,7 +40,7 @@ class CoProtocol:
         self.__rpc = None
         self.__wallet = None
 
-    async def start(self):
+    async def start(self) -> DynamicWallet:
         self.__rpc = await AgentRPC.create(
             self.__server_address,
             self.__credentials,
@@ -48,6 +48,7 @@ class CoProtocol:
             self.__timeout
         )
         self.__wallet = DynamicWallet(self.__rpc)
+        return self.__wallet
 
     async def stop(self):
         if self.__rpc:
@@ -58,6 +59,16 @@ class CoProtocol:
             self, message: Message, their_vk: Union[List[str], str],
             endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]]
     ) -> (bool, Message):
+        """
+        Send message and wait answer
+
+        :param message:
+        :param their_vk:
+        :param endpoint:
+        :param my_vk:
+        :param routing_keys:
+        :return:
+        """
         try:
             self.__prepare_message(message)
             answer = await self.__rpc.send_message(
@@ -73,6 +84,13 @@ class CoProtocol:
             return False, None
 
     async def send_to(self, message: Message, to: Pairwise) -> (bool, Message):
+        """
+        Send message to estableshed Pairwise connection and wait answer
+
+        :param message:
+        :param to:
+        :return:
+        """
         return await self.send(
             message=message,
             their_vk=to.their.verkey,
