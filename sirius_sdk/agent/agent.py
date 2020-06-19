@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Union, Optional
 
 from ..messaging import Message, Type
@@ -123,7 +124,7 @@ class Agent:
 
     def __init__(
             self, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT
+            p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -138,6 +139,7 @@ class Agent:
         self.__events = None
         self.__wallet = None
         self.__timeout = timeout
+        self.__loop = loop
 
     @property
     def wallet(self) -> DynamicWallet:
@@ -162,8 +164,12 @@ class Agent:
         return protocol
 
     async def open(self):
-        self.__rpc = await AgentRPC.create(self.__server_address, self.__credentials, self.__p2p, self.__timeout)
-        self.__events = await AgentEvents.create(self.__server_address, self.__credentials, self.__p2p, self.__timeout)
+        self.__rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        self.__events = await AgentEvents.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
         self.__wallet = DynamicWallet(rpc=self.__rpc)
 
     async def close(self):

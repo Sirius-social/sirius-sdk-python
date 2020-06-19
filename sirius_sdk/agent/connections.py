@@ -39,12 +39,16 @@ class BaseAgentConnection(ABC):
     IO_TIMEOUT = 30
     MSG_TYPE_CONTEXT = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/context'
 
-    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection, timeout: int=IO_TIMEOUT):
+    def __init__(
+            self, server_address: str, credentials: bytes,
+            p2p: P2PConnection, timeout: int=IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+    ):
         self._connector = WebSocketConnector(
             server_address=server_address,
             path=self._path(),
             credentials=credentials,
-            timeout=timeout
+            timeout=timeout,
+            loop=loop
         )
         self._p2p = p2p
         self._timeout = timeout
@@ -56,13 +60,11 @@ class BaseAgentConnection(ABC):
         await self._connector.close()
 
     @classmethod
-    async def create(cls, server_address: str, credentials: bytes, p2p: P2PConnection, timeout: int=IO_TIMEOUT):
-        """
-        :param server_address: address of the server, example: https://server.com
-        :param credentials: encrypted credentials to access cloud-based services
-        :param p2p: encrypted pairwise connection between smart-contract and agent
-        """
-        instance = cls(server_address, credentials, p2p)
+    async def create(
+            cls, server_address: str, credentials: bytes,
+            p2p: P2PConnection, timeout: int=IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+    ):
+        instance = cls(server_address, credentials, p2p, timeout, loop)
         await instance._connector.open()
         payload = await instance._connector.read(timeout=timeout)
         context = Message.deserialize(payload.decode())
@@ -90,8 +92,8 @@ class AgentRPC(BaseAgentConnection):
     Proactive form of Smart-Contract design
     """
 
-    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection):
-        super().__init__(server_address, credentials, p2p)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.__tunnel_rpc = None
         self.__tunnel_coprotocols = None
         self.__endpoints = []
@@ -234,8 +236,8 @@ class AgentEvents(BaseAgentConnection):
     Reactive nature of Smart-Contract design
     """
 
-    def __init__(self, server_address: str, credentials: bytes, p2p: P2PConnection):
-        super().__init__(server_address, credentials, p2p)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.__tunnel = None
         self.__balancing_group = None
 

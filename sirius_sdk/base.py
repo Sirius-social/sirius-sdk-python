@@ -62,8 +62,12 @@ class WebSocketConnector(BaseConnector):
     DEF_TIMEOUT = 30.0
     ENC = 'utf-8'
 
-    def __init__(self, server_address: str, path: str, credentials: bytes, timeout: float=DEF_TIMEOUT):
+    def __init__(
+            self, server_address: str, path: str, credentials: bytes,
+            timeout: float=DEF_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+    ):
         self.__session = aiohttp.ClientSession(
+            loop=loop,
             timeout=aiohttp.ClientTimeout(total=timeout),
             headers={
                 'origin': server_address,
