@@ -56,6 +56,10 @@ class BaseAgentConnection(ABC):
     def __del__(self):
         asyncio.ensure_future(self.close())
 
+    @property
+    def is_open(self):
+        return self._connector.is_open
+
     async def close(self):
         await self._connector.close()
 
@@ -99,7 +103,7 @@ class AgentRPC(BaseAgentConnection):
         self.__endpoints = []
 
     @property
-    def endpoints(self):
+    def endpoints(self) -> List[Endpoint]:
         return self.__endpoints
 
     async def remote_call(self, msg_type: str, params: dict=None) -> Any:
@@ -111,9 +115,13 @@ class AgentRPC(BaseAgentConnection):
         """
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
+        if self._timeout:
+            expiration_utc = datetime.datetime.utcnow() + datetime.timedelta(seconds=self._timeout)
+        else:
+            expiration_utc = None
         future = Future(
             tunnel=self.__tunnel_rpc,
-            expiration_utc=datetime.datetime.utcnow() + datetime.timedelta(seconds=self._timeout)
+            expiration_utc=expiration_utc
         )
         request = build_request(
             msg_type=msg_type,
@@ -245,10 +253,10 @@ class AgentEvents(BaseAgentConnection):
     def balancing_group(self) -> str:
         return self.__balancing_group
 
-    async def pull(self) -> Message:
+    async def pull(self, timeout: int=None) -> Message:
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
-        data = await self._connector.read(timeout=self._timeout)
+        data = await self._connector.read(timeout=timeout)
         try:
             payload = json.loads(data.decode(self._connector.ENC))
         except json.JSONDecodeError:

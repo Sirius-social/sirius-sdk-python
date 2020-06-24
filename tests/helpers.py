@@ -41,7 +41,8 @@ class ServerTestSuite:
                     p2p['smart_contract']['secret_key']
                 ),
                 their_verkey=p2p['agent']['verkey']
-            )
+            ),
+            'entities': agent['entities']
         }
 
     async def ensure_is_alive(self):
@@ -50,21 +51,21 @@ class ServerTestSuite:
             self.__metadata = meta
         else:
             if self.__test_suite_exists_locally:
-                inc_timeout = 10
-                print('\n\nStarting test suite locally...\n\n')
                 await self.__run_suite_locally()
-                for n in range(1, self.SETUP_TIMEOUT, inc_timeout):
-                    progress = float(n / self.SETUP_TIMEOUT)*100
-                    print('Progress: %.1f %%' % progress)
-                    await asyncio.sleep(inc_timeout)
-                    ok, meta = await self.__http_get(self.__url)
-                    if ok:
-                        self.__metadata = meta
-                        print('Server test suite was detected')
-                        return
-                print('Timeout for waiting TestSuite is alive expired!')
-            else:
-                raise RuntimeError('Expect server with running TestSuite. See conftest.py: pytest_configure')
+            inc_timeout = 10
+            print('\n\nStarting test suite locally...\n\n')
+
+            for n in range(1, self.SETUP_TIMEOUT, inc_timeout):
+                progress = float(n / self.SETUP_TIMEOUT)*100
+                print('Progress: %.1f %%' % progress)
+                await asyncio.sleep(inc_timeout)
+                ok, meta = await self.__http_get(self.__url)
+                if ok:
+                    self.__metadata = meta
+                    print('Server test suite was detected')
+                    return
+            print('Timeout for waiting TestSuite is alive expired!')
+            raise RuntimeError('Expect server with running TestSuite. See conftest.py: pytest_configure')
 
     @staticmethod
     async def __run_suite_locally():

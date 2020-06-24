@@ -51,7 +51,7 @@ class Future:
             'expiration_stamp': self.__expiration_stamp.timestamp() if self.__expiration_stamp else None
         }
 
-    async def wait(self, timeout: int) -> bool:
+    async def wait(self, timeout: int=None) -> bool:
         """Wait for response
 
         :param timeout: waiting timeout in seconds
@@ -64,8 +64,10 @@ class Future:
                 return False
             if self.__expiration_stamp:
                 expires_time = self.__expiration_stamp
-            else:
+            elif timeout:
                 expires_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+            else:
+                expires_time = datetime.datetime.now() + datetime.timedelta(days=365)
             while datetime.datetime.now() < expires_time:
                 timedelta = expires_time - datetime.datetime.now()
                 timeout = max(timedelta.seconds, 0)

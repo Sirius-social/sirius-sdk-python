@@ -1,12 +1,17 @@
+import sys
 import asyncio
 from typing import List, Union, Optional
 
 from ..messaging import Message, Type
 from ..encryption import P2PConnection
-from ..errors.exceptions import SiriusTimeoutIO
+from ..errors.exceptions import *
 from .pairwise import Pairwise
 from .wallet.wallets import DynamicWallet
-from .connections import AgentRPC, AgentEvents, BaseAgentConnection
+from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
+
+
+PY_35 = sys.version_info >= (3, 5)
+PY_352 = sys.version_info >= (3, 5, 2)
 
 
 class CoProtocol:
@@ -162,6 +167,38 @@ class CoProtocol:
         message[self.THREAD_DECORATOR] = thread_decorator
 
 
+class Listener:
+
+    def __init__(self, source: AgentEvents):
+        self.__source = source
+
+    async def get_one(self, timeout: int=None) -> Message:
+        msg = await self.__source.pull(timeout)
+        return msg
+
+    if PY_35:
+        def __aiter__(self):
+            if not self.__source.is_open:
+                raise SiriusConnectionClosed()
+            return self
+
+        # Old 3.5 versions require a coroutine
+        if not PY_352:
+            __aiter__ = asyncio.coroutine(__aiter__)
+
+        @asyncio.coroutine
+        def __anext__(self):
+            """Asyncio iterator interface for listener
+
+            Note:
+                TopicAuthorizationFailedError and OffsetOutOfRangeError
+                exceptions can be raised in iterator.
+                All other KafkaError exceptions will be logged and not raised
+            """
+            while True:
+                return (yield from self.get_one())
+
+
 class Agent:
     """
     Agent connection in the self-sovereign identity ecosystem.
@@ -189,11 +226,19 @@ class Agent:
         self.__wallet = None
         self.__timeout = timeout
         self.__loop = loop
+        self.__endpoints = []
 
     @property
     def wallet(self) -> DynamicWallet:
         """Indy wallet keys/schemas/CredDefs maintenance"""
         return self.__wallet
+
+    @property
+    def endpoints(self) -> List[Endpoint]:
+        if self.__rpc and self.__rpc.is_open:
+            return self.__endpoints
+        else:
+            raise RuntimeError('Open Agent at first!')
 
     async def spawn(self, thid: str, timeout: int=None, pthid: str=None) -> CoProtocol:
         """Spawn parallel protocol thread in running program
@@ -216,10 +261,14 @@ class Agent:
         self.__rpc = await AgentRPC.create(
             self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
         )
+        self.__endpoints = self.__rpc.endpoints
+        self.__wallet = DynamicWallet(rpc=self.__rpc)
+
+    async def subscribe(self) -> Listener:
         self.__events = await AgentEvents.create(
             self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
         )
-        self.__wallet = DynamicWallet(rpc=self.__rpc)
+        return Listener(self.__events)
 
     async def close(self):
         if self.__rpc:
@@ -233,3 +282,27 @@ class Agent:
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/ping_agent'
         )
         return success
+
+    async def send_message(
+            self, message: Message, their_vk: Union[List[str], str],
+            endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
+    ) -> (bool, Message):
+        """
+        Implementation of basicmessage feature
+        See details:
+          - https://github.com/hyperledger/aries-rfcs/tree/master/features/0095-basic-message
+
+        :param message: Message
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
+        :param their_vk: Verkey of recipient
+        :param endpoint: Endpoint address of recipient
+        :param my_vk: VerKey of Sender (AuthCrypt mode)
+          See details:
+           - https://github.com/hyperledger/aries-rfcs/tree/master/features/0019-encryption-envelope#authcrypt-mode-vs-anoncrypt-mode
+        :param routing_keys: Routing key of recipient
+        """
+        await self.__rpc.send_message(
+            message=message, their_vk=their_vk, endpoint=endpoint,
+            my_vk=my_vk, routing_keys=routing_keys, coprotocol=False
+        )
