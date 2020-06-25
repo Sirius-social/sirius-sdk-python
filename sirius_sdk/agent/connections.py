@@ -57,6 +57,17 @@ class BaseAgentConnection(ABC):
         asyncio.ensure_future(self.close())
 
     @property
+    def timeout(self):
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, value: int):
+        if value > 0:
+            self._timeout = value
+        else:
+            raise RuntimeError('Timeout must be > 0')
+
+    @property
     def is_open(self):
         return self._connector.is_open
 

@@ -106,7 +106,6 @@ async def test_agents_communications(test_suite: ServerTestSuite):
 
 @pytest.mark.asyncio
 async def test_agents_trust_ping(test_suite: ServerTestSuite):
-    assert False, 'TODO'
     agent1_params = test_suite.get_agent_params('agent1')
     agent2_params = test_suite.get_agent_params('agent2')
     entity1 = list(agent1_params['entities'].items())[0][1]
@@ -178,6 +177,11 @@ async def test_agents_trust_ping(test_suite: ServerTestSuite):
             my_vk=entity2['verkey'],
             routing_keys=[]
         )
+
+        event = await agent1_listener.get_one(timeout=5)
+        msg = event['message']
+        assert msg['@type'] == 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping_response'
+        assert msg['@id'] == ping_response.id
 
     finally:
         await agent1.close()
