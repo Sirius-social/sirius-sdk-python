@@ -143,7 +143,7 @@ class AgentRPC(BaseAgentConnection):
             self, message: Message,
             their_vk: Union[List[str], str], endpoint: str,
             my_vk: Optional[str], routing_keys: Optional[List[str]],
-            coprotocol: bool=False, coprotocol_thid: str=None
+            coprotocol: bool=False
     ) -> Optional[Message]:
         """Send Message to other Indy compatible agent
         
@@ -153,7 +153,6 @@ class AgentRPC(BaseAgentConnection):
         :param my_vk: Verkey of sender (None for anocrypt mode)
         :param routing_keys: Routing keys if it is exists
         :param coprotocol: True if message is part of co-protocol stream
-        :param coprotocol_thid: Thread id of co-protocol
             See:
              - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
              - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
@@ -172,12 +171,6 @@ class AgentRPC(BaseAgentConnection):
             'sender_verkey': my_vk,
             'endpoint_address': endpoint
         }
-        if coprotocol:
-            params['coprotocol'] = {
-                'thid': coprotocol_thid or message.id,
-                'ttl': self._timeout,
-                'channel_address': self.__tunnel_coprotocols.address
-            }
         success, err_message = await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message',
             params=params
@@ -190,6 +183,44 @@ class AgentRPC(BaseAgentConnection):
                 return response
             else:
                 return None
+
+    async def start_protocol_with_threading(self, thid: str):
+        await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/start_protocol',
+            params={
+                'thid': thid,
+                'channel_address': self.__tunnel_coprotocols.address
+            }
+        )
+
+    async def start_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, msg_types: List[str]):
+        await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/start_protocol',
+            params={
+                'sender_verkey': sender_verkey,
+                'recipient_verkey': recipient_verkey,
+                'msg_types': msg_types,
+                'channel_address': self.__tunnel_coprotocols.address
+            }
+        )
+
+    async def stop_protocol_with_threading(self, thid: str):
+        await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
+            params={
+                'thid': thid
+            }
+        )
+
+    async def stop_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, msg_types: List[str]):
+        await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
+            params={
+                'sender_verkey': sender_verkey,
+                'recipient_verkey': recipient_verkey,
+                'msg_types': msg_types,
+            }
+        )
 
     @classmethod
     def _path(cls):
