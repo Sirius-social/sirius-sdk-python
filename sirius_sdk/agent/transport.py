@@ -1,9 +1,9 @@
 import aiohttp
 
 
-async def http_send(msg: bytes, endpoint: str, content_type: str='application/ssi-agent-wire'):
+async def http_send(msg: bytes, endpoint: str, timeout: float, content_type: str='application/ssi-agent-wire'):
     """Send over HTTP"""
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(read_timeout=timeout) as session:
         headers = {'content-type': content_type}
         async with session.post(endpoint, data=msg, headers=headers) as resp:
             body = await resp.read()

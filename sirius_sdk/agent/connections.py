@@ -188,7 +188,7 @@ class AgentRPC(BaseAgentConnection):
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
             params=params
         )
-        ok, body = await http_send(wired, endpoint)
+        ok, body = await http_send(wired, endpoint, timeout=self.timeout)
         if not ok:
             raise SiriusRPCError(body.decode())
         else:
