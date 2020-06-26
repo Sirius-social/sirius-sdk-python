@@ -24,9 +24,9 @@ class Pairwise:
             self.did = did
             self.verkey = verkey
 
-    def __init__(self, metadata: dict=None):
-        self.__their = None
-        self.__me = None
+    def __init__(self, me: Me, their: Their, metadata: dict=None):
+        self.__me = me
+        self.__their = their
         self.__metadata = metadata
 
     @property

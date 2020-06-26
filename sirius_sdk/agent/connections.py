@@ -62,7 +62,9 @@ class BaseAgentConnection(ABC):
 
     @timeout.setter
     def timeout(self, value: int):
-        if value > 0:
+        if value is None:
+            self._timeout = None
+        elif value > 0:
             self._timeout = value
         else:
             raise RuntimeError('Timeout must be > 0')
@@ -195,23 +197,25 @@ class AgentRPC(BaseAgentConnection):
             else:
                 return None
 
-    async def start_protocol_with_threading(self, thid: str):
+    async def start_protocol_with_threading(self, thid: str, ttl: int=None):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/start_protocol',
             params={
                 'thid': thid,
-                'channel_address': self.__tunnel_coprotocols.address
+                'channel_address': self.__tunnel_coprotocols.address,
+                'ttl': ttl
             }
         )
 
-    async def start_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, msg_types: List[str]):
+    async def start_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, protocols: List[str], ttl: int=None):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/start_protocol',
             params={
                 'sender_verkey': sender_verkey,
                 'recipient_verkey': recipient_verkey,
-                'msg_types': msg_types,
-                'channel_address': self.__tunnel_coprotocols.address
+                'protocols': protocols,
+                'channel_address': self.__tunnel_coprotocols.address,
+                'ttl': ttl
             }
         )
 
@@ -223,13 +227,13 @@ class AgentRPC(BaseAgentConnection):
             }
         )
 
-    async def stop_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, msg_types: List[str]):
+    async def stop_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, protocols: List[str]):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
             params={
                 'sender_verkey': sender_verkey,
                 'recipient_verkey': recipient_verkey,
-                'msg_types': msg_types,
+                'protocols': protocols,
             }
         )
 

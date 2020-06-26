@@ -158,6 +158,8 @@ async def test_agents_trust_ping(test_suite: ServerTestSuite):
             routing_keys=[]
         )
         event = await agent2_listener.get_one(timeout=5)
+        assert event['recipient_verkey'] == entity2['verkey']
+        assert event['sender_verkey'] == entity1['verkey']
         msg = event['message']
         assert msg['@type'] == 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping'
         assert msg['@id'] == trust_ping.id
@@ -179,6 +181,8 @@ async def test_agents_trust_ping(test_suite: ServerTestSuite):
         )
 
         event = await agent1_listener.get_one(timeout=5)
+        assert event['recipient_verkey'] == entity1['verkey']
+        assert event['sender_verkey'] == entity2['verkey']
         msg = event['message']
         assert msg['@type'] == 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping_response'
         assert msg['@id'] == ping_response.id

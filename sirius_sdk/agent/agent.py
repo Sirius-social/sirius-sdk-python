@@ -1,11 +1,14 @@
 import asyncio
 from typing import List, Union, Optional
 
-from sirius_sdk.agent.listener import Listener
+from multipledispatch import dispatch
+
 from ..messaging import Message
 from ..encryption import P2PConnection
-from .pairwise import Pairwise
+from .listener import Listener
+from .pairwise import Pairwise, TheirEndpoint
 from .wallet.wallets import DynamicWallet
+from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
 
@@ -43,6 +46,52 @@ class Agent:
         """Indy wallet keys/schemas/CredDefs maintenance"""
         return self.__wallet
 
+    @dispatch(str, TheirEndpoint, list)
+    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint, protocols: List[str]) -> TheirEndpointCoProtocolTransport:
+        new_rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        return TheirEndpointCoProtocolTransport(
+            my_verkey=my_verkey,
+            endpoint=endpoint,
+            protocols=protocols,
+            rpc=new_rpc
+        )
+
+    @dispatch(Pairwise, list)
+    async def spawn(self, pairwise: Pairwise, protocols: List[str]) -> PairwiseCoProtocolTransport:
+        new_rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        return PairwiseCoProtocolTransport(
+            pairwise=pairwise,
+            protocols=protocols,
+            rpc=new_rpc
+        )
+
+    @dispatch(str, Pairwise)
+    async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
+        new_rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        return ThreadBasedCoProtocolTransport(
+            thid=thid,
+            pairwise=pairwise,
+            rpc=new_rpc
+        )
+
+    @dispatch(str, Pairwise, str)
+    async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
+        new_rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        return ThreadBasedCoProtocolTransport(
+            thid=thid,
+            pairwise=pairwise,
+            rpc=new_rpc,
+            pthid=pthid
+        )
+
     @property
     def endpoints(self) -> List[Endpoint]:
         if self.__rpc and self.__rpc.is_open:
@@ -56,6 +105,7 @@ class Agent:
         )
         self.__endpoints = self.__rpc.endpoints
         self.__wallet = DynamicWallet(rpc=self.__rpc)
+        print('!')
 
     async def subscribe(self) -> Listener:
         self.__events = await AgentEvents.create(

@@ -1,16 +1,15 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import List
 from datetime import datetime, timedelta
 
 from ..errors.exceptions import *
-from ..encryption import P2PConnection
 from ..messaging import Message, Type
 from .wallet.wallets import DynamicWallet
 from .connections import AgentRPC
 from .pairwise import TheirEndpoint, Pairwise
 
 
-class AbstractCoProtocol(ABC):
+class AbstractCoProtocolTransport(ABC):
     """Abstraction application-level protocols in the context of interactions among agent-like things.
 
         Sirius SDK protocol is high-level abstraction over Sirius transport architecture.
@@ -28,12 +27,11 @@ class AbstractCoProtocol(ABC):
     SEC_PER_HOURS = 3600
     SEC_PER_MIN = 60
 
-    def __init__(self, rpc: AgentRPC, time_to_live: int=None):
+    def __init__(self, rpc: AgentRPC):
         """
         :param rpc: RPC (independent connection)
-        :param time_to_live: (seconds) time to live for protocol
         """
-        self.__time_to_live = time_to_live
+        self.__time_to_live = None
         self._rpc = rpc
         self.__default_timeout = rpc.timeout
         self.__wallet = DynamicWallet(self._rpc)
@@ -43,6 +41,10 @@ class AbstractCoProtocol(ABC):
         self.__my_vk = None
         self.__routing_keys = None
         self.__is_setup = False
+
+    @property
+    def time_to_live(self) -> int:
+        return self.__time_to_live
 
     def _setup(self, their_verkey: str, endpoint: str, my_verkey: str=None, routing_keys: List[str]=None):
         """Should be called in Descendant"""
@@ -63,7 +65,8 @@ class AbstractCoProtocol(ABC):
         else:
             return False
 
-    async def start(self):
+    async def start(self, time_to_live: int=None):
+        self.__time_to_live = time_to_live
         if self.__time_to_live:
             self.__die_timestamp = datetime.now() + timedelta(seconds=self.__time_to_live)
         else:
@@ -72,25 +75,29 @@ class AbstractCoProtocol(ABC):
     async def stop(self):
         self.__die_timestamp = None
 
-    async def switch(self, request: Message) -> (bool, Message):
+    async def switch(self, message: Message) -> (bool, Message):
         """Send Message to other-side of protocol and wait for response
 
-        :param request: Protocol request
+        :param message: Protocol request
         :return: (success, Response)
         """
         if not self.__is_setup:
             raise SiriusPendingOperation('You must Setup protocol instance at first')
         try:
             self._rpc.timeout = self.__get_io_timeout()
-            answer = await self._rpc.send_message(
-                message=request,
+            event = await self._rpc.send_message(
+                message=message,
                 their_vk=self.__their_vk,
                 endpoint=self.__endpoint,
                 my_vk=self.__my_vk,
                 routing_keys=self.__routing_keys,
                 coprotocol=True
             )
-            return True, answer
+            payload = Message(event.get('message', {}))
+            if payload:
+                return True, Message(payload)
+            else:
+                return False, None
         except SiriusTimeoutIO:
             return False, None
 
@@ -125,15 +132,15 @@ class AbstractCoProtocol(ABC):
             return None
 
 
-class TheirEndpointCoProtocol(AbstractCoProtocol):
+class TheirEndpointCoProtocolTransport(AbstractCoProtocolTransport):
 
     def __init__(
-            self, my_verkey: str, endpoint: TheirEndpoint, msg_types: List[str], rpc: AgentRPC, time_to_live: int=None
+            self, my_verkey: str, endpoint: TheirEndpoint, protocols: List[str], rpc: AgentRPC
     ):
-        super().__init__(rpc, time_to_live)
+        super().__init__(rpc)
         self.__endpoint = endpoint
         self.__my_verkey = my_verkey
-        self.__msg_types = msg_types
+        self.__protocols = protocols
         self._setup(
             their_verkey=endpoint.verkey,
             endpoint=endpoint.endpoint,
@@ -141,12 +148,13 @@ class TheirEndpointCoProtocol(AbstractCoProtocol):
             routing_keys=endpoint.routing_keys
         )
 
-    async def start(self):
-        await super().start()
+    async def start(self, time_to_live: int=None):
+        await super().start(time_to_live)
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__my_verkey,
             recipient_verkey=self.__endpoint.verkey,
-            msg_types=self.__msg_types
+            protocols=self.__protocols,
+            ttl=time_to_live
         )
 
     async def stop(self):
@@ -154,18 +162,18 @@ class TheirEndpointCoProtocol(AbstractCoProtocol):
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__my_verkey,
             recipient_verkey=self.__endpoint.verkey,
-            msg_types=self.__msg_types
+            protocols=self.__protocols
         )
 
 
-class PairwiseProtocol(AbstractCoProtocol):
+class PairwiseCoProtocolTransport(AbstractCoProtocolTransport):
 
     def __init__(
-            self, pairwise: Pairwise, msg_types: List[str], rpc: AgentRPC, time_to_live: int=None
+            self, pairwise: Pairwise, protocols: List[str], rpc: AgentRPC
     ):
-        super().__init__(rpc, time_to_live)
+        super().__init__(rpc)
         self.__pairwise = pairwise
-        self.__msg_types = msg_types
+        self.__protocols = protocols
         self._setup(
             their_verkey=pairwise.their.verkey,
             endpoint=pairwise.their.endpoint,
@@ -173,12 +181,13 @@ class PairwiseProtocol(AbstractCoProtocol):
             routing_keys=pairwise.their.routing_keys
         )
 
-    async def start(self):
-        await super().start()
+    async def start(self, time_to_live: int=None):
+        await super().start(time_to_live)
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__pairwise.me.verkey,
             recipient_verkey=self.__pairwise.their.verkey,
-            msg_types=self.__msg_types
+            protocols=self.__protocols,
+            ttl=time_to_live
         )
 
     async def stop(self):
@@ -186,21 +195,21 @@ class PairwiseProtocol(AbstractCoProtocol):
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__pairwise.me.verkey,
             recipient_verkey=self.__pairwise.their.verkey,
-            msg_types=self.__msg_types
+            protocols=self.__protocols
         )
 
 
-class ThreadBasedProtocol(AbstractCoProtocol):
+class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
     """CoProtocol based on ~thread decorator
 
     See details:
-      - - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
+      - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
     """
 
     def __init__(
-            self, thid: str, pairwise: Pairwise, rpc: AgentRPC, time_to_live: int=None, pthid: str=None
+            self, thid: str, pairwise: Pairwise, rpc: AgentRPC, pthid: str=None
     ):
-        super().__init__(rpc, time_to_live)
+        super().__init__(rpc)
         self.__thid = thid
         self.__pthid = pthid
         self.__sender_order = 0
@@ -212,21 +221,21 @@ class ThreadBasedProtocol(AbstractCoProtocol):
             routing_keys=pairwise.their.routing_keys
         )
 
-    async def start(self):
-        await super().start()
-        await self._rpc.start_protocol_with_threading(self.__thid)
+    async def start(self, time_to_live: int=None):
+        await super().start(time_to_live)
+        await self._rpc.start_protocol_with_threading(self.__thid, time_to_live)
 
     async def stop(self):
         await super().stop()
         await self._rpc.stop_protocol_with_threading(self.__thid)
 
-    async def switch(self, request: Message) -> (bool, Message):
-        self.__prepare_message(request)
-        return await self.switch(request)
+    async def switch(self, message: Message) -> (bool, Message):
+        self.__prepare_message(message)
+        return await super().switch(message)
 
     async def send(self, message: Message):
         self.__prepare_message(message)
-        await self.send(message)
+        await super().send(message)
 
     def __prepare_message(self, message: Message):
         thread_decorator = {
