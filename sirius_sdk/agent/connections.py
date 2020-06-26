@@ -9,6 +9,7 @@ from ..encryption import P2PConnection
 from ..rpc import AddressedTunnel, build_request, Future
 from ..messaging import Message
 from ..errors.exceptions import *
+from .transport import http_send
 
 
 class Endpoint:
@@ -181,15 +182,15 @@ class AgentRPC(BaseAgentConnection):
             'message': message,
             'routing_keys': routing_keys or [],
             'recipient_verkeys': recipient_verkeys,
-            'sender_verkey': my_vk,
-            'endpoint_address': endpoint
+            'sender_verkey': my_vk
         }
-        success, err_message = await self.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message',
+        wired = await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
             params=params
         )
-        if err_message:
-            raise SiriusRPCError(err_message)
+        ok, body = await http_send(wired, endpoint)
+        if not ok:
+            raise SiriusRPCError(body.decode())
         else:
             if coprotocol:
                 response = await self.__tunnel_coprotocols.receive(timeout=self._timeout)
