@@ -56,9 +56,13 @@ class SiriusCryptoError(BaseSiriusException):
     """ Failed crypto call. """
 
 
-class SiriusInvalidMessage(Exception):
+class SiriusInvalidMessage(BaseSiriusException):
     """ Thrown when message is malformed. """
 
 
-class SiriusInvalidType(Exception):
+class SiriusInvalidType(BaseSiriusException):
     """ When type is unparsable or invalid. """
+
+
+class SiriusValidationError(BaseSiriusException):
+    pass
