@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 from ..coprotocols import AbstractCoProtocolTransport
+
+
+ARIES_DOC_URI = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec'
 
 
 class AbstractStateMachine(ABC):
@@ -18,3 +22,8 @@ class AbstractStateMachine(ABC):
 
     async def end(self):
         await self.__transport.stop()
+
+    @property
+    @abstractmethod
+    def protocols(self) -> List[str]:
+        raise NotImplemented('Need to be implemented in descendant')
