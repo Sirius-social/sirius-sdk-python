@@ -46,26 +46,24 @@ class Agent:
         """Indy wallet keys/schemas/CredDefs maintenance"""
         return self.__wallet
 
-    @dispatch(str, TheirEndpoint, list)
-    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint, protocols: List[str]) -> TheirEndpointCoProtocolTransport:
+    @dispatch(str, TheirEndpoint)
+    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
         new_rpc = await AgentRPC.create(
             self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
         )
         return TheirEndpointCoProtocolTransport(
             my_verkey=my_verkey,
             endpoint=endpoint,
-            protocols=protocols,
             rpc=new_rpc
         )
 
-    @dispatch(Pairwise, list)
-    async def spawn(self, pairwise: Pairwise, protocols: List[str]) -> PairwiseCoProtocolTransport:
+    @dispatch(Pairwise)
+    async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
         new_rpc = await AgentRPC.create(
             self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
         )
         return PairwiseCoProtocolTransport(
             pairwise=pairwise,
-            protocols=protocols,
             rpc=new_rpc
         )
 

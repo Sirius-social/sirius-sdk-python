@@ -41,6 +41,11 @@ class AbstractCoProtocolTransport(ABC):
         self.__my_vk = None
         self.__routing_keys = None
         self.__is_setup = False
+        self.__protocols = []
+
+    @property
+    def protocols(self) -> List[str]:
+        return self.__protocols
 
     @property
     def time_to_live(self) -> int:
@@ -65,7 +70,8 @@ class AbstractCoProtocolTransport(ABC):
         else:
             return False
 
-    async def start(self, time_to_live: int=None):
+    async def start(self, protocols: List[str], time_to_live: int=None):
+        self.__protocols = protocols
         self.__time_to_live = time_to_live
         if self.__time_to_live:
             self.__die_timestamp = datetime.now() + timedelta(seconds=self.__time_to_live)
@@ -95,7 +101,10 @@ class AbstractCoProtocolTransport(ABC):
             )
             payload = Message(event.get('message', {}))
             if payload:
-                return True, Message(payload)
+                message = Message(payload)
+                if Type.from_str(message.type).protocol not in self.protocols:
+                    raise SiriusInvalidMessage('@type has unexpected protocol "%s"' % message.type.protocol)
+                return True, message
             else:
                 return False, None
         except SiriusTimeoutIO:
@@ -135,12 +144,11 @@ class AbstractCoProtocolTransport(ABC):
 class TheirEndpointCoProtocolTransport(AbstractCoProtocolTransport):
 
     def __init__(
-            self, my_verkey: str, endpoint: TheirEndpoint, protocols: List[str], rpc: AgentRPC
+            self, my_verkey: str, endpoint: TheirEndpoint, rpc: AgentRPC
     ):
         super().__init__(rpc)
         self.__endpoint = endpoint
         self.__my_verkey = my_verkey
-        self.__protocols = protocols
         self._setup(
             their_verkey=endpoint.verkey,
             endpoint=endpoint.endpoint,
@@ -148,12 +156,12 @@ class TheirEndpointCoProtocolTransport(AbstractCoProtocolTransport):
             routing_keys=endpoint.routing_keys
         )
 
-    async def start(self, time_to_live: int=None):
-        await super().start(time_to_live)
+    async def start(self, protocols: List[str], time_to_live: int=None):
+        await super().start(protocols, time_to_live)
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__my_verkey,
             recipient_verkey=self.__endpoint.verkey,
-            protocols=self.__protocols,
+            protocols=self.protocols,
             ttl=time_to_live
         )
 
@@ -162,18 +170,17 @@ class TheirEndpointCoProtocolTransport(AbstractCoProtocolTransport):
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__my_verkey,
             recipient_verkey=self.__endpoint.verkey,
-            protocols=self.__protocols
+            protocols=self.protocols
         )
 
 
 class PairwiseCoProtocolTransport(AbstractCoProtocolTransport):
 
     def __init__(
-            self, pairwise: Pairwise, protocols: List[str], rpc: AgentRPC
+            self, pairwise: Pairwise, rpc: AgentRPC
     ):
         super().__init__(rpc)
         self.__pairwise = pairwise
-        self.__protocols = protocols
         self._setup(
             their_verkey=pairwise.their.verkey,
             endpoint=pairwise.their.endpoint,
@@ -181,12 +188,12 @@ class PairwiseCoProtocolTransport(AbstractCoProtocolTransport):
             routing_keys=pairwise.their.routing_keys
         )
 
-    async def start(self, time_to_live: int=None):
-        await super().start(time_to_live)
+    async def start(self, protocols: List[str], time_to_live: int=None):
+        await super().start(protocols, time_to_live)
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__pairwise.me.verkey,
             recipient_verkey=self.__pairwise.their.verkey,
-            protocols=self.__protocols,
+            protocols=self.protocols,
             ttl=time_to_live
         )
 
@@ -195,7 +202,7 @@ class PairwiseCoProtocolTransport(AbstractCoProtocolTransport):
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__pairwise.me.verkey,
             recipient_verkey=self.__pairwise.their.verkey,
-            protocols=self.__protocols
+            protocols=self.protocols
         )
 
 
@@ -221,8 +228,8 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
             routing_keys=pairwise.their.routing_keys
         )
 
-    async def start(self, time_to_live: int=None):
-        await super().start(time_to_live)
+    async def start(self, protocols: List[str], time_to_live: int=None):
+        await super().start(protocols, time_to_live)
         await self._rpc.start_protocol_with_threading(self.__thid, time_to_live)
 
     async def stop(self):

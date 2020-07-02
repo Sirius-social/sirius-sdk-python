@@ -102,13 +102,13 @@ async def test__their_endpoint_protocol(test_suite: ServerTestSuite):
         agent2_endpoint = [e for e in agent2.endpoints if e.routing_keys == []][0].address
         # Make protocol instances
         their1 = TheirEndpoint(agent2_endpoint, entity2['verkey'])
-        agent1_protocol = await agent1.spawn(entity1['verkey'], their1, ['test_protocol'])
+        agent1_protocol = await agent1.spawn(entity1['verkey'], their1)
         assert isinstance(agent1_protocol, TheirEndpointCoProtocolTransport)
         their2 = TheirEndpoint(agent1_endpoint, entity1['verkey'])
-        agent2_protocol = await agent2.spawn(entity2['verkey'], their2, ['test_protocol'])
+        agent2_protocol = await agent2.spawn(entity2['verkey'], their2)
         assert isinstance(agent2_protocol, TheirEndpointCoProtocolTransport)
-        await agent1_protocol.start()
-        await agent2_protocol.start()
+        await agent1_protocol.start(['test_protocol'])
+        await agent2_protocol.start(['test_protocol'])
         try:
             MSG_LOG.clear()
             await run_coroutines(routine1(agent1_protocol), routine2(agent2_protocol))
@@ -180,13 +180,13 @@ async def test__pairwise_protocol(test_suite: ServerTestSuite):
             )
         )
 
-        agent1_protocol = await agent1.spawn(pairwise1, ['test_protocol'])
-        agent2_protocol = await agent2.spawn(pairwise2, ['test_protocol'])
+        agent1_protocol = await agent1.spawn(pairwise1)
+        agent2_protocol = await agent2.spawn(pairwise2)
         assert isinstance(agent1_protocol, PairwiseCoProtocolTransport)
         assert isinstance(agent2_protocol, PairwiseCoProtocolTransport)
 
-        await agent1_protocol.start()
-        await agent2_protocol.start()
+        await agent1_protocol.start(['test_protocol'])
+        await agent2_protocol.start(['test_protocol'])
         try:
             MSG_LOG.clear()
             await run_coroutines(routine1(agent1_protocol), routine2(agent2_protocol))
@@ -264,8 +264,8 @@ async def test__threadbased_protocol(test_suite: ServerTestSuite):
         assert isinstance(agent1_protocol, ThreadBasedCoProtocolTransport)
         assert isinstance(agent2_protocol, ThreadBasedCoProtocolTransport)
 
-        await agent1_protocol.start()
-        await agent2_protocol.start()
+        await agent1_protocol.start(['test_protocol'])
+        await agent2_protocol.start(['test_protocol'])
         try:
             MSG_LOG.clear()
             await run_coroutines(routine1(agent1_protocol), routine2(agent2_protocol))
@@ -342,15 +342,15 @@ async def test___protocols_intersections(test_suite: ServerTestSuite):
         agent2_protocol_threaded = await agent2.spawn(thread_id, pairwise2)
         assert isinstance(agent1_protocol_threaded, ThreadBasedCoProtocolTransport)
         assert isinstance(agent2_protocol_threaded, ThreadBasedCoProtocolTransport)
-        agent1_protocol_pairwise = await agent1.spawn(pairwise1, ['test_protocol'])
-        agent2_protocol_pairwise = await agent2.spawn(pairwise2, ['test_protocol'])
+        agent1_protocol_pairwise = await agent1.spawn(pairwise1)
+        agent2_protocol_pairwise = await agent2.spawn(pairwise2)
         assert isinstance(agent1_protocol_pairwise, PairwiseCoProtocolTransport)
         assert isinstance(agent2_protocol_pairwise, PairwiseCoProtocolTransport)
 
-        await agent1_protocol_threaded.start()
-        await agent2_protocol_threaded.start()
-        await agent1_protocol_pairwise.start()
-        await agent2_protocol_pairwise.start()
+        await agent1_protocol_threaded.start(['test_protocol'])
+        await agent2_protocol_threaded.start(['test_protocol'])
+        await agent1_protocol_pairwise.start(['test_protocol'])
+        await agent2_protocol_pairwise.start(['test_protocol'])
         try:
             MSG_LOG.clear()
             await run_coroutines(
