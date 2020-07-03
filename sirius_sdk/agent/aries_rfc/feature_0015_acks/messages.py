@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
-from ....messaging import Message, Type, check_for_attributes
+from ....messaging import check_for_attributes
+from ....errors.exceptions import *
 from ..base import AriesProtocolMessage, AriesProtocolMeta, THREAD_DECORATOR
 
 
@@ -21,27 +22,35 @@ class Ack(AriesProtocolMessage, metaclass=AriesProtocolMeta):
     PROTOCOL = 'notification'
     NAME = 'ack'
 
-    def __init__(self, thread_id: str=None, status: Optional[Status] = None, *args, **kwargs):
+    def __init__(self, thread_id: str=None, status: Optional[Union[Status, str]] = None, *args, **kwargs):
         super(Ack, self).__init__(*args, **kwargs)
         if status is not None:
-            self['status'] = status.value
+            if isinstance(status, Status):
+                self['status'] = status.value
+            else:
+                self['status'] = status
         if thread_id is not None:
-            self.get(THREAD_DECORATOR, {}).update({'thid': thread_id})
-        else:
-            check_for_attributes(self, [THREAD_DECORATOR])
-            check_for_attributes(self[THREAD_DECORATOR], ['thid'])
+            thread = self.get(THREAD_DECORATOR, {})
+            thread['thid'] = thread_id
+            self[THREAD_DECORATOR] = thread
+
+    def validate(self):
+        check_for_attributes(self, [THREAD_DECORATOR])
+        check_for_attributes(self[THREAD_DECORATOR], ['thid'])
 
     @property
     def status(self) -> Status:
         status = self.get('status', None)
-        if status == Status.OK.value:
+        if status is None:
+            return Status.OK
+        elif status == Status.OK.value:
             return Status.OK
         elif status == Status.PENDING.value:
             return Status.PENDING
         elif status == Status.FAIL.value:
             return Status.FAIL
         else:
-            raise RuntimeError('Unexpected status value')
+            raise SiriusFieldValueError('status', status, 'Status value')
 
     @property
     def thread_id(self) -> Optional[str]:

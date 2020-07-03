@@ -89,11 +89,14 @@ def test_aries_ack():
     assert message.protocol == 'notification'
     assert message.name == 'ack'
     assert message.version == '1.0.0'
+    assert message.status == AckStatus.PENDING
+    message.validate()
 
     ok, ack = restore_message_instance(
         {
             '@id': 'ack-message-id',
             '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/notification/1.0/ack',
+            'status': 'PENDING',
             "~thread": {
                 'thid': 'thread-id'
             },
@@ -102,4 +105,6 @@ def test_aries_ack():
     assert ok is True
     assert isinstance(ack, Ack)
     assert ack.thread_id == 'thread-id'
+    ack.validate()
+    assert ack.status == AckStatus.PENDING
 

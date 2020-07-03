@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List
 
 from ..coprotocols import *
 
@@ -19,9 +18,6 @@ class AriesProtocolMessage(Message):
                 doc_uri=ARIES_DOC_URI, protocol=self.PROTOCOL, name=self.NAME, version=version
             ).normalized
         super().__init__(*args, **kwargs)
-        self._validate()
-
-    def _validate(self):
         if self.doc_uri != ARIES_DOC_URI:
             raise SiriusValidationError('Unexpected doc_uri "%s"' % self.doc_uri)
         if self.protocol != self.PROTOCOL:
@@ -29,6 +25,10 @@ class AriesProtocolMessage(Message):
         if self.name != self.NAME:
             raise SiriusValidationError('Unexpected name "%s"' % self.name)
         validate_common_blocks(self)
+
+    @abstractmethod
+    def validate(self):
+        pass
 
 
 class AriesProtocolMeta(type):

@@ -8,6 +8,7 @@ class Ping(AriesProtocolMessage, metaclass=AriesProtocolMeta):
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping
     """
+
     PROTOCOL = 'trust_ping'
     NAME = 'ping'
 
@@ -25,6 +26,9 @@ class Ping(AriesProtocolMessage, metaclass=AriesProtocolMeta):
     @property
     def response_requested(self) -> Optional[bool]:
         return self.get('response_requested', None)
+
+    def validate(self):
+        pass
 
 
 class Pong(AriesProtocolMessage, metaclass=AriesProtocolMeta):
@@ -50,3 +54,6 @@ class Pong(AriesProtocolMessage, metaclass=AriesProtocolMeta):
     @property
     def ping_id(self):
         return self.get(THREAD_DECORATOR, {}).get('thid', None)
+
+    def validate(self):
+        pass
