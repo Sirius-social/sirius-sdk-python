@@ -4,6 +4,10 @@ from ..base import AriesProtocolMessage, AriesProtocolMeta, THREAD_DECORATOR
 
 
 class Ping(AriesProtocolMessage, metaclass=AriesProtocolMeta):
+    """Implementation of Ping part for trust_ping protocol
+
+    https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping
+    """
     PROTOCOL = 'trust_ping'
     NAME = 'ping'
 
@@ -24,6 +28,11 @@ class Ping(AriesProtocolMessage, metaclass=AriesProtocolMeta):
 
 
 class Pong(AriesProtocolMessage, metaclass=AriesProtocolMeta):
+    """Implementation of Pong part for trust_ping protocol
+
+    https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping
+    """
+
     PROTOCOL = 'trust_ping'
     NAME = 'ping_response'
 
@@ -37,3 +46,7 @@ class Pong(AriesProtocolMessage, metaclass=AriesProtocolMeta):
     @property
     def comment(self) -> Optional[str]:
         return self.get('comment', None)
+
+    @property
+    def ping_id(self):
+        return self.get(THREAD_DECORATOR, {}).get('thid', None)
