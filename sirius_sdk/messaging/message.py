@@ -138,7 +138,7 @@ def restore_message_instance(payload: dict) -> (bool, Message):
         else:
             cls = None
         if cls is not None:
-            return True, cls(payload)
+            return True, cls(**payload)
         else:
             return False, None
     else:
