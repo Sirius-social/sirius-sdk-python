@@ -3,7 +3,7 @@ from typing import List
 from datetime import datetime, timedelta
 
 from ..errors.exceptions import *
-from ..messaging import Message, Type, restore_message_instance
+from ..messaging import *
 from .wallet.wallets import DynamicWallet
 from .connections import AgentRPC
 from .pairwise import TheirEndpoint, Pairwise
@@ -253,13 +253,14 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         await super().send(message)
 
     def __prepare_message(self, message: Message):
-        thread_decorator = {
-            'thid': self.__thid,
-            'sender_order': self.__sender_order
-        }
-        if self.__pthid:
-            thread_decorator['pthid'] = self.__pthid
-        if self.__received_orders:
-            thread_decorator['received_orders'] = self.__received_orders
-        self.__sender_order += 1
-        message[self.THREAD_DECORATOR] = thread_decorator
+        if self.THREAD_DECORATOR not in message:  # Don't rewrite existing ~thread decorator
+            thread_decorator = {
+                'thid': self.__thid,
+                'sender_order': self.__sender_order
+            }
+            if self.__pthid:
+                thread_decorator['pthid'] = self.__pthid
+            if self.__received_orders:
+                thread_decorator['received_orders'] = self.__received_orders
+            self.__sender_order += 1
+            message[self.THREAD_DECORATOR] = thread_decorator
