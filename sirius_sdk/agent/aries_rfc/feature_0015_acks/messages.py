@@ -1,14 +1,8 @@
-import re
-import base64
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 
-from ....errors.exceptions import *
 from ....messaging import Message, Type, check_for_attributes
-from ..base import ARIES_DOC_URI
-
-
-ARIES_PROTOCOL = 'notification'
+from ..base import AriesProtocolMessage, AriesProtocolMeta, THREAD_DECORATOR
 
 
 class Status(Enum):
@@ -22,23 +16,20 @@ class Status(Enum):
     FAIL = 'FAIL'
 
 
-class AckMessage(Message):
-    """0015 Message implementation
+class Ack(AriesProtocolMessage, metaclass=AriesProtocolMeta):
 
-    https://github.com/hyperledger/aries-rfcs/tree/master/features/0015-acks
-    """
-
+    PROTOCOL = 'notification'
     NAME = 'ack'
 
-    def __init__(self, status: Status, version: str='1.0', *args, **kwargs):
-        kwargs['@type'] = Type(
-            doc_uri=ARIES_DOC_URI,
-            protocol=ARIES_PROTOCOL,
-            version=version,
-            name=self.NAME
-        ).normalized
-        kwargs['status'] = status.value
-        super().__init__(*args, **kwargs)
+    def __init__(self, thread_id: str=None, status: Optional[Status] = None, *args, **kwargs):
+        super(Ack, self).__init__(*args, **kwargs)
+        if status is not None:
+            self['status'] = status.value
+        if thread_id is not None:
+            self.get(THREAD_DECORATOR, {}).update({'thid': thread_id})
+        else:
+            check_for_attributes(self, [THREAD_DECORATOR])
+            check_for_attributes(self[THREAD_DECORATOR], ['thid'])
 
     @property
     def status(self) -> Status:
@@ -52,17 +43,11 @@ class AckMessage(Message):
         else:
             raise RuntimeError('Unexpected status value')
 
-    def validate(self):
-        if self.type.protocol != ARIES_PROTOCOL:
-            raise SiriusValidationError('Unexpected protocol "%s"' % self.type.protocol)
-        if self.type.name != self.NAME:
-            raise SiriusValidationError('Unexpected name "%s"' % self.type.name)
-        check_for_attributes(
-            msg=self,
-            expected_attributes=['status']
-        )
+    @property
+    def thread_id(self) -> Optional[str]:
+        return self.get(THREAD_DECORATOR, {}).get('thid', None)
 
     @property
-    def please_ack(self):
+    def please_ack(self) -> Optional[dict]:
         """https://github.com/hyperledger/aries-rfcs/tree/master/features/0317-please-ack"""
         return self.get('~please_ack', None)

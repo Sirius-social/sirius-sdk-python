@@ -1,5 +1,6 @@
 from sirius_sdk.messaging import *
 from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping.messages import Ping, Pong
+from sirius_sdk.agent.aries_rfc.feature_0015_acks.messages import Ack, Status as AckStatus
 
 
 class Test1Message(Message):
@@ -71,8 +72,34 @@ def test_aries_ping_pong():
             '@id': 'trust-ping_response-message-id',
             '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping_response',
             "comment": "Hi. I am OK!",
+            "~thread": {
+                "thid": "ping-id"
+            }
         }
     )
     assert ok is True
     assert isinstance(pong, Pong)
     assert pong.comment == 'Hi. I am OK!'
+    assert pong.ping_id == 'ping-id'
+
+
+def test_aries_ack():
+
+    message = Ack(thread_id='ack-thread-id', status=AckStatus.PENDING)
+    assert message.protocol == 'notification'
+    assert message.name == 'ack'
+    assert message.version == '1.0.0'
+
+    ok, ack = restore_message_instance(
+        {
+            '@id': 'ack-message-id',
+            '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/notification/1.0/ack',
+            "~thread": {
+                'thid': 'thread-id'
+            },
+        }
+    )
+    assert ok is True
+    assert isinstance(ack, Ack)
+    assert ack.thread_id == 'thread-id'
+
