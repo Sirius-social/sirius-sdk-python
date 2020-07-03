@@ -1,7 +1,6 @@
-from typing import Iterable
-
 from ..errors.exceptions import SiriusValidationError
 from .message import Message
+from .fields import *
 
 
 ID = '@id'
@@ -23,34 +22,34 @@ DELAY_MILLI = 'delay_milli'
 WAIT_UNTIL_TIME = 'wait_until_time'
 
 
-def check_for_attributes(msg: Message, expected_attributes: Iterable):
+def check_for_attributes(partial: dict, expected_attributes: Iterable):
     for attribute in expected_attributes:
         if isinstance(attribute, tuple):
-            if attribute[0] not in msg:
-                raise SiriusValidationError('Attribute "{}" is missing from message: \n{}'.format(attribute[0], msg))
-            if msg[attribute[0]] != attribute[1]:
-                raise SiriusValidationError('Message.{}: {} != {}'.format(attribute[0], msg[attribute[0]], attribute[1]))
+            if attribute[0] not in partial:
+                raise SiriusValidationError('Attribute "{}" is missing from message: \n{}'.format(attribute[0], partial))
+            if partial[attribute[0]] != attribute[1]:
+                raise SiriusValidationError('Message.{}: {} != {}'.format(attribute[0], partial[attribute[0]], attribute[1]))
         else:
-            if attribute not in msg:
-                raise SiriusValidationError('Attribute "{}" is missing from message: \n{}'.format(attribute, msg))
+            if attribute not in partial:
+                raise SiriusValidationError('Attribute "{}" is missing from message: \n{}'.format(attribute, partial))
 
 
-def validate_common_blocks(msg: Message):
+def validate_common_blocks(partial: dict):
     """Validate blocks of message like threading, timing, etc
     """
-    _validate_thread_block(msg)
-    _validate_timing_block(msg)
+    _validate_thread_block(partial)
+    _validate_timing_block(partial)
 
 
-def _validate_thread_block(msg: Message):
-    if THREAD_DECORATOR in msg:
-        thread = msg[THREAD_DECORATOR]
-        check_for_attributes(msg[THREAD_ID], thread)
+def _validate_thread_block(partial: dict):
+    if THREAD_DECORATOR in partial:
+        thread = partial[THREAD_DECORATOR]
+        check_for_attributes(thread, [THREAD_ID])
 
         thread_id = thread[THREAD_ID]
-        if msg.get(ID) and thread_id == msg[ID]:
-            raise SiriusValidationError('Thread id {} cannot be equal to outer id {}'.format(thread_id, msg[ID]))
-        if thread.get(PARENT_THREAD_ID) and thread[PARENT_THREAD_ID] in (thread_id, msg[ID]):
+        if partial.get(ID) and thread_id == partial[ID]:
+            raise SiriusValidationError('Thread id {} cannot be equal to outer id {}'.format(thread_id, partial[ID]))
+        if thread.get(PARENT_THREAD_ID) and thread[PARENT_THREAD_ID] in (thread_id, partial[ID]):
             raise SiriusValidationError('Parent thread id {} must be different than thread id and outer id'.format(
                 thread[PARENT_THREAD_ID]))
 
@@ -65,9 +64,9 @@ def _validate_thread_block(msg: Message):
                 raise ValueError(err)
 
 
-def _validate_timing_block(msg: Message):
-    if TIMING_DECORATOR in msg:
-        timing = msg[TIMING_DECORATOR]
+def _validate_timing_block(partial: dict):
+    if TIMING_DECORATOR in partial:
+        timing = partial[TIMING_DECORATOR]
         non_neg_num = NonNegativeNumberField()
         iso_data = ISODatetimeStringField()
         expected_iso_fields = [IN_TIME, OUT_TIME, STALE_TIME, EXPIRES_TIME, WAIT_UNTIL_TIME]
