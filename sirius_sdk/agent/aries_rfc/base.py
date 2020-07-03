@@ -1,16 +1,34 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from ..coprotocols import AbstractCoProtocolTransport, Message, register_message_class
+from ..coprotocols import *
 
 
-ARIES_DOC_URI = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec'
+ARIES_DOC_URI = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/'
 THREAD_DECORATOR = '~thread'
 
 
 class AriesProtocolMessage(Message):
+
     PROTOCOL = None
     NAME = None
+
+    def __init__(self, version: str='1.0', *args, **kwargs):
+        if self.NAME and ('@type' not in dict(*args, **kwargs)):
+            kwargs['@type'] = Type(
+                doc_uri=ARIES_DOC_URI, protocol=self.PROTOCOL, name=self.NAME, version=version
+            ).normalized
+        super().__init__(*args, **kwargs)
+        self._validate()
+
+    def _validate(self):
+        if self.doc_uri != ARIES_DOC_URI:
+            raise SiriusValidationError('Unexpected doc_uri "%s"' % self.doc_uri)
+        if self.protocol != self.PROTOCOL:
+            raise SiriusValidationError('Unexpected protocol "%s"' % self.protocol)
+        if self.name != self.NAME:
+            raise SiriusValidationError('Unexpected name "%s"' % self.name)
+        validate_common_blocks(self)
 
 
 class AriesProtocolMeta(type):
