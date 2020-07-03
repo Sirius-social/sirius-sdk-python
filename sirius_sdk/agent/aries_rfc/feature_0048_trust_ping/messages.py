@@ -1,9 +1,9 @@
 from typing import Optional
 
-from ..base import AriesProtocolMessage, AriesProtocolMeta, THREAD_DECORATOR
+from ..base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
 
 
-class Ping(AriesProtocolMessage, metaclass=AriesProtocolMeta):
+class Ping(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Ping part for trust_ping protocol
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping
@@ -27,11 +27,8 @@ class Ping(AriesProtocolMessage, metaclass=AriesProtocolMeta):
     def response_requested(self) -> Optional[bool]:
         return self.get('response_requested', None)
 
-    def validate(self):
-        pass
 
-
-class Pong(AriesProtocolMessage, metaclass=AriesProtocolMeta):
+class Pong(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Pong part for trust_ping protocol
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping
@@ -54,6 +51,3 @@ class Pong(AriesProtocolMessage, metaclass=AriesProtocolMeta):
     @property
     def ping_id(self):
         return self.get(THREAD_DECORATOR, {}).get('thid', None)
-
-    def validate(self):
-        pass

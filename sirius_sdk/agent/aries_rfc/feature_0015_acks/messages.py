@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 from ....messaging import check_for_attributes
 from ....errors.exceptions import *
-from ..base import AriesProtocolMessage, AriesProtocolMeta, THREAD_DECORATOR
+from ..base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
 
 
 class Status(Enum):
@@ -17,7 +17,7 @@ class Status(Enum):
     FAIL = 'FAIL'
 
 
-class Ack(AriesProtocolMessage, metaclass=AriesProtocolMeta):
+class Ack(AriesProtocolMessage, metaclass=RegisterMessage):
 
     PROTOCOL = 'notification'
     NAME = 'ack'
@@ -35,11 +35,12 @@ class Ack(AriesProtocolMessage, metaclass=AriesProtocolMeta):
             self[THREAD_DECORATOR] = thread
 
     def validate(self):
+        super().validate()
         check_for_attributes(self, [THREAD_DECORATOR])
         check_for_attributes(self[THREAD_DECORATOR], ['thid'])
 
     @property
-    def status(self) -> Status:
+    def status(self) -> Optional[Status]:
         status = self.get('status', None)
         if status is None:
             return Status.OK
@@ -50,7 +51,7 @@ class Ack(AriesProtocolMessage, metaclass=AriesProtocolMeta):
         elif status == Status.FAIL.value:
             return Status.FAIL
         else:
-            raise SiriusFieldValueError('status', status, 'Status value')
+            return None
 
     @property
     def thread_id(self) -> Optional[str]:
