@@ -310,8 +310,6 @@ class AgentEvents(BaseAgentConnection):
             raise SiriusInvalidPayloadStructure()
         if 'protected' in payload:
             message = self._p2p.unpack(payload)
-            if 'message' in message:
-                message['message'] = Message(message['message'])
             return Message(message)
         else:
             return Message(payload)

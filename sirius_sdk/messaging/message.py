@@ -6,8 +6,12 @@ https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-a
 import json
 import uuid
 
-from ..errors.exceptions import SiriusInvalidMessage
+from ..errors.exceptions import *
 from .type import Type, Semver
+
+
+# Registry for restoring message instance from payload
+MSG_REGISTRY = {}
 
 
 def generate_id():
@@ -106,3 +110,36 @@ class Message(dict):
 
     def __hash__(self):
         return hash(self.id)
+
+
+def register_message_class(cls, protocol: str, name: str=None):
+    if issubclass(cls, Message):
+        descriptor = MSG_REGISTRY.get(protocol, {})
+        if name:
+            descriptor[name] = cls
+        else:
+            descriptor['*'] = cls
+        MSG_REGISTRY[protocol] = descriptor
+    else:
+        raise SiriusInvalidMessageClass()
+
+
+def restore_message_instance(payload: dict) -> (bool, Message):
+    if '@type' in payload:
+        typ = Type.from_str(payload['@type'])
+        descriptor = MSG_REGISTRY.get(typ.protocol, None)
+        if descriptor:
+            if typ.name in descriptor:
+                cls = descriptor[typ.name]
+            elif '*' in descriptor:
+                cls = descriptor['*']
+            else:
+                cls = None
+        else:
+            cls = None
+        if cls is not None:
+            return True, cls(payload)
+        else:
+            return False, None
+    else:
+        return False, None

@@ -3,7 +3,7 @@ import asyncio
 
 from sirius_sdk.agent.connections import AgentEvents
 from sirius_sdk.errors.exceptions import SiriusConnectionClosed
-from sirius_sdk.messaging import Message
+from sirius_sdk.messaging import Message, restore_message_instance
 
 
 PY_35 = sys.version_info >= (3, 5)
@@ -16,8 +16,14 @@ class Listener:
         self.__source = source
 
     async def get_one(self, timeout: int=None) -> Message:
-        msg = await self.__source.pull(timeout)
-        return msg
+        event = await self.__source.pull(timeout)
+        if 'message' in event:
+            ok, message = restore_message_instance(event['message'])
+            if ok:
+                event['message'] = message
+            else:
+                event['message'] = Message(event['message'])
+        return event
 
     if PY_35:
         def __aiter__(self):

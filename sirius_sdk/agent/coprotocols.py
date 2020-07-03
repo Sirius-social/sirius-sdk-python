@@ -3,7 +3,7 @@ from typing import List
 from datetime import datetime, timedelta
 
 from ..errors.exceptions import *
-from ..messaging import Message, Type
+from ..messaging import Message, Type, restore_message_instance
 from .wallet.wallets import DynamicWallet
 from .connections import AgentRPC
 from .pairwise import TheirEndpoint, Pairwise
@@ -101,7 +101,9 @@ class AbstractCoProtocolTransport(ABC):
             )
             payload = Message(event.get('message', {}))
             if payload:
-                message = Message(payload)
+                ok, message = restore_message_instance(payload)
+                if not ok:
+                    message = Message(payload)
                 if Type.from_str(message.type).protocol not in self.protocols:
                     raise SiriusInvalidMessage('@type has unexpected protocol "%s"' % message.type.protocol)
                 return True, message

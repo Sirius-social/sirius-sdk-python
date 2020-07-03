@@ -66,3 +66,7 @@ class SiriusInvalidType(BaseSiriusException):
 
 class SiriusValidationError(BaseSiriusException):
     pass
+
+
+class SiriusInvalidMessageClass(BaseSiriusException):
+    pass

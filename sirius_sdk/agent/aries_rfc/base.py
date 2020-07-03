@@ -18,7 +18,7 @@ class AbstractStateMachine(ABC):
         return self.__time_to_live
 
     async def begin(self):
-        await self.__transport.start(self.__time_to_live)
+        await self.__transport.start(self.protocols, self.__time_to_live)
 
     async def end(self):
         await self.__transport.stop()
