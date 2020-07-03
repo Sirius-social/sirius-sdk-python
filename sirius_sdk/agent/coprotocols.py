@@ -240,7 +240,13 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
 
     async def switch(self, message: Message) -> (bool, Message):
         self.__prepare_message(message)
-        return await super().switch(message)
+        ok, response = await super().switch(message)
+        if ok:
+            respond_sender_order = response.get('~thread', {}).get('sender_order', None)
+            if respond_sender_order is not None:
+                order = self.__received_orders.get(response.doc_uri, 0)
+                self.__received_orders[response.doc_uri] = max(order, respond_sender_order)
+        return ok, response
 
     async def send(self, message: Message):
         self.__prepare_message(message)
