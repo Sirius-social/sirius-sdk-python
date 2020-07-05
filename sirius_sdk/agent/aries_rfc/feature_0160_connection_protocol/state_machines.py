@@ -48,7 +48,7 @@ class Inviter(AbstractStateMachine):
         try:
             # Step 2: build connection response
             response = ConnResponse(did=me.did, verkey=me.verkey, endpoint=my_endpoint.address)
-            my_diddoc = response.did_doc
+            my_did_doc = response.did_doc
             await response.sign_connection(transport.wallet.crypto, connection_key)
             response.please_ack = True
             ok, ack = await transport.switch(response)
@@ -68,7 +68,7 @@ class Inviter(AbstractStateMachine):
                         'me': {
                             'did': me.did,
                             'verkey': me.verkey,
-                            'did_doc': dict(my_diddoc)
+                            'did_doc': dict(my_did_doc)
                         },
                         'their': {
                             'did': their_did,
