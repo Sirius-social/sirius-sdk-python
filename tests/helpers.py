@@ -119,3 +119,13 @@ class InMemoryChannel(ReadOnlyChannel, WriteOnlyChannel):
     async def write(self, data: bytes) -> bool:
         await self.queue.put(data)
         return True
+
+
+async def run_coroutines(*args):
+    items = [i for i in args]
+    done, pending = await asyncio.wait(items, timeout=15, return_when=asyncio.FIRST_EXCEPTION)
+    for f in done:
+        if f.exception():
+            raise f.exception()
+    for f in pending:
+        f.cancel()

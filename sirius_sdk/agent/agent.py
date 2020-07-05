@@ -1,4 +1,5 @@
 import asyncio
+from abc import ABC, abstractmethod
 from typing import List, Union, Optional
 
 from multipledispatch import dispatch
@@ -12,7 +13,30 @@ from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTrans
 from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
 
-class Agent:
+class TransportLayers(ABC):
+
+    @dispatch(str, TheirEndpoint)
+    @abstractmethod
+    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
+        raise NotImplemented
+
+    @dispatch(Pairwise)
+    @abstractmethod
+    async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
+        raise NotImplemented
+
+    @dispatch(str, Pairwise)
+    @abstractmethod
+    async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
+        raise NotImplemented
+
+    @dispatch(str, Pairwise, str)
+    @abstractmethod
+    async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
+        raise NotImplemented
+
+
+class Agent(TransportLayers):
     """
     Agent connection in the self-sovereign identity ecosystem.
 

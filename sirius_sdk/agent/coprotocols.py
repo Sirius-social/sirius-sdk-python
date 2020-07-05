@@ -135,8 +135,7 @@ class AbstractCoProtocolTransport(ABC):
             now = datetime.now()
             if now < self.__die_timestamp:
                 delta = self.__die_timestamp - now
-                return delta.day * self.SEC_PER_DAY + delta.hour * self.SEC_PER_HOURS + \
-                       delta.minute * self.SEC_PER_MIN + delta.second
+                return delta.days * self.SEC_PER_DAY + delta.seconds
             else:
                 return 0
         else:

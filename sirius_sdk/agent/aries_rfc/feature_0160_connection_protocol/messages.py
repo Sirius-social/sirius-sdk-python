@@ -9,7 +9,7 @@ from typing import List, Optional, Any
 
 from ....errors.exceptions import *
 from ....messaging import Message, check_for_attributes
-from ....agent.wallet.wallets import DynamicWallet
+from ....agent.wallet.abstract.crypto import AbstractCrypto
 from ..base import AriesProtocolMessage, RegisterMessage
 from ..did_doc import DIDDoc
 
@@ -22,16 +22,14 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
 
     PROTOCOL = 'connection'
 
-    KEY_CONNECTION = 'connection'
-
     @staticmethod
-    async def sign_field(wallet: DynamicWallet, field_value: Any, my_verkey: str) -> dict:
+    async def sign_field(crypto: AbstractCrypto, field_value: Any, my_verkey: str) -> dict:
         timestamp_bytes = struct.pack(">Q", int(time.time()))
 
         sig_data_bytes = timestamp_bytes + json.dumps(field_value).encode('ascii')
         sig_data = base64.urlsafe_b64encode(sig_data_bytes).decode('ascii')
 
-        signature_bytes = await wallet.crypto.crypto_sign(my_verkey, sig_data_bytes)
+        signature_bytes = await crypto.crypto_sign(my_verkey, sig_data_bytes)
         signature = base64.urlsafe_b64encode(
             signature_bytes
         ).decode('ascii')
@@ -44,10 +42,10 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
         }
 
     @staticmethod
-    async def verify_signed_field(wallet: DynamicWallet, signed_field: dict) -> (Any, bool):
+    async def verify_signed_field(crypto: AbstractCrypto, signed_field: dict) -> (Any, bool):
         signature_bytes = base64.urlsafe_b64decode(signed_field['signature'].encode('ascii'))
         sig_data_bytes = base64.urlsafe_b64decode(signed_field['sig_data'].encode('ascii'))
-        sig_verified = await wallet.crypto.crypto_verify(
+        sig_verified = await crypto.crypto_verify(
             signed_field['signer'],
             sig_data_bytes,
             signature_bytes
@@ -88,12 +86,11 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
 
     @property
     def their_did(self):
-        return self[self.KEY_CONNECTION].get('did', None) or self[self.KEY_CONNECTION].get('DID')
+        return self['connection'].get('did', None) or self['connection'].get('DID')
 
     @property
     def did_doc(self):
-        payload = self.get(self.KEY_CONNECTION, {}).get('did_doc', {}) or self.get(self.KEY_CONNECTION, {}).get(
-            'DIDDoc', None)
+        payload = self.get('connection', {}).get('did_doc', {}) or self.get('connection', {}).get('DIDDoc', None)
         return DIDDoc(payload) if payload is not None else None
 
     def extract_their_info(self):
@@ -133,13 +130,27 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
 
     def validate(self):
         super().validate()
-        if self.KEY_CONNECTION in self:
+        if 'connection' in self:
             if self.did_doc is None:
                 raise SiriusInvalidMessage('DIDDoc is empty')
             self.did_doc.validate()
 
+    @property
+    def please_ack(self) -> bool:
+        """https://github.com/hyperledger/aries-rfcs/tree/master/features/0317-please-ack"""
+        return self.get('~please_ack', None) is not None
 
-class InvitationMessage(ConnProtocolMessage, metaclass=RegisterMessage):
+    @please_ack.setter
+    def please_ack(self, flag: bool):
+        if flag:
+            self['~please_ack'] = {
+                'message_id': self.id
+            }
+        elif '~please_ack' in self:
+            del self['~please_ack']
+
+
+class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
 
     NAME = 'invitation'
 
@@ -147,7 +158,7 @@ class InvitationMessage(ConnProtocolMessage, metaclass=RegisterMessage):
             self, label: Optional[str]=None, recipient_keys: Optional[List[str]]=None,
             endpoint: Optional[str]=None, routing_keys: Optional[List[str]]=None, *args, **kwargs
     ):
-        super(InvitationMessage, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         if label is not None:
             self['label'] = label
         if recipient_keys is not None:
@@ -183,7 +194,7 @@ class InvitationMessage(ConnProtocolMessage, metaclass=RegisterMessage):
         if endpoint is None:
             raise SiriusInvalidMessage('serviceEndpoint attribute missing')
         routing_keys = msg.pop('routingKeys', default=[])
-        return InvitationMessage(label, recipient_keys, endpoint, routing_keys, **msg)
+        return Invitation(label, recipient_keys, endpoint, routing_keys, **msg)
 
     @property
     def invitation_url(self):
@@ -207,7 +218,7 @@ class InvitationMessage(ConnProtocolMessage, metaclass=RegisterMessage):
         return self.get('routingKeys', [])
 
 
-class ConnRequestMessage(ConnProtocolMessage, metaclass=RegisterMessage):
+class ConnRequest(ConnProtocolMessage, metaclass=RegisterMessage):
 
     NAME = 'request'
 
@@ -219,7 +230,7 @@ class ConnRequestMessage(ConnProtocolMessage, metaclass=RegisterMessage):
         if label is not None:
             self['label'] = label
         if (did is not None) and (verkey is not None) and (endpoint is not None):
-            self[self.KEY_CONNECTION] = {
+            self['connection'] = {
                 'DID': did,
                 'DIDDoc': self.build_did_doc(did, verkey, endpoint)
             }
@@ -228,5 +239,43 @@ class ConnRequestMessage(ConnProtocolMessage, metaclass=RegisterMessage):
         super().validate()
         check_for_attributes(
             self,
-            ['label', self.KEY_CONNECTION]
+            ['label', 'connection']
         )
+
+
+class ConnResponse(ConnProtocolMessage, metaclass=RegisterMessage):
+
+    NAME = 'response'
+
+    def __init__(
+            self, did: Optional[str]=None, verkey: Optional[str]=None,
+            endpoint: Optional[str]=None, *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        if (did is not None) and (verkey is not None) and (endpoint is not None):
+            self['connection'] = {
+                'DID': did,
+                'DIDDoc': self.build_did_doc(did, verkey, endpoint)
+            }
+
+    def validate(self):
+        super().validate()
+        check_for_attributes(
+            self,
+            ['label', 'connection']
+        )
+
+    async def sign_connection(self, crypto: AbstractCrypto, key: str):
+        self['connection~sig'] = \
+            await self.sign_field(
+                crypto=crypto, field_value=self['connection'], my_verkey=key
+            )
+        del self['connection']
+
+    async def verify_connection(self, crypto: AbstractCrypto) -> bool:
+        connection, success = await self.verify_signed_field(
+            crypto=crypto, signed_field=self['connection~sig']
+        )
+        if success:
+            self['connection'] = connection
+        return success

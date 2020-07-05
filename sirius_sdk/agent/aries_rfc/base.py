@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from ..coprotocols import *
+from ..agent import TransportLayers
 
 
 ARIES_DOC_URI = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/'
@@ -14,9 +15,12 @@ class AriesProtocolMessage(Message):
 
     def __init__(self, id_: str=None, version: str='1.0', *args, **kwargs):
         if self.NAME and ('@type' not in dict(*args, **kwargs)):
-            kwargs['@type'] = Type(
-                doc_uri=ARIES_DOC_URI, protocol=self.PROTOCOL, name=self.NAME, version=version
-            ).normalized
+            kwargs['@type'] = str(
+                Type(
+                    doc_uri=ARIES_DOC_URI, protocol=self.PROTOCOL,
+                    name=self.NAME, version=version
+                )
+            )
         super().__init__(*args, **kwargs)
         if id_ is not None:
             self['@id'] = id_
@@ -42,19 +46,17 @@ class RegisterMessage(type):
 
 class AbstractStateMachine(ABC):
 
-    def __init__(self, transport: AbstractCoProtocolTransport, time_to_live: int=60):
+    def __init__(self, transport: TransportLayers, time_to_live: int=60):
         self.__transport = transport
         self.__time_to_live = time_to_live
 
     @property
+    def transport(self) -> TransportLayers:
+        return self.__transport
+
+    @property
     def time_to_live(self) -> int:
         return self.__time_to_live
-
-    async def begin(self):
-        await self.__transport.start(self.protocols, self.__time_to_live)
-
-    async def end(self):
-        await self.__transport.stop()
 
     @property
     @abstractmethod

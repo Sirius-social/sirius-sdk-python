@@ -4,9 +4,8 @@ import asyncio
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.messaging import Message
-from sirius_sdk.agent.pairwise import TheirEndpoint, Pairwise
 from sirius_sdk.agent.coprotocols import *
+from tests.helpers import run_coroutines
 from .helpers import ServerTestSuite
 
 
@@ -64,16 +63,6 @@ def check_msg_log():
     assert MSG_LOG[1]['content'] == 'Response1'
     assert MSG_LOG[2]['content'] == 'Request2'
     assert MSG_LOG[3]['content'] == 'End'
-
-
-async def run_coroutines(*args):
-    items = [i for i in args]
-    done, pending = await asyncio.wait(items, timeout=15, return_when=asyncio.FIRST_EXCEPTION)
-    for f in done:
-        if f.exception():
-            raise f.exception()
-    for f in pending:
-        f.cancel()
 
 
 @pytest.mark.asyncio
@@ -279,7 +268,7 @@ async def test__threadbased_protocol(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
-async def test___protocols_intersections(test_suite: ServerTestSuite):
+async def test__protocols_intersections(test_suite: ServerTestSuite):
     agent1_params = test_suite.get_agent_params('agent1')
     agent2_params = test_suite.get_agent_params('agent2')
     agent1 = Agent(
