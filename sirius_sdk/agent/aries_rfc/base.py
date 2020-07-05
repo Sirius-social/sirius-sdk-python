@@ -35,6 +35,28 @@ class AriesProtocolMessage(Message):
         validate_common_blocks(self)
 
 
+class AriesProblemReport(AriesProtocolMessage):
+
+    NAME = 'problem_report'
+
+    def __init__(self, problem_code: str, explain: str, thread_id: str=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['problem-code'] = problem_code
+        self['explain'] = explain
+        if thread_id is not None:
+            thread = self.get(THREAD_DECORATOR, {})
+            thread['thid'] = thread_id
+            self[THREAD_DECORATOR] = thread
+
+    @property
+    def problem_code(self) -> str:
+        return self.get('problem-code', '')
+
+    @property
+    def explain(self) -> str:
+        return self.get('explain', '')
+
+
 class RegisterMessage(type):
 
     def __new__(meta, name, bases, class_dict):
@@ -46,13 +68,17 @@ class RegisterMessage(type):
 
 class AbstractStateMachine(ABC):
 
-    def __init__(self, transport: TransportLayers, time_to_live: int=60):
-        self.__transport = transport
+    def __init__(self, transports: TransportLayers, time_to_live: int=60):
+        """
+        :param transports: aries-rfc transports factory
+        :param time_to_live: state machine time to live to finish progress
+        """
+        self.__transports = transports
         self.__time_to_live = time_to_live
 
     @property
-    def transport(self) -> TransportLayers:
-        return self.__transport
+    def transports(self) -> TransportLayers:
+        return self.__transports
 
     @property
     def time_to_live(self) -> int:

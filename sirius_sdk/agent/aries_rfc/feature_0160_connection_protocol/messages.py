@@ -10,7 +10,7 @@ from typing import List, Optional, Any
 from ....errors.exceptions import *
 from ....messaging import Message, check_for_attributes
 from ....agent.wallet.abstract.crypto import AbstractCrypto
-from ..base import AriesProtocolMessage, RegisterMessage
+from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport
 from ..did_doc import DIDDoc
 
 
@@ -150,6 +150,10 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
             del self['~please_ack']
 
 
+class ConnProblemReport(AriesProblemReport, metaclass=RegisterMessage):
+    PROTOCOL = 'connection'
+
+
 class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
 
     NAME = 'invitation'
@@ -235,6 +239,10 @@ class ConnRequest(ConnProtocolMessage, metaclass=RegisterMessage):
                 'DIDDoc': self.build_did_doc(did, verkey, endpoint)
             }
 
+    @property
+    def label(self) -> Optional[str]:
+        return self.get('label', None)
+
     def validate(self):
         super().validate()
         check_for_attributes(
@@ -262,7 +270,7 @@ class ConnResponse(ConnProtocolMessage, metaclass=RegisterMessage):
         super().validate()
         check_for_attributes(
             self,
-            ['label', 'connection']
+            ['connection~sig']
         )
 
     async def sign_connection(self, crypto: AbstractCrypto, key: str):
