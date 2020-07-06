@@ -6,7 +6,7 @@ from ..base import JsonSerializable
 from ..storages import AbstractImmutableCollection
 from ..errors.indy_exceptions import LedgerNotFound
 from .wallet.abstract.ledger import AbstractLedger
-from .wallet.abstract.anoncreds import AnonCredSchema
+from .wallet.abstract.anoncreds import AnonCredSchema, AbstractAnonCreds
 from .wallet.abstract.cache import AbstractCache, CacheOptions
 
 
@@ -92,12 +92,99 @@ class SchemaFilters:
         self.__tags['submitter_did'] = value
 
 
+class CredentialDefinition(JsonSerializable):
+
+    class Config(JsonSerializable):
+
+        def __init__(self):
+            self.__support_revocation = False
+
+        @property
+        def support_revocation(self) -> bool:
+            return self.__support_revocation
+
+        @support_revocation.setter
+        def support_revocation(self, value: bool):
+            self.__support_revocation = value
+
+        def serialize(self) -> dict:
+            return {
+                'support_revocation': self.support_revocation
+            }
+
+        @classmethod
+        def deserialize(cls, buffer: Union[dict, bytes, str]):
+            if isinstance(buffer, bytes):
+                data = json.loads(buffer.decode())
+            elif isinstance(buffer, str):
+                data = json.loads(buffer)
+            elif isinstance(buffer, dict):
+                data = buffer
+            else:
+                raise RuntimeError('Unexpected buffer Type')
+            instance = CredentialDefinition.Config()
+            instance.support_revocation = data.get('support_revocation', False)
+            return instance
+
+    def __init__(self, tag: str, schema: Schema, config: Config=None, body: dict=None, seq_no: int=None):
+        self.__tag = tag
+        self.__schema = schema
+        self.__config = config or CredentialDefinition.Config()
+        self.__body = body
+        self.__seq_no = seq_no
+
+    @property
+    def tag(self) -> str:
+        return self.__tag
+
+    @property
+    def seq_no(self) -> Optional[int]:
+        return self.__seq_no
+
+    @property
+    def schema(self) -> Schema:
+        return self.__schema
+
+    @property
+    def config(self) -> Config:
+        return self.__config
+
+    @property
+    def body(self) -> dict:
+        return self.__body
+
+    def serialize(self) -> dict:
+        return {
+            'schema': self.schema.serialize(),
+            'config': self.config.serialize(),
+            'body': self.body
+        }
+
+    @classmethod
+    def deserialize(cls, buffer: Union[dict, bytes, str]):
+        if isinstance(buffer, bytes):
+            data = json.loads(buffer.decode())
+        elif isinstance(buffer, str):
+            data = json.loads(buffer)
+        elif isinstance(buffer, dict):
+            data = buffer
+        else:
+            raise RuntimeError('Unexpected buffer Type')
+        schema = Schema.deserialize(data['schema'])
+        config = CredentialDefinition.Config.deserialize(data['config'])
+        return CredentialDefinition(schema, config, data['body'])
+
+
 class Ledger:
 
-    def __init__(self, name: str, api: AbstractLedger, cache: AbstractCache, storage: AbstractImmutableCollection):
+    def __init__(
+            self, name: str, api: AbstractLedger, issuer: AbstractAnonCreds,
+            cache: AbstractCache, storage: AbstractImmutableCollection
+    ):
         self.__name = name
         self._api = api
         self._cache = cache
+        self._issuer = issuer
         self._storage = storage
         self.__db = 'ledger_storage_%s' % name
 
@@ -124,12 +211,36 @@ class Ledger:
             body = schema.body
             body['seqNo'] = txn_response['result']['txnMetadata']['seqNo']
             schema_in_ledger = Schema(**body)
-            await self._ensure_exists_in_storage(schema_in_ledger, submitter_did)
+            await self.__ensure_exists_in_storage(schema_in_ledger, submitter_did)
             return True, schema_in_ledger
         else:
             reason = txn_response.get('reason', None)
             if reason:
                 logging.error(reason)
+            return False, None
+
+    async def register_cred_def(self, cred_def: CredentialDefinition, submitter_did: str) -> (bool, CredentialDefinition):
+        cred_def_id, body = await self._issuer.issuer_create_and_store_credential_def(
+            issuer_did=submitter_did,
+            schema=cred_def.schema.body,
+            tag=cred_def.tag,
+            config=cred_def.config.serialize()
+        )
+        success, txn_response = await self._api.register_cred_def(
+            pool_name=self.name,
+            submitter_did=submitter_did,
+            data=body
+        )
+        if success:
+            ledger_cred_def = CredentialDefinition(
+                tag=cred_def.tag,
+                schema=cred_def.schema,
+                config=cred_def.config,
+                body=body,
+                seq_no=txn_response['result']['txnMetadata']['seqNo']
+            )
+            return True, ledger_cred_def
+        else:
             return False, None
 
     async def ensure_schema_exists(self, schema: AnonCredSchema, submitter_did: str) -> Optional[Schema]:
@@ -141,7 +252,7 @@ class Ledger:
                 options=CacheOptions()
             )
             ledger_schema = Schema(**body)
-            await self._ensure_exists_in_storage(ledger_schema, submitter_did)
+            await self.__ensure_exists_in_storage(ledger_schema, submitter_did)
             return ledger_schema
         except LedgerNotFound:
             pass
@@ -155,7 +266,7 @@ class Ledger:
         fetched, total_count = await self._storage.fetch(filters.tags)
         return [Schema.deserialize(item) for item in fetched]
 
-    async def _ensure_exists_in_storage(self, schema: Schema, submitter_did: str):
+    async def __ensure_exists_in_storage(self, schema: Schema, submitter_did: str):
         await self._storage.select_db(self.__db)
         tags = {
             'id': schema.id,

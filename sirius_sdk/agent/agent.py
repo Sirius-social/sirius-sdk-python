@@ -140,7 +140,8 @@ class Agent(TransportLayers):
             self.__storage = InWalletImmutableCollection(self.__wallet.non_secrets)
         for network in self.__rpc.networks:
             self.__ledgers[network] = Ledger(
-                name=network, api=self.__wallet.ledger, cache=self.__wallet.cache, storage=self.__storage
+                name=network, api=self.__wallet.ledger,
+                issuer=self.__wallet.anoncreds, cache=self.__wallet.cache, storage=self.__storage
             )
 
     async def subscribe(self) -> Listener:

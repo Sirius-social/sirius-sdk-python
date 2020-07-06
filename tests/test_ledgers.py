@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.agent.ledger import SchemaFilters
+from sirius_sdk.agent.ledger import SchemaFilters, CredentialDefinition
 
 
 @pytest.mark.asyncio
@@ -82,6 +82,37 @@ async def test_schema_fetching(agent1: Agent):
         fetches = await ledger.fetch_schemas(filters)
         assert len(fetches) == 1
         assert fetches[0].issuer_did == did
+
+    finally:
+        await agent1.close()
+
+
+@pytest.mark.asyncio
+async def test_register_cred_def(agent1: Agent):
+    await agent1.open()
+    try:
+        seed = '000000000000000000000000Steward1'
+        did, verkey = await agent1.wallet.did.create_and_store_my_did(seed=seed)
+        schema_name = 'schema_' + uuid.uuid4().hex
+        schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
+            did, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
+        )
+        ledger = agent1.ledger('default')
+
+        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did)
+        assert ok is True
+
+        cred_def = CredentialDefinition(tag='Test Tag', schema=schema)
+        assert cred_def.body is None
+        ok, ledger_cred_def = await ledger.register_cred_def(cred_def=cred_def, submitter_did=did)
+        assert ok is True
+        assert ledger_cred_def.body is not None
+        assert ledger_cred_def.seq_no > 0
+
+        ok, ledger_cred_def2 = await ledger.register_cred_def(cred_def=cred_def, submitter_did=did)
+        assert ok is True
+        assert ledger_cred_def.body == ledger_cred_def2.body
+        assert ledger_cred_def2.seq_no > ledger_cred_def.seq_no
 
     finally:
         await agent1.close()
