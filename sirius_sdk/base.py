@@ -9,6 +9,18 @@ from .messaging import Message
 from .errors.exceptions import *
 
 
+class JsonSerializable:
+
+    @abstractmethod
+    def serialize(self) -> dict:
+        raise NotImplemented
+
+    @classmethod
+    @abstractmethod
+    def deserialize(cls, buffer: Union[dict, bytes, str]):
+        raise NotImplemented
+
+
 class ReadOnlyChannel(ABC):
     """Communication abstraction for reading data stream
     """

@@ -1,13 +1,16 @@
+import json
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
+from ..base import JsonSerializable
+from ..storages import AbstractImmutableCollection
 from ..errors.indy_exceptions import LedgerNotFound
 from .wallet.abstract.ledger import AbstractLedger
 from .wallet.abstract.anoncreds import AnonCredSchema
 from .wallet.abstract.cache import AbstractCache, CacheOptions
 
 
-class Schema(AnonCredSchema):
+class Schema(AnonCredSchema, JsonSerializable):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -15,6 +18,11 @@ class Schema(AnonCredSchema):
     @property
     def seq_no(self) -> int:
         return self.body.get('seqNo', None)
+
+    @property
+    def issuer_did(self) -> str:
+        parts = self.id.split(':')
+        return parts[0]
 
     def __eq__(self, other):
         if isinstance(other, Schema):
@@ -26,13 +34,72 @@ class Schema(AnonCredSchema):
         else:
             return False
 
+    def serialize(self) -> dict:
+        return self.body
+
+    @classmethod
+    def deserialize(cls, buffer: Union[dict, bytes, str]):
+        if isinstance(buffer, bytes):
+            kwargs = json.loads(buffer.decode())
+        elif isinstance(buffer, str):
+            kwargs = json.loads(buffer)
+        elif isinstance(buffer, dict):
+            kwargs = buffer
+        else:
+            raise RuntimeError('Unexpected buffer Type')
+        return Schema(**kwargs)
+
+
+class SchemaFilters:
+
+    def __init__(self):
+        self.__tags = {'category': 'schema'}
+
+    @property
+    def tags(self) -> dict:
+        return self.__tags
+
+    @property
+    def id(self) -> Optional[str]:
+        return self.__tags.get('id', None)
+
+    @id.setter
+    def id(self, value: str):
+        self.__tags['id'] = value
+
+    @property
+    def name(self) -> Optional[str]:
+        return self.__tags.get('name', None)
+
+    @name.setter
+    def name(self, value: str):
+        self.__tags['name'] = value
+
+    @property
+    def version(self) -> Optional[str]:
+        return self.__tags.get('version', None)
+
+    @version.setter
+    def version(self, value: str):
+        self.__tags['version'] = value
+
+    @property
+    def submitter_did(self) -> Optional[str]:
+        return self.__tags.get('submitter_did', None)
+
+    @submitter_did.setter
+    def submitter_did(self, value: str):
+        self.__tags['submitter_did'] = value
+
 
 class Ledger:
 
-    def __init__(self, name: str, api: AbstractLedger, cache: AbstractCache):
+    def __init__(self, name: str, api: AbstractLedger, cache: AbstractCache, storage: AbstractImmutableCollection):
         self.__name = name
         self._api = api
         self._cache = cache
+        self._storage = storage
+        self.__db = 'ledger_storage_%s' % name
 
     @property
     def name(self) -> str:
@@ -56,7 +123,9 @@ class Ledger:
         if success and txn_response.get('op') == 'REPLY':
             body = schema.body
             body['seqNo'] = txn_response['result']['txnMetadata']['seqNo']
-            return True, Schema(**body)
+            schema_in_ledger = Schema(**body)
+            await self._ensure_exists_in_storage(schema_in_ledger, submitter_did)
+            return True, schema_in_ledger
         else:
             reason = txn_response.get('reason', None)
             if reason:
@@ -71,7 +140,9 @@ class Ledger:
                 id_=schema.id,
                 options=CacheOptions()
             )
-            return Schema(**body)
+            ledger_schema = Schema(**body)
+            await self._ensure_exists_in_storage(ledger_schema, submitter_did)
+            return ledger_schema
         except LedgerNotFound:
             pass
         ok, ledger_schema = self.register_schema(schema, submitter_did)
@@ -79,3 +150,28 @@ class Ledger:
             return ledger_schema
         else:
             return None
+
+    async def fetch_schemas(self, filters: SchemaFilters) -> List[Schema]:
+        fetched, total_count = await self._storage.fetch(filters.tags)
+        return [Schema.deserialize(item) for item in fetched]
+
+    async def _ensure_exists_in_storage(self, schema: Schema, submitter_did: str):
+        await self._storage.select_db(self.__db)
+        tags = {
+            'id': schema.id,
+            'category': 'schema'
+        }
+        _, count = await self._storage.fetch(tags=tags)
+        if count == 0:
+            tags.update(
+                {
+                    'id': schema.id,
+                    'name': schema.name,
+                    'version': schema.version,
+                    'submitter_did': submitter_did
+                }
+            )
+            await self._storage.add(
+                value=schema.serialize(),
+                tags=tags
+            )

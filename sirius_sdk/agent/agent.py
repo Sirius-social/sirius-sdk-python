@@ -6,10 +6,12 @@ from multipledispatch import dispatch
 
 from ..messaging import Message
 from ..encryption import P2PConnection
+from ..storages import AbstractImmutableCollection
 from .listener import Listener
 from .pairwise import Pairwise, TheirEndpoint
 from .wallet.wallets import DynamicWallet
 from .ledger import Ledger
+from .storages import InWalletImmutableCollection
 from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
@@ -48,7 +50,8 @@ class Agent(TransportLayers):
 
     def __init__(
             self, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+            p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None,
+            storage: AbstractImmutableCollection=None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -66,6 +69,7 @@ class Agent(TransportLayers):
         self.__loop = loop
         self.__endpoints = []
         self.__ledgers = {}
+        self.__storage = storage
 
     @property
     def wallet(self) -> DynamicWallet:
@@ -132,8 +136,12 @@ class Agent(TransportLayers):
         )
         self.__endpoints = self.__rpc.endpoints
         self.__wallet = DynamicWallet(rpc=self.__rpc)
+        if self.__storage is None:
+            self.__storage = InWalletImmutableCollection(self.__wallet.non_secrets)
         for network in self.__rpc.networks:
-            self.__ledgers[network] = Ledger(name=network, api=self.__wallet.ledger, cache=self.__wallet.cache)
+            self.__ledgers[network] = Ledger(
+                name=network, api=self.__wallet.ledger, cache=self.__wallet.cache, storage=self.__storage
+            )
 
     async def subscribe(self) -> Listener:
         self.__events = await AgentEvents.create(
