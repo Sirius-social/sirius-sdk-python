@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from ..abstract.anoncreds import AbstractAnonCreds
+from ..abstract.anoncreds import AbstractAnonCreds, AnonCredSchema
 from ....agent.connections import AgentRPC
 
 
@@ -11,11 +11,12 @@ class AnonCredsProxy(AbstractAnonCreds):
 
     async def issuer_create_schema(
             self, issuer_did: str, name: str, version: str, attrs: List[str]
-    ) -> (str, dict):
-        return await self.__rpc.remote_call(
+    ) -> (str, AnonCredSchema):
+        schema_id, body = await self.__rpc.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/issuer_create_schema',
             params=dict(issuer_did=issuer_did, name=name, version=version, attrs=attrs)
         )
+        return schema_id, AnonCredSchema(**body)
 
     async def issuer_create_and_store_credential_def(
             self, issuer_did: str, schema: dict, tag: str, signature_type: str = None, config: dict = None

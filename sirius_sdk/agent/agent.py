@@ -9,6 +9,7 @@ from ..encryption import P2PConnection
 from .listener import Listener
 from .pairwise import Pairwise, TheirEndpoint
 from .wallet.wallets import DynamicWallet
+from .ledger import Ledger
 from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
@@ -64,11 +65,15 @@ class Agent(TransportLayers):
         self.__timeout = timeout
         self.__loop = loop
         self.__endpoints = []
+        self.__ledgers = {}
 
     @property
     def wallet(self) -> DynamicWallet:
         """Indy wallet keys/schemas/CredDefs maintenance"""
         return self.__wallet
+
+    def ledger(self, name: str) -> Ledger:
+        return self.__ledgers.get(name, None)
 
     @dispatch(str, TheirEndpoint)
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
@@ -127,7 +132,8 @@ class Agent(TransportLayers):
         )
         self.__endpoints = self.__rpc.endpoints
         self.__wallet = DynamicWallet(rpc=self.__rpc)
-        print('!')
+        for network in self.__rpc.networks:
+            self.__ledgers[network] = Ledger(name=network, api=self.__wallet.ledger, cache=self.__wallet.cache)
 
     async def subscribe(self) -> Listener:
         self.__events = await AgentEvents.create(

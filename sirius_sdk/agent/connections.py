@@ -115,10 +115,15 @@ class AgentRPC(BaseAgentConnection):
         self.__tunnel_rpc = None
         self.__tunnel_coprotocols = None
         self.__endpoints = []
+        self.__networks = []
 
     @property
     def endpoints(self) -> List[Endpoint]:
         return self.__endpoints
+
+    @property
+    def networks(self) -> List[str]:
+        return self.__networks
 
     async def remote_call(self, msg_type: str, params: dict=None) -> Any:
         """Call Agent services
@@ -283,6 +288,8 @@ class AgentRPC(BaseAgentConnection):
         if not endpoint_collection:
             raise RuntimeError('Endpoints are empty')
         self.__endpoints = endpoint_collection
+        # Extract Networks
+        self.__networks = context.get('~networks', [])
 
 
 class AgentEvents(BaseAgentConnection):
