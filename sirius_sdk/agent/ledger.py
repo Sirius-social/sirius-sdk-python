@@ -138,6 +138,13 @@ class CredentialDefinition(JsonSerializable):
         return self.__tag
 
     @property
+    def id(self) -> Optional[str]:
+        if self.body:
+            return self.body.get('id', None)
+        else:
+            return None
+
+    @property
     def seq_no(self) -> Optional[int]:
         return self.__seq_no
 
