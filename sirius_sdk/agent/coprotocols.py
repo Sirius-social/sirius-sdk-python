@@ -22,6 +22,7 @@ class AbstractCoProtocolTransport(ABC):
         """
 
     THREAD_DECORATOR = '~thread'
+    PLEASE_ACK_DECORATOR = '~please_ack'
 
     SEC_PER_DAY = 86400
     SEC_PER_HOURS = 3600
@@ -42,6 +43,7 @@ class AbstractCoProtocolTransport(ABC):
         self.__routing_keys = None
         self.__is_setup = False
         self.__protocols = []
+        self.__please_ack_ids = []
 
     @property
     def protocols(self) -> List[str]:
@@ -80,6 +82,7 @@ class AbstractCoProtocolTransport(ABC):
 
     async def stop(self):
         self.__die_timestamp = None
+        await self.__cleanup_context()
 
     async def switch(self, message: Message) -> (bool, Message):
         """Send Message to other-side of protocol and wait for response
@@ -91,14 +94,18 @@ class AbstractCoProtocolTransport(ABC):
             raise SiriusPendingOperation('You must Setup protocol instance at first')
         try:
             self._rpc.timeout = self.__get_io_timeout()
-            event = await self._rpc.send_message(
-                message=message,
-                their_vk=self.__their_vk,
-                endpoint=self.__endpoint,
-                my_vk=self.__my_vk,
-                routing_keys=self.__routing_keys,
-                coprotocol=True
-            )
+            await self.__setup_context(message)
+            try:
+                event = await self._rpc.send_message(
+                    message=message,
+                    their_vk=self.__their_vk,
+                    endpoint=self.__endpoint,
+                    my_vk=self.__my_vk,
+                    routing_keys=self.__routing_keys,
+                    coprotocol=True
+                )
+            finally:
+                await self.__cleanup_context(message)
             payload = Message(event.get('message', {}))
             if payload:
                 ok, message = restore_message_instance(payload)
@@ -121,6 +128,7 @@ class AbstractCoProtocolTransport(ABC):
         if not self.__is_setup:
             raise SiriusPendingOperation('You must Setup protocol instance at first')
         self._rpc.timeout = self.__default_timeout
+        await self.__setup_context(message)
         await self._rpc.send_message(
             message=message,
             their_vk=self.__their_vk,
@@ -129,6 +137,29 @@ class AbstractCoProtocolTransport(ABC):
             routing_keys=self.__routing_keys,
             coprotocol=False
         )
+
+    async def __setup_context(self, message: Message):
+        if self.PLEASE_ACK_DECORATOR in message:
+            ack_message_id = message.get(self.PLEASE_ACK_DECORATOR, {}).get('message_id', None) or message.id
+            ttl = self.__get_io_timeout() or 3600
+            await self._rpc.start_protocol_with_threads(
+                threads=[ack_message_id], ttl=ttl
+            )
+            self.__please_ack_ids.append(ack_message_id)
+
+    async def __cleanup_context(self, message: Message=None):
+        if message:
+            if self.PLEASE_ACK_DECORATOR in message:
+                ack_message_id = message.get(self.PLEASE_ACK_DECORATOR, {}).get('message_id', None) or message.id
+                await self._rpc.stop_protocol_with_threads(
+                    threads=[ack_message_id], off_response=True
+                )
+                self.__please_ack_ids = [i for i in self.__please_ack_ids if i != ack_message_id]
+        else:
+            await self._rpc.stop_protocol_with_threads(
+                threads=self.__please_ack_ids, off_response=True
+            )
+            self.__please_ack_ids.clear()
 
     def __get_io_timeout(self):
         if self.__die_timestamp:

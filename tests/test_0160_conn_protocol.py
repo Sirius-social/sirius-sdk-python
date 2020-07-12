@@ -98,11 +98,17 @@ async def test_invitee_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
     inviter = agent1
     await inviter.open()
     try:
-        print('@')
+        my_did, my_verkey = await agent1.wallet.did.create_and_store_my_did()
+        me = Pairwise.Me(did=my_did, verkey=my_verkey)
         await run_coroutines(
-            run_invitee(agent1, invitation, 'Invitee'),
+            run_invitee(agent1, invitation, 'Invitee', me),
             read_events(agent1)
         )
-        print('@')
+        invitation_pairwise = None
+        for pairwise in await agent1.wallet.pairwise.list_pairwise():
+            if pairwise['my_did'] == my_did:
+                invitation_pairwise = pairwise
+                break
+        assert invitation_pairwise is not None
     finally:
         await inviter.close()

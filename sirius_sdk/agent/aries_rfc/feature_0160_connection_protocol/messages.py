@@ -143,9 +143,7 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
     @please_ack.setter
     def please_ack(self, flag: bool):
         if flag:
-            self['~please_ack'] = {
-                'message_id': self.id
-            }
+            self['~please_ack'] = {}
         elif '~please_ack' in self:
             del self['~please_ack']
 

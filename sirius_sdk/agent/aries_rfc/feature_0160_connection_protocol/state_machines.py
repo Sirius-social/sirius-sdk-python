@@ -140,6 +140,7 @@ class Invitee(AbstractStateMachine):
                 verkey=me.verkey,
                 endpoint=my_endpoint.address
             )
+            request.please_ack = True
             ok, response = await transport.switch(request)
             if ok:
                 if isinstance(response, ConnResponse):
