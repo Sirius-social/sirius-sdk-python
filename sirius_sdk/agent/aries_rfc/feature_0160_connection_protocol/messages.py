@@ -20,7 +20,7 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
     """
 
-    PROTOCOL = 'connection'
+    PROTOCOL = 'connections'
 
     @staticmethod
     async def sign_field(crypto: AbstractCrypto, field_value: Any, my_verkey: str) -> dict:
@@ -179,25 +179,25 @@ class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
         )
 
     @classmethod
-    def from_invitation_url(cls, url: str) -> ConnProtocolMessage:
+    def from_url(cls, url: str) -> ConnProtocolMessage:
         matches = re.match("(.+)?c_i=(.+)", url)
         if not matches:
             raise SiriusInvalidMessage("Invite string is improperly formatted")
         msg = Message.deserialize(base64.urlsafe_b64decode(matches.group(2)).decode('utf-8'))
-        if msg.type.protocol != cls.PROTOCOL:
+        if msg.protocol != cls.PROTOCOL:
             raise SiriusInvalidMessage('Unexpected protocol "%s"' % msg.type.protocol)
-        if msg.type.name != cls.NAME:
+        if msg.name != cls.NAME:
             raise SiriusInvalidMessage('Unexpected protocol name "%s"' % msg.type.name)
-        label = msg.pop('label', defaul=None)
+        label = msg.pop('label')
         if label is None:
             raise SiriusInvalidMessage('label attribute missing')
-        recipient_keys = msg.pop('recipientKeys', default=None)
+        recipient_keys = msg.pop('recipientKeys')
         if recipient_keys is None:
             raise SiriusInvalidMessage('recipientKeys attribute missing')
-        endpoint = msg.pop('serviceEndpoint', default=None)
+        endpoint = msg.pop('serviceEndpoint')
         if endpoint is None:
             raise SiriusInvalidMessage('serviceEndpoint attribute missing')
-        routing_keys = msg.pop('routingKeys', default=[])
+        routing_keys = msg.pop('routingKeys', [])
         return Invitation(label, recipient_keys, endpoint, routing_keys, **msg)
 
     @property

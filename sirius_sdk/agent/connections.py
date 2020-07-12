@@ -125,7 +125,7 @@ class AgentRPC(BaseAgentConnection):
     def networks(self) -> List[str]:
         return self.__networks
 
-    async def remote_call(self, msg_type: str, params: dict=None) -> Any:
+    async def remote_call(self, msg_type: str, params: dict=None, wait_response: bool=True) -> Any:
         """Call Agent services
 
         :param msg_type:
@@ -149,14 +149,15 @@ class AgentRPC(BaseAgentConnection):
         )
         if not await self.__tunnel_rpc.post(request):
             raise SiriusRPCError()
-        success = await future.wait(timeout=self._timeout)
-        if success:
-            if future.has_exception():
-                future.raise_exception()
+        if wait_response:
+            success = await future.wait(timeout=self._timeout)
+            if success:
+                if future.has_exception():
+                    future.raise_exception()
+                else:
+                    return future.get_value()
             else:
-                return future.get_value()
-        else:
-            raise SiriusTimeoutRPC()
+                raise SiriusTimeoutRPC()
         
     async def send_message(
             self, message: Message,
@@ -213,6 +214,16 @@ class AgentRPC(BaseAgentConnection):
             }
         )
 
+    async def start_protocol_with_threads(self, threads: List[str], ttl: int=None):
+        await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/start_protocol',
+            params={
+                'threads': threads,
+                'channel_address': self.__tunnel_coprotocols.address,
+                'ttl': ttl
+            }
+        )
+
     async def start_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, protocols: List[str], ttl: int=None):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/start_protocol',
@@ -230,6 +241,14 @@ class AgentRPC(BaseAgentConnection):
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
             params={
                 'thid': thid
+            }
+        )
+
+    async def stop_protocol_with_threads(self, threads: List[str]):
+        await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
+            params={
+                'threads': threads
             }
         )
 

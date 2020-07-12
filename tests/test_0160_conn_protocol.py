@@ -1,9 +1,19 @@
+import json
+
 import pytest
 
 from sirius_sdk import Agent, Pairwise
 from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol import *
 
-from .helpers import run_coroutines
+from .helpers import run_coroutines, IndyAgent
+
+
+async def read_events(agent: Agent):
+    listener = await agent.subscribe()
+    async for event in listener:
+        print('========= EVENT ============')
+        print(json.dumps(event, indent=2, sort_keys=True))
+        print('============================')
 
 
 async def run_inviter(agent: Agent, expected_connection_key: str, me: Pairwise.Me=None):
@@ -80,3 +90,19 @@ async def test_establish_connection(agent1: Agent, agent2: Agent):
     finally:
         await inviter.close()
         await invitee.close()
+
+
+async def test_invitee_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
+    their_invitaton = await indy_agent.create_invitation(label='Test Invitee')
+    invitation = Invitation.from_url(their_invitaton['url'])
+    inviter = agent1
+    await inviter.open()
+    try:
+        print('@')
+        await run_coroutines(
+            run_invitee(agent1, invitation, 'Invitee'),
+            read_events(agent1)
+        )
+        print('@')
+    finally:
+        await inviter.close()

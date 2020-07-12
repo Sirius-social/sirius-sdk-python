@@ -5,14 +5,22 @@ import pytest
 from sirius_sdk import Agent
 from sirius_sdk.rpc import AddressedTunnel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
-from .helpers import InMemoryChannel, ServerTestSuite
+from .helpers import InMemoryChannel, ServerTestSuite, IndyAgent
 
 
 SERVER_SUITE = None
+INDY_AGENT = None
 
 
 def pytest_configure():
+    # Address of TestSuite
     pytest.test_suite_baseurl = 'http://agent'
+    # Back compatibility testing
+    pytest.old_agent_address = 'http://10.0.0.52:8888'
+    pytest.old_agent_root = {
+        'username': 'root',
+        'password': 'root'
+    }
 
 
 @pytest.fixture()
@@ -56,6 +64,15 @@ def get_suite_singleton() -> ServerTestSuite:
     return SERVER_SUITE
 
 
+def get_indy_agent_singleton() -> IndyAgent:
+    global INDY_AGENT
+    if not isinstance(INDY_AGENT, IndyAgent):
+        agent = IndyAgent()
+        asyncio.get_event_loop().run_until_complete(agent.ensure_is_alive())
+        INDY_AGENT = agent
+    return INDY_AGENT
+
+
 def get_agent(name: str) -> Agent:
     params = get_suite_singleton().get_agent_params(name)
     agent = Agent(
@@ -70,6 +87,11 @@ def get_agent(name: str) -> Agent:
 @pytest.fixture()
 def test_suite() -> ServerTestSuite:
     return get_suite_singleton()
+
+
+@pytest.fixture()
+def indy_agent() -> IndyAgent:
+    return get_indy_agent_singleton()
 
 
 @pytest.fixture()
