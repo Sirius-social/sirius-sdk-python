@@ -130,6 +130,7 @@ class AgentRPC(BaseAgentConnection):
 
         :param msg_type:
         :param params:
+        :param wait_response: wait for response
         :return:
         """
         if not self._connector.is_open:
@@ -236,30 +237,38 @@ class AgentRPC(BaseAgentConnection):
             }
         )
 
-    async def stop_protocol_with_threading(self, thid: str):
+    async def stop_protocol_with_threading(self, thid: str, off_response: bool=False):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
             params={
-                'thid': thid
-            }
+                'thid': thid,
+                'off_response': off_response
+            },
+            wait_response=not off_response
         )
 
-    async def stop_protocol_with_threads(self, threads: List[str]):
+    async def stop_protocol_with_threads(self, threads: List[str], off_response: bool=False):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
             params={
-                'threads': threads
-            }
+                'threads': threads,
+                'off_response': off_response
+            },
+            wait_response=not off_response
         )
 
-    async def stop_protocol_for_p2p(self, sender_verkey: str, recipient_verkey: str, protocols: List[str]):
+    async def stop_protocol_for_p2p(
+            self, sender_verkey: str, recipient_verkey: str, protocols: List[str], off_response: bool=False
+    ):
         await self.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/stop_protocol',
             params={
                 'sender_verkey': sender_verkey,
                 'recipient_verkey': recipient_verkey,
                 'protocols': protocols,
-            }
+                'off_response': off_response
+            },
+            wait_response=not off_response
         )
 
     @classmethod
