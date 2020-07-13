@@ -10,7 +10,7 @@ from typing import List, Optional, Any
 from ....errors.exceptions import *
 from ....messaging import Message, check_for_attributes
 from ....agent.wallet.abstract.crypto import AbstractCrypto
-from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport
+from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from ..did_doc import DIDDoc
 
 
@@ -136,6 +136,10 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
             self.did_doc.validate()
 
     @property
+    def ack_message_id(self) -> str:
+        return self.get('~please_ack', {}).get('message_id', None) or self.id
+
+    @property
     def please_ack(self) -> bool:
         """https://github.com/hyperledger/aries-rfcs/tree/master/features/0317-please-ack"""
         return self.get('~please_ack', None) is not None
@@ -143,13 +147,23 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
     @please_ack.setter
     def please_ack(self, flag: bool):
         if flag:
-            self['~please_ack'] = {}
+            self['~please_ack'] = {'message_id': self.id}
         elif '~please_ack' in self:
             del self['~please_ack']
 
+    @property
+    def thread_id(self) -> Optional[str]:
+        return self.get('THREAD_DECORATOR', {}).get('thid', None)
+
+    @thread_id.setter
+    def thread_id(self, thid: str):
+        thread = self.get(THREAD_DECORATOR, {})
+        thread['thid'] = thid
+        self[THREAD_DECORATOR] = thread
+
 
 class ConnProblemReport(AriesProblemReport, metaclass=RegisterMessage):
-    PROTOCOL = 'connection'
+    PROTOCOL = ConnProtocolMessage.PROTOCOL
 
 
 class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
@@ -200,7 +214,7 @@ class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
 
     @property
     def invitation_url(self):
-        b64_invite = base64.urlsafe_b64encode(self.serialize()).decode('ascii')
+        b64_invite = base64.urlsafe_b64encode(self.serialize().encode('ascii')).decode('ascii')
         return '?c_i=' + b64_invite
 
     @property

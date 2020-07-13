@@ -1,3 +1,4 @@
+import json
 import logging
 
 from ....agent.pairwise import Pairwise, TheirEndpoint
@@ -43,11 +44,13 @@ class Inviter(AbstractStateMachine):
             routing_keys=their_routing_keys
         )
         # Allocate transport channel between self and theirs by verkeys factor
-        transport = await self.transports.spawn(connection_key, invitee_endpoint)
+        transport = await self.transports.spawn(me.verkey, invitee_endpoint)
         await transport.start(self.protocols, self.time_to_live)
         try:
             # Step 2: build connection response
             response = ConnResponse(did=me.did, verkey=me.verkey, endpoint=my_endpoint.address)
+            if request.please_ack:
+                response.thread_id = request.ack_message_id
             my_did_doc = response.did_doc
             await response.sign_connection(transport.wallet.crypto, connection_key)
             response.please_ack = True
@@ -83,6 +86,10 @@ class Inviter(AbstractStateMachine):
                     }
                     pairwise = Pairwise(me=me, their=their, metadata=metadata)
                     return True, pairwise
+                elif isinstance(response, ConnProblemReport):
+                    self.__problem_report = response
+                    logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
+                    return False, None
                 else:
                     self.__problem_report = ConnProblemReport(
                         problem_code=REQUEST_PROCESSING_ERROR,

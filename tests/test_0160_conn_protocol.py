@@ -92,6 +92,7 @@ async def test_establish_connection(agent1: Agent, agent2: Agent):
         await invitee.close()
 
 
+@pytest.mark.asyncio
 async def test_invitee_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
     their_invitaton = await indy_agent.create_invitation(label='Test Invitee')
     invitation = Invitation.from_url(their_invitaton['url'])
@@ -112,3 +113,28 @@ async def test_invitee_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
         assert invitation_pairwise is not None
     finally:
         await inviter.close()
+
+
+@pytest.mark.asyncio
+async def test_inviter_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
+    await agent1.open()
+    try:
+        # Get endpoints
+        my_endpoint_address = [e for e in agent1.endpoints if e.routing_keys == []][0].address
+        connection_key = await agent1.wallet.crypto.create_key()
+        my_invitation = Invitation(label='Inviter', endpoint=my_endpoint_address, recipient_keys=[connection_key])
+        url = my_invitation.invitation_url
+        my_did, my_verkey = await agent1.wallet.did.create_and_store_my_did()
+        me = Pairwise.Me(did=my_did, verkey=my_verkey)
+        await run_coroutines(
+            run_inviter(agent1, connection_key, me),
+            indy_agent.invite(invitation_url=url),
+        )
+        invitated_pairwise = None
+        for pairwise in await agent1.wallet.pairwise.list_pairwise():
+            if pairwise['my_did'] == my_did:
+                invitated_pairwise = pairwise
+                break
+        assert invitated_pairwise is not None
+    finally:
+        await agent1.close()

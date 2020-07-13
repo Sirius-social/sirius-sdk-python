@@ -35,6 +35,19 @@ class IndyAgent:
     def default_invitation(self) -> dict:
         return self.__default_invitation
 
+    async def invite(self, invitation_url: str, for_did: str=None, ttl: int=None):
+        url = '/agent/admin/wallets/%s/endpoints/%s/invite/' % (self.WALLET, self.endpoint['uid'])
+        params = {'url': invitation_url, 'pass_phrase': self.PASS_PHRASE}
+        if for_did:
+            params['my_did'] = for_did
+        if ttl:
+            params['ttl'] = ttl
+        ok, resp = await self.__http_post(
+            path=url,
+            json_=params
+        )
+        assert ok
+
     async def load_invitations(self):
         url = '/agent/admin/wallets/%s/endpoints/%s/invitations/' % (self.WALLET, self.__endpoint['uid'])
         ok, collection = await self.__http_get(url)
