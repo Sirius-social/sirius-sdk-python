@@ -153,10 +153,11 @@ class Agent(TransportLayers):
         self.__pairwise_list = WalletPairwiseList(api=self.__wallet.pairwise)
 
     async def subscribe(self) -> Listener:
+        self.__check_is_open()
         self.__events = await AgentEvents.create(
             self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
         )
-        return Listener(self.__events)
+        return Listener(self.__events, self.pairwise_list)
 
     async def close(self):
         if self.__rpc:

@@ -199,10 +199,11 @@ class TheirEndpointCoProtocolTransport(AbstractCoProtocolTransport):
 
     async def stop(self):
         await super().stop()
-        await self._rpc.start_protocol_for_p2p(
+        await self._rpc.stop_protocol_for_p2p(
             sender_verkey=self.__my_verkey,
             recipient_verkey=self.__endpoint.verkey,
-            protocols=self.protocols
+            protocols=self.protocols,
+            off_response=True
         )
 
 
@@ -231,10 +232,11 @@ class PairwiseCoProtocolTransport(AbstractCoProtocolTransport):
 
     async def stop(self):
         await super().stop()
-        await self._rpc.start_protocol_for_p2p(
+        await self._rpc.stop_protocol_for_p2p(
             sender_verkey=self.__pairwise.me.verkey,
             recipient_verkey=self.__pairwise.their.verkey,
-            protocols=self.protocols
+            protocols=self.protocols,
+            off_response=True
         )
 
 
@@ -266,7 +268,7 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
 
     async def stop(self):
         await super().stop()
-        await self._rpc.stop_protocol_with_threading(self.__thid)
+        await self._rpc.stop_protocol_with_threading(self.__thid, True)
 
     async def switch(self, message: Message) -> (bool, Message):
         self.__prepare_message(message)
