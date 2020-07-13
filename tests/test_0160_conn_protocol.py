@@ -32,17 +32,7 @@ async def run_inviter(agent: Agent, expected_connection_key: str, me: Pairwise.M
             # create connection
             ok, pairwise = await machine.create_connection(me, connection_key, request, my_endpoint)
             assert ok is True
-            if await agent.wallet.pairwise.is_pairwise_exists(pairwise.their.did):
-                await agent.wallet.pairwise.set_pairwise_metadata(
-                    their_did=pairwise.their.did,
-                    metadata=pairwise.metadata
-                )
-            else:
-                await agent.wallet.pairwise.create_pairwise(
-                    their_did=pairwise.their.did,
-                    my_did=pairwise.me.did,
-                    metadata=pairwise.metadata
-                )
+            await agent.pairwise_list.ensure_exists(pairwise)
     pass
 
 
@@ -58,18 +48,6 @@ async def run_invitee(agent: Agent, invitation: Invitation, my_label: str, me: P
     )
     assert ok is True
     await agent.pairwise_list.ensure_exists(pairwise)
-    return
-    if await agent.wallet.pairwise.is_pairwise_exists(pairwise.their.did):
-        await agent.wallet.pairwise.set_pairwise_metadata(
-            their_did=pairwise.their.did,
-            metadata=pairwise.metadata
-        )
-    else:
-        await agent.wallet.pairwise.create_pairwise(
-            their_did=pairwise.their.did,
-            my_did=pairwise.me.did,
-            metadata=pairwise.metadata
-        )
 
 
 @pytest.mark.asyncio
@@ -97,9 +75,15 @@ async def test_establish_connection(agent1: Agent, agent2: Agent):
         # Check for Inviter
         pairwise = await inviter.wallet.pairwise.get_pairwise(invitee_me.did)
         assert pairwise['my_did'] == inviter_me.did
+        pairwise = await inviter.pairwise_list.load_for_verkey(invitee_me.verkey)
+        assert pairwise is not None
+        assert pairwise.their.did == invitee_me.did
         # Check for Invitee
         pairwise = await invitee.wallet.pairwise.get_pairwise(inviter_me.did)
         assert pairwise['my_did'] == invitee_me.did
+        pairwise = await invitee.pairwise_list.load_for_verkey(inviter_me.verkey)
+        assert pairwise is not None
+        assert pairwise.their.did == inviter_me.did
 
     finally:
         await inviter.close()
