@@ -32,11 +32,17 @@ async def run_inviter(agent: Agent, expected_connection_key: str, me: Pairwise.M
             # create connection
             ok, pairwise = await machine.create_connection(me, connection_key, request, my_endpoint)
             assert ok is True
-            await agent.wallet.pairwise.create_pairwise(
-                their_did=pairwise.their.did,
-                my_did=pairwise.me.did,
-                metadata=pairwise.metadata
-            )
+            if await agent.wallet.pairwise.is_pairwise_exists(pairwise.their.did):
+                await agent.wallet.pairwise.set_pairwise_metadata(
+                    their_did=pairwise.their.did,
+                    metadata=pairwise.metadata
+                )
+            else:
+                await agent.wallet.pairwise.create_pairwise(
+                    their_did=pairwise.their.did,
+                    my_did=pairwise.me.did,
+                    metadata=pairwise.metadata
+                )
     pass
 
 
@@ -51,11 +57,17 @@ async def run_invitee(agent: Agent, invitation: Invitation, my_label: str, me: P
         me=me, invitation=invitation, my_label=my_label, my_endpoint=my_endpoint
     )
     assert ok is True
-    await agent.wallet.pairwise.create_pairwise(
-        their_did=pairwise.their.did,
-        my_did=pairwise.me.did,
-        metadata=pairwise.metadata
-    )
+    if await agent.wallet.pairwise.is_pairwise_exists(pairwise.their.did):
+        await agent.wallet.pairwise.set_pairwise_metadata(
+            their_did=pairwise.their.did,
+            metadata=pairwise.metadata
+        )
+    else:
+        await agent.wallet.pairwise.create_pairwise(
+            their_did=pairwise.their.did,
+            my_did=pairwise.me.did,
+            metadata=pairwise.metadata
+        )
 
 
 @pytest.mark.asyncio
@@ -86,6 +98,53 @@ async def test_establish_connection(agent1: Agent, agent2: Agent):
         # Check for Invitee
         pairwise = await invitee.wallet.pairwise.get_pairwise(inviter_me.did)
         assert pairwise['my_did'] == invitee_me.did
+
+    finally:
+        await inviter.close()
+        await invitee.close()
+
+
+@pytest.mark.asyncio
+async def test_update_pairwise_metadata_for_inviter(agent1: Agent, agent2: Agent):
+    inviter = agent1
+    invitee = agent2
+    await inviter.open()
+    await invitee.open()
+    try:
+        # Init Me
+        did, verkey = await inviter.wallet.did.create_and_store_my_did()
+        inviter_side = Pairwise.Me(did, verkey)
+        did, verkey = await invitee.wallet.did.create_and_store_my_did()
+        invitee_side = Pairwise.Me(did, verkey)
+        # Manually set pairwise list
+        await inviter.wallet.did.store_their_did(invitee_side.did, invitee_side.verkey)
+        await invitee.wallet.did.store_their_did(inviter_side.did, inviter_side.verkey)
+        await inviter.wallet.pairwise.create_pairwise(
+            their_did=invitee_side.did,
+            my_did=inviter_side.did
+        )
+        await invitee.wallet.pairwise.create_pairwise(
+            their_did=inviter_side.did,
+            my_did=invitee_side.did
+        )
+
+        # Run
+        inviter_endpoint_address = [e for e in inviter.endpoints if e.routing_keys == []][0].address
+        connection_key = await inviter.wallet.crypto.create_key()
+        invitation = Invitation(label='Inviter', endpoint=inviter_endpoint_address, recipient_keys=[connection_key])
+
+        await run_coroutines(
+            run_inviter(inviter, connection_key, inviter_side),
+            run_invitee(invitee, invitation, 'Invitee', invitee_side)
+        )
+
+        # Check for Inviter
+        pairwise = await inviter.wallet.pairwise.get_pairwise(invitee_side.did)
+        assert pairwise['metadata'] != {}
+
+        # Check for Invitee
+        pairwise = await invitee.wallet.pairwise.get_pairwise(inviter_side.did)
+        assert pairwise['metadata'] != {}
 
     finally:
         await inviter.close()
