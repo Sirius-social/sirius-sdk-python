@@ -5,10 +5,12 @@ import time
 import json
 import struct
 import base64
-from typing import List, Optional, Any
+from typing import List, Optional
+from urllib.parse import urljoin
 
 from ....errors.exceptions import *
 from ....messaging import Message, check_for_attributes
+from ....agent.agent import Agent
 from ....agent.wallet.abstract.crypto import AbstractCrypto
 from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from ..did_doc import DIDDoc
@@ -213,9 +215,13 @@ class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
         return Invitation(label, recipient_keys, endpoint, routing_keys, **msg)
 
     @property
-    def invitation_url(self):
+    def invitation_url(self) -> str:
         b64_invite = base64.urlsafe_b64encode(self.serialize().encode('ascii')).decode('ascii')
         return '?c_i=' + b64_invite
+
+    async def allocate_qr(self, base_url: str, agent: Agent) -> str:
+        full_url = urljoin(base_url, self.invitation_url)
+        return await agent.generate_qr_code(value=full_url)
 
     @property
     def label(self) -> str:

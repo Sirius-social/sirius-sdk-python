@@ -204,3 +204,12 @@ class Agent(TransportLayers):
             my_vk=to.me.verkey,
             routing_keys=to.their.routing_keys
         )
+
+    async def generate_qr_code(self, value: str) -> str:
+        resp = await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/generate_qr',
+            params={
+                'value': value
+            }
+        )
+        return resp['url']

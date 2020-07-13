@@ -7,7 +7,7 @@ from typing import List, Any, Union, Optional
 from ..base import WebSocketConnector
 from ..encryption import P2PConnection
 from ..rpc import AddressedTunnel, build_request, Future
-from ..messaging import Message
+from ..messaging import Message, Type as MessageType
 from ..errors.exceptions import *
 from .transport import http_send
 
@@ -148,7 +148,8 @@ class AgentRPC(BaseAgentConnection):
             future=future,
             params=params or {}
         )
-        if not await self.__tunnel_rpc.post(request):
+        msg_typ = MessageType.from_str(msg_type)
+        if not await self.__tunnel_rpc.post(message=request, encrypt=msg_typ.protocol != 'admin'):
             raise SiriusRPCError()
         if wait_response:
             success = await future.wait(timeout=self._timeout)
