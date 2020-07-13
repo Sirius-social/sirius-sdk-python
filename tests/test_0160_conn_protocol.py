@@ -57,6 +57,8 @@ async def run_invitee(agent: Agent, invitation: Invitation, my_label: str, me: P
         me=me, invitation=invitation, my_label=my_label, my_endpoint=my_endpoint
     )
     assert ok is True
+    await agent.pairwise_list.ensure_exists(pairwise)
+    return
     if await agent.wallet.pairwise.is_pairwise_exists(pairwise.their.did):
         await agent.wallet.pairwise.set_pairwise_metadata(
             their_did=pairwise.their.did,
@@ -196,4 +198,4 @@ async def test_inviter_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
                 break
         assert invitated_pairwise is not None
     finally:
-        await agent1.cl
+        await agent1.close()

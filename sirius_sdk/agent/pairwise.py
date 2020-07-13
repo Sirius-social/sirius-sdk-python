@@ -105,26 +105,19 @@ class WalletPairwiseList(AbstractPairwiseList):
         if await self.is_exists(their_did):
             raw = await self._api.get_pairwise(their_did)
             metadata = raw['metadata']
-            pairwise = Pairwise(
-                me=Pairwise.Me(
-                    did=raw['me']['did'],
-                    verkey=raw['me']['verkey']
-                ),
-                their=Pairwise.Their(
-                    did=raw['their']['did'],
-                    verkey=raw['their']['verkey'],
-                    label=raw['their']['label'],
-                    endpoint=raw['their']['endpoint']['address'],
-                    routing_keys=raw['their']['endpoint']['routing_keys']
-                ),
-                metadata=metadata
-            )
+            pairwise = self._restore_pairwise(metadata)
             return pairwise
         else:
             return None
 
     async def load_for_verkey(self, their_verkey: str) -> Optional[Pairwise]:
-        pass
+        collection, count = await self._api.search(tags={'their_verkey': their_verkey}, limit=1)
+        if collection:
+            metadata = collection[0]['metadata']
+            pairwise = self._restore_pairwise(metadata)
+            return pairwise
+        else:
+            return None
 
     @staticmethod
     def _build_tags(p: Pairwise):
@@ -133,3 +126,21 @@ class WalletPairwiseList(AbstractPairwiseList):
             'my_verkey': p.me.verkey,
             'their_verkey': p.their.verkey
         }
+
+    @staticmethod
+    def _restore_pairwise(metadata: dict):
+        pairwise = Pairwise(
+            me=Pairwise.Me(
+                did=metadata['me']['did'],
+                verkey=metadata['me']['verkey']
+            ),
+            their=Pairwise.Their(
+                did=metadata['their']['did'],
+                verkey=metadata['their']['verkey'],
+                label=metadata['their']['label'],
+                endpoint=metadata['their']['endpoint']['address'],
+                routing_keys=metadata['their']['endpoint']['routing_keys']
+            ),
+            metadata=metadata
+        )
+        return pairwise
