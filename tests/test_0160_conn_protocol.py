@@ -105,7 +105,7 @@ async def test_establish_connection(agent1: Agent, agent2: Agent):
 
 
 @pytest.mark.asyncio
-async def test_update_pairwise_metadata_for_inviter(agent1: Agent, agent2: Agent):
+async def test_update_pairwise_metadata(agent1: Agent, agent2: Agent):
     inviter = agent1
     invitee = agent2
     await inviter.open()
@@ -196,4 +196,4 @@ async def test_inviter_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
                 break
         assert invitated_pairwise is not None
     finally:
-        await agent1.close()
+        await agent1.cl

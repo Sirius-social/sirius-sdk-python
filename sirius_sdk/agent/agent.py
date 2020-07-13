@@ -11,6 +11,7 @@ from .listener import Listener
 from .pairwise import Pairwise, TheirEndpoint
 from .wallet.wallets import DynamicWallet
 from .ledger import Ledger
+from .pairwise import AbstractPairwiseList, WalletPairwiseList
 from .storages import InWalletImmutableCollection
 from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
@@ -70,14 +71,27 @@ class Agent(TransportLayers):
         self.__endpoints = []
         self.__ledgers = {}
         self.__storage = storage
+        self.__pairwise_list = None
 
     @property
     def wallet(self) -> DynamicWallet:
         """Indy wallet keys/schemas/CredDefs maintenance"""
+        self.__check_is_open()
         return self.__wallet
 
     def ledger(self, name: str) -> Ledger:
+        self.__check_is_open()
         return self.__ledgers.get(name, None)
+
+    @property
+    def endpoints(self) -> List[Endpoint]:
+        self.__check_is_open()
+        return self.__endpoints
+
+    @property
+    def pairwise_list(self) -> AbstractPairwiseList:
+        self.__check_is_open()
+        return self.__pairwise_list
 
     @dispatch(str, TheirEndpoint)
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
@@ -123,13 +137,6 @@ class Agent(TransportLayers):
             pthid=pthid
         )
 
-    @property
-    def endpoints(self) -> List[Endpoint]:
-        if self.__rpc and self.__rpc.is_open:
-            return self.__endpoints
-        else:
-            raise RuntimeError('Open Agent at first!')
-
     async def open(self):
         self.__rpc = await AgentRPC.create(
             self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
@@ -143,6 +150,7 @@ class Agent(TransportLayers):
                 name=network, api=self.__wallet.ledger,
                 issuer=self.__wallet.anoncreds, cache=self.__wallet.cache, storage=self.__storage
             )
+        self.__pairwise_list = WalletPairwiseList(api=self.__wallet.pairwise)
 
     async def subscribe(self) -> Listener:
         self.__events = await AgentEvents.create(
@@ -182,6 +190,7 @@ class Agent(TransportLayers):
            - https://github.com/hyperledger/aries-rfcs/tree/master/features/0019-encryption-envelope#authcrypt-mode-vs-anoncrypt-mode
         :param routing_keys: Routing key of recipient
         """
+        self.__check_is_open()
         await self.__rpc.send_message(
             message=message, their_vk=their_vk, endpoint=endpoint,
             my_vk=my_vk, routing_keys=routing_keys, coprotocol=False
@@ -197,6 +206,7 @@ class Agent(TransportLayers):
            - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0020-message-types
         :param to: Pairwise (P2P) connection that have been established outside
         """
+        self.__check_is_open()
         await self.send_message(
             message=message,
             their_vk=to.their.verkey,
@@ -206,6 +216,7 @@ class Agent(TransportLayers):
         )
 
     async def generate_qr_code(self, value: str) -> str:
+        self.__check_is_open()
         resp = await self.__rpc.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/generate_qr',
             params={
@@ -213,3 +224,9 @@ class Agent(TransportLayers):
             }
         )
         return resp['url']
+
+    def __check_is_open(self):
+        if self.__rpc and self.__rpc.is_open:
+            return self.__endpoints
+        else:
+            raise RuntimeError('Open Agent at first!')

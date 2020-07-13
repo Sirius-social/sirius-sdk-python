@@ -56,3 +56,13 @@ class AbstractPairwise(ABC):
         :param tags: tags for searching operation
         """
         raise NotImplemented
+
+    @abstractmethod
+    async def search(self, tags: dict, limit: int = None) -> (List[dict], int):
+        """Search Pairwises
+
+        :param tags: tags based query
+        :param limit: max items count
+        :return: Results, TotalCount
+        """
+        raise NotImplemented

@@ -37,3 +37,9 @@ class PairwiseProxy(AbstractPairwise):
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/set_pairwise_metadata',
             params=dict(their_did=their_did, metadata=metadata, tags=tags)
         )
+
+    async def search(self, tags: dict, limit: int = None) -> (List[dict], int):
+        return await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/search_pairwise',
+            params=dict(tags=tags, limit=limit)
+        )
