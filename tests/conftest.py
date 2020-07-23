@@ -1,3 +1,4 @@
+import uuid
 import asyncio
 
 import pytest
@@ -112,3 +113,8 @@ def agent3() -> Agent:
 @pytest.fixture()
 def agent4() -> Agent:
     return get_agent('agent4')
+
+
+@pytest.fixture()
+def ledger_name() -> str:
+    return 'Ledger-' + uuid.uuid4().hex

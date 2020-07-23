@@ -13,6 +13,7 @@ from .wallet.wallets import DynamicWallet
 from .ledger import Ledger
 from .pairwise import AbstractPairwiseList, WalletPairwiseList
 from .storages import InWalletImmutableCollection
+from .microledgers import MicroledgerList
 from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
@@ -72,6 +73,7 @@ class Agent(TransportLayers):
         self.__ledgers = {}
         self.__storage = storage
         self.__pairwise_list = None
+        self.__microledgers = None
 
     @property
     def wallet(self) -> DynamicWallet:
@@ -87,6 +89,11 @@ class Agent(TransportLayers):
     def endpoints(self) -> List[Endpoint]:
         self.__check_is_open()
         return self.__endpoints
+
+    @property
+    def microledgers(self) -> MicroledgerList:
+        self.__check_is_open()
+        return self.__microledgers
 
     @property
     def pairwise_list(self) -> AbstractPairwiseList:
@@ -151,6 +158,7 @@ class Agent(TransportLayers):
                 issuer=self.__wallet.anoncreds, cache=self.__wallet.cache, storage=self.__storage
             )
         self.__pairwise_list = WalletPairwiseList(api=self.__wallet.pairwise)
+        self.__microledgers = MicroledgerList(api=self.__rpc)
 
     async def subscribe(self) -> Listener:
         self.__check_is_open()

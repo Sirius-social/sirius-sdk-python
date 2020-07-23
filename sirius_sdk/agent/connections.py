@@ -149,7 +149,8 @@ class AgentRPC(BaseAgentConnection):
             params=params or {}
         )
         msg_typ = MessageType.from_str(msg_type)
-        if not await self.__tunnel_rpc.post(message=request, encrypt=msg_typ.protocol != 'admin'):
+        encrypt = msg_typ.protocol not in ['admin', 'microledgers']
+        if not await self.__tunnel_rpc.post(message=request, encrypt=encrypt):
             raise SiriusRPCError()
         if wait_response:
             success = await future.wait(timeout=self._timeout)

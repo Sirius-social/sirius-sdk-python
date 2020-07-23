@@ -19,6 +19,7 @@ class Transaction(dict):
         inst = Transaction(*args, **kwargs)
         if inst[METADATA_ATTR] != {}:
             raise SiriusContextError('"%s" attribute must be empty for new transaction' % METADATA_ATTR)
+        return inst
 
     @staticmethod
     def from_value(from_: Union[List[dict], dict]) -> Union[List[Dict], Dict]:
@@ -43,6 +44,27 @@ class MerkleInfo:
     @property
     def audit_path(self) -> List[str]:
         return self.__audit_path
+
+
+class LedgerMeta(dict):
+
+    def __init__(self, name: str, uid: str, created: str):
+        super().__init__()
+        self['name'] = name
+        self['uid'] = uid
+        self['created'] = created
+
+    @property
+    def name(self) -> str:
+        return self['name']
+
+    @property
+    def uid(self) -> str:
+        return self['uid']
+
+    @property
+    def created(self) -> str:
+        return self['created']
 
 
 class AuditProof(MerkleInfo):
@@ -101,23 +123,33 @@ class Microledger:
         )
         self.__state = state
 
-    async def init(self, genesis: List[Transaction]):
-        await self.__api.remote_call(
+    async def init(self, genesis: List[Transaction]) -> List[Transaction]:
+        self.__state, txns = await self.__api.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/initialize',
             params={
                 'name': self.name,
                 'genesis_txns': genesis
             }
         )
+        txns = [Transaction.from_value(txn) for txn in txns]
+        return txns
 
     async def append(
-            self, transactions: List[Transaction], txn_time: Union[str, int]=None
+            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int]=None
     ) -> (int, int, List[Transaction]):
+        transactions_to_append = []
+        for txn in transactions:
+            if isinstance(txn, Transaction):
+                transactions_to_append.append(txn)
+            elif isinstance(txn, dict):
+                transactions_to_append.append(Transaction.create(txn))
+            else:
+                raise RuntimeError('Unexpected transaction type')
         transactions_with_meta = await self.__api.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/append_txns_metadata',
             params={
                 'name': self.name,
-                'txns': transactions,
+                'txns': transactions_to_append,
                 'txn_time': txn_time
             }
         )
@@ -237,6 +269,7 @@ class Microledger:
                 'name': self.name
             }
         )
+        txns = [t[1] for t in txns]
         txns = Transaction.from_value(txns)
         assert isinstance(txns, list)
         return txns
@@ -252,17 +285,69 @@ class Microledger:
         assert isinstance(txns, list)
         return txns
 
-    async def reset(self):
-        await self.__api.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/reset',
-            params={
-                'name': self.name
-            }
-        )
-
     def __check_state_is_exists(self):
         if self.__state is None:
             raise SiriusContextError('Load state of Microledger at First!')
 
 
+class MicroledgerList:
 
+    def __init__(self, api: AgentRPC):
+        self.__api = api
+        self.instances = {}
+
+    async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (Microledger, List[Transaction]):
+        genesis_txns = []
+        for txn in genesis:
+            if isinstance(txn, Transaction):
+                genesis_txns.append(txn)
+            elif isinstance(txn, dict):
+                genesis_txns.append(Transaction.create(txn))
+            else:
+                raise RuntimeError('Unexpected transaction type')
+        instance = Microledger(name, self.__api)
+        txns = await instance.init(genesis_txns)
+        self.instances[name] = instance
+        return instance, txns
+
+    async def ledger(self, name: str) -> Microledger:
+        if name not in self.instances:
+            await self.__check_is_exists(name)
+            instance = Microledger(name, self.__api)
+            self.instances[name] = instance
+        return self.instances[name]
+
+    async def reset(self, name: str):
+        await self.__check_is_exists(name)
+        await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/reset',
+            params={
+                'name': name
+            }
+        )
+        if name in self.instances.keys():
+            del self.instances[name]
+
+    async def is_exists(self, name: str):
+        is_exists = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/is_exists',
+            params={
+                'name': name
+            }
+        )
+        return is_exists
+
+    async def list(self) -> List[LedgerMeta]:
+        collection = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/list',
+            params={
+                'name': '*'
+            }
+        )
+        return [LedgerMeta(**item) for item in collection]
+
+    async def __check_is_exists(self, name: str):
+        if name not in self.instances.keys():
+            is_exists = await self.is_exists(name)
+            if not is_exists:
+                raise SiriusContextError('MicroLedger with name "" does not exists' % name)
