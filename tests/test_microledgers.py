@@ -264,19 +264,20 @@ async def test_audit_proof(agent4: Agent, ledger_name: str):
         ]
         await ledger.append(txns)
 
-        accum = []
+        audit_paths = []
         for seq_no in [1, 2, 3, 4, 5, 6]:
             audit_proof = await ledger.audit_proof(seq_no)
             assert audit_proof.root_hash == '3eDS4j8HgpAyRnuvfFG624KKvQBuNXKBenhqHmHtUgeq'
             assert audit_proof.ledger_size == 6
-            assert audit_proof.audit_path not in accum
-            accum.append(audit_proof.audit_path)
+            assert audit_proof.audit_path not in audit_paths
+            audit_paths.append(audit_proof.audit_path)
 
         for seq_no in [7, 8, 9]:
             audit_proof = await ledger.audit_proof(seq_no)
             assert audit_proof.root_hash == '3eDS4j8HgpAyRnuvfFG624KKvQBuNXKBenhqHmHtUgeq'
             assert audit_proof.ledger_size == 6
-            accum.append(audit_proof.audit_path)
+            audit_paths.append(audit_proof.audit_path)
+            assert ledger.uncommitted_root_hash == 'Dkoca8Af15uMLBHAqbddwqmpiqsaDEtKDoFVfNRXt44g'
         print('@')
     finally:
         await agent4.close()
