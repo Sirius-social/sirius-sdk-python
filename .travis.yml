@@ -5,7 +5,9 @@ services:
   
 before_install:
   # Run TestSuite
-  - cd ./test_suite && docker-compose up -d
+  - cd ./test_suite
+  - docker-compose up -d
+  - cd ..
   
 python:
   - "3.6"      # current default Python on Travis CI
