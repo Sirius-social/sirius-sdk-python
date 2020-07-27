@@ -1,3 +1,4 @@
+import os
 import uuid
 import asyncio
 
@@ -15,9 +16,9 @@ INDY_AGENT = None
 
 def pytest_configure():
     # Address of TestSuite
-    pytest.test_suite_baseurl = 'http://agent'
+    pytest.test_suite_baseurl = os.getenv('TEST_SUITE_BASE_URL') or 'http://agent'
     # Back compatibility testing
-    pytest.old_agent_address = 'http://10.0.0.52:8888'
+    pytest.old_agent_address = os.getenv('INDY_AGENT_BASE_URL') or 'http://10.0.0.52:8888'
     pytest.old_agent_root = {
         'username': 'root',
         'password': 'root'
