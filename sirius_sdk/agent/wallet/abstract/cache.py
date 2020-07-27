@@ -1,10 +1,10 @@
 import json
 from abc import ABC, abstractmethod
 
-from core.definitions import StringSerializableValue
+from ....base import JsonSerializable
 
 
-class CacheOptions(StringSerializableValue):
+class CacheOptions(JsonSerializable):
 
     def __init__(self, no_cache: bool=False, no_update: bool=False, no_store: bool=False, min_fresh: int=-1):
         """
@@ -37,7 +37,7 @@ class CacheOptions(StringSerializableValue):
         self.min_fresh = data.get('minFresh', -1)
 
 
-class PurgeOptions(StringSerializableValue):
+class PurgeOptions(JsonSerializable):
 
     def __init__(self, max_age: int=-1):
         self.max_age = max_age

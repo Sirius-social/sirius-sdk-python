@@ -2,10 +2,10 @@ import json
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
-from core.definitions import StringSerializableValue
+from ....base import JsonSerializable
 
 
-class RetrieveRecordOptions(StringSerializableValue):
+class RetrieveRecordOptions(JsonSerializable):
 
     def __init__(self, retrieve_type: bool=False, retrieve_value: bool=False, retrieve_tags: bool=False):
         self.retrieve_type = retrieve_type
