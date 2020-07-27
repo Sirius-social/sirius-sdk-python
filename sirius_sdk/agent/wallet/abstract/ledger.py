@@ -3,8 +3,6 @@ from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Optional, List, Any
 
-import indy.ledger
-
 
 class NYMRole(Enum):
 
