@@ -88,7 +88,8 @@ def test_aries_ack():
     message = Ack(thread_id='ack-thread-id', status=AckStatus.PENDING)
     assert message.protocol == 'notification'
     assert message.name == 'ack'
-    assert message.version == '1.0.0'
+    assert message.version == '1.0'
+    assert str(message.version_info) == '1.0.0'
     assert message.status == AckStatus.PENDING
     message.validate()
 
