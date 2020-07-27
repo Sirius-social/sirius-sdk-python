@@ -3,7 +3,7 @@ import logging
 
 from ....agent.pairwise import Pairwise, TheirEndpoint
 from ....agent.agent import Endpoint
-from ..base import AbstractStateMachine
+from ....agent.sm import AbstractStateMachine
 from ..feature_0015_acks import Ack, Status
 from ..feature_0048_trust_ping import Ping
 from .messages import *
