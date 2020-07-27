@@ -166,7 +166,10 @@ class ServerTestSuite:
         self.__url = urljoin(self.__server_address, '/test_suite')
         self.__metadata = None
         test_suite_path = os.getenv('TEST_SUITE', None)
-        self.__test_suite_exists_locally = os.path.isfile(test_suite_path) and 'localhost' in self.__server_address
+        if test_suite_path is None:
+            self.__test_suite_exists_locally = False
+        else:
+            self.__test_suite_exists_locally = os.path.isfile(test_suite_path) and 'localhost' in self.__server_address
 
     @property
     def metadata(self):
