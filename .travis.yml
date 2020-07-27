@@ -21,3 +21,4 @@ install:
 script:
   - pytest tests/test_encryption.py
   - pytest tests/test_messages.py
+  - pytest tests/test_agent.py
