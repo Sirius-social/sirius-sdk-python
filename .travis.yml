@@ -11,6 +11,7 @@ before_install:
   - cd ./test_suite
   - docker-compose up -d
   - cd ..
+  - sleep 60  # Wait for TestSuite is ready
   
 python:
   - "3.6"      # current default Python on Travis CI
