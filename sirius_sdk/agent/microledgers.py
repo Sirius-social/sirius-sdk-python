@@ -1,3 +1,4 @@
+import json
 from typing import List, Union, Dict
 
 from .connections import AgentRPC
@@ -336,6 +337,21 @@ class MicroledgerList:
             }
         )
         return is_exists
+
+    async def leaf_hash(self, txn: Union[Transaction, bytes]) -> bytes:
+        if isinstance(txn, Transaction):
+            data = json.dumps(txn, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
+        elif isinstance(txn, bytes):
+            data = txn
+        else:
+            raise RuntimeError('Unexpected transaction type')
+        leaf_hash = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/leaf_hash',
+            params={
+                'data': data
+            }
+        )
+        return leaf_hash
 
     async def list(self) -> List[LedgerMeta]:
         collection = await self.__api.remote_call(

@@ -281,3 +281,19 @@ async def test_audit_proof(agent4: Agent, ledger_name: str):
         print('@')
     finally:
         await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_leaf_hash(agent4: Agent, ledger_name: str):
+    await agent4.open()
+    try:
+        genesis_txns = [
+            {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"}
+        ]
+        ledger, txns = await agent4.microledgers.create(ledger_name, genesis_txns)
+        txn = txns[0]
+        leaf_hash = await agent4.microledgers.leaf_hash(txn)
+        assert isinstance(leaf_hash, bytes)
+        assert leaf_hash == b'y\xd9\x92\x9f\xd1\xe7\xf1o\t\x9c&\xb6\xf4HP\xda\x04J\xd0\xfeQ\xe9.X-\x9c\xa3r\xf2\xb8\xb90'
+    finally:
+        await agent4.close()
