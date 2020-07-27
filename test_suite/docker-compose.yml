@@ -1,0 +1,145 @@
+version: '2'
+services:
+
+  indy_pool:
+    image: socialsirius/hub:indy_pool
+    container_name: indy_pool
+    working_dir: /home/indy
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.2
+    volumes:
+       - sandbox:/var/lib/indy/sandbox/
+
+  cache:
+    image: memcached
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.30
+
+  redis:
+    image: redis:latest
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.40
+
+  db:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.50
+
+  db_old_agent:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.51
+
+  old_agent:
+    image: "socialsirius/indy-agent:latest"
+    environment:
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=postgres
+      - DATABASE_HOST=db_old_agent
+      - INDY_GENESIS_TXN_FILE_PATH=/test_suite/test_local_pool_transactions_genesis
+      - INDY_INVITATION_URL_BASE=http://10.0.0.52:8888/invitation
+      - REDIS=redis
+      - MEMCACHED=cache
+      - ROOT_USERNAME=root
+      - ROOT_PASSWORD=root
+    depends_on:
+      - cache
+      - redis
+      - db_old_agent
+    volumes:
+       - .:/test_suite
+    ports:
+      - "88:8888"
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.52
+        
+  zookeeper:
+    image: 'bitnami/zookeeper:latest'
+    ports:
+      - '2181:2181'
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.60
+      
+  kafka:
+    image: 'bitnami/kafka:latest'
+    ports:
+      - '9092:9092'
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.70
+    depends_on:
+      - zookeeper
+
+  kafkarest:
+    image: "socialsirius/kafka-rest:latest"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.80
+    depends_on:
+      - kafka
+
+  test_suite:
+    image: "socialsirius/hub:latest"
+    environment:
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=postgres
+      - DATABASE_HOST=db
+      - TEST_POOL_IP=10.0.0.2
+      - SECRET_KEY=agent-secret-key
+      - DJANGO_SETTINGS_MODULE=settings.production
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - REDIS_SERVERS=redis
+      - MEMCACHED=cache
+      - KAFKA_REST_ADDRESS=http://kafkarest:8000
+      - DOWNLOAD_DIR=/tmp
+      - TEST_SUITE=/test_suite/test_suite.json
+    working_dir: /home/indy
+    volumes:
+       - sandbox:/var/sandbox
+       - .:/test_suite
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.90
+    links:
+      - indy_pool
+    ports:
+      - "80:80"
+    depends_on:
+      - db
+      - indy_pool
+      - cache
+      - redis
+      - kafka
+      - kafkarest
+      - old_agent
+
+networks:
+  test_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "10.0.0.0/24"
+          gateway: "10.0.0.1"
+volumes:
+     sandbox:
