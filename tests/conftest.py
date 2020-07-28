@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from sirius_sdk import Agent
+from sirius_sdk import Agent, Pairwise
 from sirius_sdk.rpc import AddressedTunnel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
 from .helpers import InMemoryChannel, ServerTestSuite, IndyAgent
@@ -82,6 +82,7 @@ def get_agent(name: str) -> Agent:
         credentials=params['credentials'],
         p2p=params['p2p'],
         timeout=30,
+        name=name
     )
     return agent
 
@@ -117,5 +118,66 @@ def agent4() -> Agent:
 
 
 @pytest.fixture()
+def A() -> Agent:
+    return get_agent('agent1')
+
+
+@pytest.fixture()
+def B() -> Agent:
+    return get_agent('agent2')
+
+
+@pytest.fixture()
+def C() -> Agent:
+    return get_agent('agent3')
+
+
+@pytest.fixture()
+def D() -> Agent:
+    return get_agent('agent4')
+
+
+@pytest.fixture()
 def ledger_name() -> str:
     return 'Ledger-' + uuid.uuid4().hex
+
+
+async def get_pairwise(me: Agent, their: Agent):
+    suite = get_suite_singleton()
+    me_params = suite.get_agent_params(me.name)
+    their_params = suite.get_agent_params(their.name)
+    me_label, me_entity = list(me_params['entities'].keys())[0], list(me_params['entities'].items())[0][1]
+    their_label, their_entity = list(their_params['entities'].keys())[0], list(their_params['entities'].items())[0][1]
+    me_endpoint_address = [e for e in me.endpoints if e.routing_keys == []][0].address
+    their_endpoint_address = [e for e in their.endpoints if e.routing_keys == []][0].address
+    self = me
+    for agent, entity_me, entity_their, label_their, endpoint_their in [
+        (me, me_entity, their_entity, their_label, their_endpoint_address),
+        (their, their_entity, me_entity, me_label, me_endpoint_address)
+    ]:
+        is_exists = await agent.pairwise_list.is_exists(their_did=their_entity['did'])
+        if not is_exists:
+            me_ = Pairwise.Me(entity_me['did'], entity_me['verkey'])
+            their_ = Pairwise.Their(entity_their['did'], their_label, endpoint_their, entity_their['verkey'])
+            metadata = {
+                'me': {
+                    'did': entity_me['did'],
+                    'verkey': entity_me['verkey'],
+                    'did_doc': None
+                },
+                'their': {
+                    'did': entity_their['did'],
+                    'verkey': entity_their['verkey'],
+                    'label': label_their,
+                    'endpoint': {
+                        'address': endpoint_their,
+                        'routing_keys': []
+                    },
+                    'did_doc': None
+                }
+            }
+            pairwise = Pairwise(me=me_, their=their_, metadata=metadata)
+            await agent.wallet.did.store_their_did(entity_their['did'], entity_their['verkey'])
+            await agent.pairwise_list.ensure_exists(pairwise)
+    pairwise = await self.pairwise_list.load_for_did(their_did=their_entity['did'])
+    return pairwise

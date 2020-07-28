@@ -46,7 +46,7 @@
                 "key": "key2"
             },
             "entities": {
-                "trustee": {
+                "trustee0": {
                     "seed": "000000000000000000000000Trustee0"
                 }
             },
@@ -66,7 +66,7 @@
                 "key": "key3"
             },
             "entities": {
-                "trustee": {
+                "trustee2": {
                     "seed": "000000000000000000000000Trustee2"
                 }
             },
@@ -86,7 +86,7 @@
                 "key": "key4"
             },
             "entities": {
-                "trustee": {
+                "trustee3": {
                     "seed": "000000000000000000000000Trustee3"
                 }
             },

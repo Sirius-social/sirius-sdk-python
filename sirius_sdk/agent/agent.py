@@ -53,7 +53,7 @@ class Agent(TransportLayers):
     def __init__(
             self, server_address: str, credentials: bytes,
             p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None,
-            storage: AbstractImmutableCollection=None
+            storage: AbstractImmutableCollection=None, name: str=None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -74,6 +74,11 @@ class Agent(TransportLayers):
         self.__storage = storage
         self.__pairwise_list = None
         self.__microledgers = None
+        self.__name = name
+
+    @property
+    def name(self) -> Optional[str]:
+        return self.__name
 
     @property
     def wallet(self) -> DynamicWallet:

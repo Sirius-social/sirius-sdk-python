@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 import pytest
 
+from sirius_sdk import Agent
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from sirius_sdk.encryption import P2PConnection
