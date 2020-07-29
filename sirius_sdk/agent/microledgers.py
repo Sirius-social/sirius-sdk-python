@@ -129,6 +129,16 @@ class Microledger:
         )
         self.__state = state
 
+    async def rename(self, new_name: str):
+        await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/rename',
+            params={
+                'name': self.name,
+                'new_name': new_name
+            }
+        )
+        self.__name = new_name
+
     async def init(self, genesis: List[Transaction]) -> List[Transaction]:
         self.__state, txns = await self.__api.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/initialize',

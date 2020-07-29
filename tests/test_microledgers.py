@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 import pytest
@@ -296,5 +297,26 @@ async def test_leaf_hash(agent4: Agent, ledger_name: str):
         assert isinstance(leaf_hash, bytes)
         expected = b'y\xd9\x92\x9f\xd1\xe7\xf1o\t\x9c&\xb6\xf4HP\xda\x04J\xd0\xfeQ\xe9.X-\x9c\xa3r\xf2\xb8\xb90'
         assert expected == leaf_hash
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_rename(agent4: Agent, ledger_name: str):
+    await agent4.open()
+    try:
+        genesis_txns = [
+            {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"}
+        ]
+        ledger, _ = await agent4.microledgers.create(ledger_name, genesis_txns)
+
+        new_name = 'new_name_' + uuid.uuid4().hex
+        await ledger.rename(new_name)
+        assert ledger.name == new_name
+
+        is_exists1 = await agent4.microledgers.is_exists(ledger_name)
+        is_exists2 = await agent4.microledgers.is_exists(new_name)
+        assert is_exists1 is False
+        assert is_exists2 is True
     finally:
         await agent4.close()
