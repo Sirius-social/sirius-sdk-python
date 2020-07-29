@@ -8,6 +8,11 @@ from ..errors.exceptions import *
 METADATA_ATTR = 'txnMetadata'
 
 
+def serialize_ordering(value: dict) -> bytes:
+    data = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
+    return data
+
+
 class Transaction(dict):
 
     def __init__(self, *args, **kwargs):
