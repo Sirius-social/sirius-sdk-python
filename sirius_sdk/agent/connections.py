@@ -202,10 +202,14 @@ class AgentRPC(BaseAgentConnection):
             raise SiriusRPCError(body.decode())
         else:
             if coprotocol:
-                response = await self.__tunnel_coprotocols.receive(timeout=self._timeout)
+                response = await self.read_protocol_message()
                 return response
             else:
                 return None
+
+    async def read_protocol_message(self) -> Message:
+        response = await self.__tunnel_coprotocols.receive(timeout=self._timeout)
+        return response
 
     async def start_protocol_with_threading(self, thid: str, ttl: int=None):
         await self.remote_call(

@@ -5,7 +5,7 @@ import pytest
 
 from sirius_sdk import Agent
 from sirius_sdk.agent.coprotocols import *
-from tests.helpers import run_coroutines
+from .helpers import run_coroutines
 from .helpers import ServerTestSuite
 
 

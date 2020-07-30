@@ -2,6 +2,7 @@ import hashlib
 from typing import List, Optional
 
 from ....encryption import bytes_to_b58
+from ....errors.exceptions import *
 from ....agent.pairwise import Pairwise
 from ....agent.microledgers import serialize_ordering
 from ....agent.wallet.abstract.crypto import AbstractCrypto
@@ -25,9 +26,13 @@ class SimpleConsensusMessage(AriesProtocolMessage, metaclass=RegisterMessage):
         return self.get('participants', [])
 
 
-class InitLedgerMessage(SimpleConsensusMessage):
+class SimpleConsensusProblemReport(AriesProblemReport, metaclass=RegisterMessage):
+    PROTOCOL = SimpleConsensusMessage.PROTOCOL
 
-    NAME = 'initialize-request'
+
+class BaseInitLedgerMessage(SimpleConsensusMessage):
+
+    NAME = 'initialize'
     
     def __init__(
             self, ledger_name: Optional[str]=None, genesis: List[Transaction]=None,
@@ -65,12 +70,38 @@ class InitLedgerMessage(SimpleConsensusMessage):
     def signatures(self) -> List[dict]:
         return self.get('signatures', [])
 
-    async def add_signature(self, me: Pairwise.Me, api: AbstractCrypto):
+    async def check_signatures(self, api: AbstractCrypto, participant: str = 'ALL'):
+        if self.ledger_hash is None:
+            raise SiriusContextError('Ledger Hash description is empty')
+        if participant == 'ALL':
+            signatures = self.signatures
+        else:
+            signatures = [s for s in self.signatures if s['participant'] == participant]
+        if signatures:
+            for item in signatures:
+                signed_ledger_hash, is_success = await verify_signed(api, item['signature'])
+                if not is_success:
+                    raise SiriusValidationError('Invalid Sign for participant: "%s"' % item['participant'])
+                if signed_ledger_hash != self.ledger_hash:
+                    raise SiriusValidationError('NonConsistent Ledger hash for participant: "%s"' % item['participant'])
+        else:
+            raise SiriusContextError('Signatures list is empty!')
+
+
+class InitRequestLedgerMessage(BaseInitLedgerMessage):
+
+    NAME = 'initialize-request'
+
+    @property
+    def thread_id(self) -> Optional[str]:
+        return self.get(THREAD_DECORATOR, {}).get('thid', None)
+
+    async def add_signature(self, api: AbstractCrypto, me: Pairwise.Me):
         if me.did not in self.participants:
-            raise RuntimeError('Signer must be a participant')
+            raise SiriusContextError('Signer must be a participant')
         if self.ledger_hash is not None:
             hash_signature = await sign(api, self.ledger_hash, me.verkey)
-            signatures = [s for s in self.signatures if s['id'] != me.did]
+            signatures = [s for s in self.signatures if s['participant'] != me.did]
             signatures.append(
                 {
                     'participant': me.did,
@@ -79,4 +110,19 @@ class InitLedgerMessage(SimpleConsensusMessage):
             )
             self['signatures'] = signatures
         else:
-            raise RuntimeError('Ledger description is empty')
+            raise SiriusContextError('Ledger Hash description is empty')
+
+    async def check_ledger_hash(self):
+        if not self.ledger_hash:
+            raise SiriusContextError('Ledger hash is empty')
+        if not self.ledger:
+            raise SiriusContextError('Ledger body is empty')
+
+
+class InitResponseLedgerMessage(InitRequestLedgerMessage):
+
+    NAME = 'initialize-response'
+
+    def assign_from(self, source: BaseInitLedgerMessage):
+        partial = {k: v for k, v in source.items() if k not in ['@id', '@type']}
+        self.update(partial)
