@@ -253,8 +253,8 @@ async def test__threadbased_protocol(test_suite: ServerTestSuite):
         assert isinstance(agent1_protocol, ThreadBasedCoProtocolTransport)
         assert isinstance(agent2_protocol, ThreadBasedCoProtocolTransport)
 
-        await agent1_protocol.start(['test_protocol'])
-        await agent2_protocol.start(['test_protocol'])
+        await agent1_protocol.start()
+        await agent2_protocol.start()
         try:
             MSG_LOG.clear()
             await run_coroutines(routine1(agent1_protocol), routine2(agent2_protocol))

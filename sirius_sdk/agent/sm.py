@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
+from ..errors.exceptions import BaseSiriusException
 from .agent import TransportLayers
 
 
@@ -26,3 +27,11 @@ class AbstractStateMachine(ABC):
     @abstractmethod
     def protocols(self) -> List[str]:
         raise NotImplemented('Need to be implemented in descendant')
+
+
+class StateMachineTerminatedWithError(BaseSiriusException):
+
+    def __init__(self, problem_code: str, explain: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.problem_code = problem_code
+        self.explain = explain

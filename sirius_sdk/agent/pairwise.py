@@ -27,6 +27,10 @@ class Pairwise:
             self.did = did
             self.verkey = verkey
 
+        def __eq__(self, other):
+            if isinstance(other, Pairwise.Me):
+                return self.did == other.did and self.verkey == other.verkey
+
     def __init__(self, me: Me, their: Their, metadata: dict=None):
         self.__me = me
         self.__their = their

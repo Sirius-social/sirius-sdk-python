@@ -56,7 +56,7 @@ class Listener:
         self.__source = source
         self.__pairwise_resolver = pairwise_resolver
 
-    async def get_one(self, timeout: int=None) -> Message:
+    async def get_one(self, timeout: int=None) -> Event:
         event = await self.__source.pull(timeout)
         if 'message' in event:
             ok, message = restore_message_instance(event['message'])

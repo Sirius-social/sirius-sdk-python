@@ -34,6 +34,7 @@ class AbstractCoProtocolTransport(ABC):
         """
         self.__time_to_live = None
         self._rpc = rpc
+        self._check_protocols = True
         self.__default_timeout = rpc.timeout
         self.__wallet = DynamicWallet(self._rpc)
         self.__die_timestamp = None
@@ -111,8 +112,9 @@ class AbstractCoProtocolTransport(ABC):
                 ok, message = restore_message_instance(payload)
                 if not ok:
                     message = Message(payload)
-                if Type.from_str(message.type).protocol not in self.protocols:
-                    raise SiriusInvalidMessage('@type has unexpected protocol "%s"' % message.type.protocol)
+                if self._check_protocols:
+                    if Type.from_str(message.type).protocol not in self.protocols:
+                        raise SiriusInvalidMessage('@type has unexpected protocol "%s"' % message.type.protocol)
                 return True, message
             else:
                 return False, None
@@ -262,7 +264,9 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
             routing_keys=pairwise.their.routing_keys
         )
 
-    async def start(self, protocols: List[str], time_to_live: int=None):
+    async def start(self, protocols: List[str]=None, time_to_live: int=None):
+        if protocols is None:
+            self._check_protocols = False
         await super().start(protocols, time_to_live)
         await self._rpc.start_protocol_with_threading(self.__thid, time_to_live)
 

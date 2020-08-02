@@ -126,3 +126,7 @@ class InitResponseLedgerMessage(InitRequestLedgerMessage):
     def assign_from(self, source: BaseInitLedgerMessage):
         partial = {k: v for k, v in source.items() if k not in ['@id', '@type']}
         self.update(partial)
+
+    def signature(self, did: str) -> Optional[dict]:
+        filtered = [p for p in self.signatures if p['participant'] == did]
+        return filtered[0] if filtered else None
