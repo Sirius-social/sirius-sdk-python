@@ -155,8 +155,9 @@ async def get_pairwise(me: Agent, their: Agent):
         (me, me_entity, their_entity, their_label, their_endpoint_address),
         (their, their_entity, me_entity, me_label, me_endpoint_address)
     ]:
-        is_exists = await agent.pairwise_list.is_exists(their_did=their_entity['did'])
-        if not is_exists:
+        pairwise = await agent.pairwise_list.load_for_did(their_did=their_entity['did'])
+        is_filled = pairwise and pairwise.metadata
+        if not is_filled:
             me_ = Pairwise.Me(entity_me['did'], entity_me['verkey'])
             their_ = Pairwise.Their(entity_their['did'], their_label, endpoint_their, entity_their['verkey'])
             metadata = {

@@ -22,7 +22,7 @@ class Ack(AriesProtocolMessage, metaclass=RegisterMessage):
     PROTOCOL = 'notification'
     NAME = 'ack'
 
-    def __init__(self, thread_id: str=None, status: Optional[Union[Status, str]] = None, *args, **kwargs):
+    def __init__(self, thread_id: str = None, status: Optional[Union[Status, str]] = None, *args, **kwargs):
         super(Ack, self).__init__(*args, **kwargs)
         if status is not None:
             if isinstance(status, Status):

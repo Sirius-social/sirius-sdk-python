@@ -17,7 +17,7 @@ class SimpleConsensusMessage(AriesProtocolMessage, metaclass=RegisterMessage):
     """
     PROTOCOL = 'simple-consensus'
 
-    def __init__(self, participants: List[str]=None, *args, **kwargs):
+    def __init__(self, participants: List[str] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self['participants'] = participants or []
 
@@ -31,12 +31,11 @@ class SimpleConsensusProblemReport(AriesProblemReport, metaclass=RegisterMessage
 
 
 class BaseInitLedgerMessage(SimpleConsensusMessage):
-
     NAME = 'initialize'
-    
+
     def __init__(
-            self, ledger_name: Optional[str]=None, genesis: List[Transaction]=None,
-            root_hash: Optional[str]=None, *args, **kwargs
+            self, ledger_name: Optional[str] = None, genesis: List[Transaction] = None,
+            root_hash: Optional[str] = None, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         ledger = {}
@@ -70,7 +69,7 @@ class BaseInitLedgerMessage(SimpleConsensusMessage):
     def signatures(self) -> List[dict]:
         return self.get('signatures', [])
 
-    async def check_signatures(self, api: AbstractCrypto, participant: str = 'ALL'):
+    async def check_signatures(self, api: AbstractCrypto, participant: str = 'ALL') -> dict:
         if self.ledger_hash is None:
             raise SiriusContextError('Ledger Hash description is empty')
         if participant == 'ALL':
@@ -78,12 +77,15 @@ class BaseInitLedgerMessage(SimpleConsensusMessage):
         else:
             signatures = [s for s in self.signatures if s['participant'] == participant]
         if signatures:
+            response = {}
             for item in signatures:
                 signed_ledger_hash, is_success = await verify_signed(api, item['signature'])
                 if not is_success:
                     raise SiriusValidationError('Invalid Sign for participant: "%s"' % item['participant'])
                 if signed_ledger_hash != self.ledger_hash:
                     raise SiriusValidationError('NonConsistent Ledger hash for participant: "%s"' % item['participant'])
+                response[item['participant']] = signed_ledger_hash
+            return response
         else:
             raise SiriusContextError('Signatures list is empty!')
 
@@ -91,6 +93,15 @@ class BaseInitLedgerMessage(SimpleConsensusMessage):
 class InitRequestLedgerMessage(BaseInitLedgerMessage):
 
     NAME = 'initialize-request'
+
+    def __init__(self, timeout_sec: int = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if timeout_sec:
+            self['timeout_sec'] = timeout_sec
+
+    @property
+    def timeout_sec(self) -> Optional[int]:
+        return self.get('timeout_sec', None)
 
     @property
     def thread_id(self) -> Optional[str]:
@@ -118,13 +129,26 @@ class InitRequestLedgerMessage(BaseInitLedgerMessage):
         if not self.ledger:
             raise SiriusContextError('Ledger body is empty')
 
+    def validate(self):
+        super().validate()
+        if not self.ledger:
+            raise SiriusValidationError('Ledger info is empty')
+        for expect_field in ['root_hash', 'name', 'genesis']:
+            if expect_field not in self.ledger.keys():
+                raise SiriusValidationError(f'Expected field "{expect_field}" does not exists in Ledger container')
+        if not self.ledger_hash:
+            raise SiriusValidationError('Ledger Hash info is empty')
+        for expect_field in ['func', 'base58']:
+            if expect_field not in self.ledger_hash.keys():
+                raise SiriusValidationError(f'Expected field "{expect_field}" does not exists in Ledger Hash')
+
 
 class InitResponseLedgerMessage(InitRequestLedgerMessage):
 
     NAME = 'initialize-response'
 
     def assign_from(self, source: BaseInitLedgerMessage):
-        partial = {k: v for k, v in source.items() if k not in ['@id', '@type']}
+        partial = {k: v for k, v in source.items() if k not in ['@id', '@type', THREAD_DECORATOR]}
         self.update(partial)
 
     def signature(self, did: str) -> Optional[dict]:

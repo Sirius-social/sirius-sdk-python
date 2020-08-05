@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from ..errors.exceptions import *
 from ..messaging import *
+from ..messaging.fields import DIDField
 from .wallet.wallets import DynamicWallet
 from .connections import AgentRPC
 from .pairwise import TheirEndpoint, Pairwise
@@ -190,7 +191,7 @@ class TheirEndpointCoProtocolTransport(AbstractCoProtocolTransport):
             routing_keys=endpoint.routing_keys
         )
 
-    async def start(self, protocols: List[str], time_to_live: int=None):
+    async def start(self, protocols: List[str], time_to_live: int = None):
         await super().start(protocols, time_to_live)
         await self._rpc.start_protocol_for_p2p(
             sender_verkey=self.__my_verkey,
@@ -257,6 +258,7 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         self.__pthid = pthid
         self.__sender_order = 0
         self.__received_orders = {}
+        self.__their = pairwise.their
         self._setup(
             their_verkey=pairwise.their.verkey,
             endpoint=pairwise.their.endpoint,
@@ -280,8 +282,11 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         if ok:
             respond_sender_order = response.get('~thread', {}).get('sender_order', None)
             if respond_sender_order is not None:
-                order = self.__received_orders.get(response.doc_uri, 0)
-                self.__received_orders[response.doc_uri] = max(order, respond_sender_order)
+                recipient = self.__their.did
+                err = DIDField().validate(recipient)
+                if err is None:
+                    order = self.__received_orders.get(recipient, 0)
+                    self.__received_orders[recipient] = max(order, respond_sender_order)
         return ok, response
 
     async def send(self, message: Message):

@@ -28,12 +28,14 @@ async def routine_of_ledger_creator(
 
 
 async def routine_of_ledger_creation_acceptor(acceptor: Agent):
+    print('#')
     listener = await acceptor.subscribe()
+    print('#')
     try:
         event = await listener.get_one()
         assert event.pairwise is not None
-        assert isinstance(event.message, InitRequestLedgerMessage)
         propose = event.message
+        assert isinstance(propose, InitRequestLedgerMessage)
         machine = MicroLedgerSimpleConsensus(
             acceptor.wallet.crypto, event.pairwise.me, acceptor.pairwise_list, acceptor.microledgers, acceptor
         )
@@ -109,19 +111,24 @@ async def test_simple_consensus_init_ledger(A: Agent, B: Agent, C: Agent, ledger
         participants = [
             A2B.me.did,
             A2B.their.did,
-            # 'C': A2C.their.did
+            A2C.their.did
         ]
         genesis = [
             {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"},
             {"reqId": 2, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op2"}
         ]
         coro_creator = routine_of_ledger_creator(A, A2B.me, participants, ledger_name, genesis)
-        coro_acceptor = routine_of_ledger_creation_acceptor(B)
+        coro_acceptor1 = routine_of_ledger_creation_acceptor(B)
+        coro_acceptor2 = routine_of_ledger_creation_acceptor(C)
 
-        try:
-            await run_coroutines(coro_creator, coro_acceptor, timeout=1000)
-        except Exception as e:
-            raise
+        await run_coroutines(coro_creator, coro_acceptor1, coro_acceptor2, timeout=1000)
+
+        is_exists_for_A = await A.microledgers.is_exists(ledger_name)
+        is_exists_for_B = await B.microledgers.is_exists(ledger_name)
+        is_exists_for_C = await C.microledgers.is_exists(ledger_name)
+        assert is_exists_for_A
+        assert is_exists_for_B
+        assert is_exists_for_C
     finally:
         await A.close()
         await B.close()
