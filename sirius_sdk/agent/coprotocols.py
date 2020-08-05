@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timedelta
 
 from ..errors.exceptions import *
@@ -259,14 +259,13 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
     """
 
     def __init__(
-            self, thid: str, pairwise: Pairwise, rpc: AgentRPC, pthid: str=None
+            self, thid: str, pairwise: Optional[Pairwise], rpc: AgentRPC, pthid: str=None
     ):
         super().__init__(rpc)
         self.__thid = thid
         self.__pthid = pthid
         self.__sender_order = 0
         self.__received_orders = {}
-        self.__their = pairwise.their
         self.pairwise = pairwise
         self._check_verkeys = True
 
@@ -275,14 +274,19 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         return self.__pairwise
 
     @pairwise.setter
-    def pairwise(self, value: Pairwise):
+    def pairwise(self, value: Optional[Pairwise]):
         self.__pairwise = value
-        self._setup(
-            their_verkey=value.their.verkey,
-            endpoint=value.their.endpoint,
-            my_verkey=value.me.verkey,
-            routing_keys=value.their.routing_keys
-        )
+        if value:
+            self.__their = value.their
+            self._setup(
+                their_verkey=value.their.verkey,
+                endpoint=value.their.endpoint,
+                my_verkey=value.me.verkey,
+                routing_keys=value.their.routing_keys
+            )
+        else:
+            self.__their = None
+            self._setup('', '', None, None)
 
     async def start(self, protocols: List[str] = None, time_to_live: int = None):
         if protocols is None:
@@ -299,7 +303,7 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         ok, response = await super().switch(message)
         if ok:
             respond_sender_order = response.get('~thread', {}).get('sender_order', None)
-            if respond_sender_order is not None:
+            if respond_sender_order is not None and self.__their is not None:
                 recipient = self.__their.did
                 err = DIDField().validate(recipient)
                 if err is None:

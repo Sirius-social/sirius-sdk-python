@@ -20,29 +20,21 @@ async def routine_of_ledger_creator(
         creator.wallet.crypto, me, creator.pairwise_list, creator.microledgers, creator
     )
     genesis = [Transaction.create(txn) for txn in genesis]
-    try:
-        success, ledger = await machine.init_microledger(ledger_name, participants, genesis)
-        print('@')
-    except Exception as e:
-        raise
+    success, ledger = await machine.init_microledger(ledger_name, participants, genesis)
+    return success, ledger
 
 
 async def routine_of_ledger_creation_acceptor(acceptor: Agent):
-    print('#')
     listener = await acceptor.subscribe()
-    print('#')
-    try:
-        event = await listener.get_one()
-        assert event.pairwise is not None
-        propose = event.message
-        assert isinstance(propose, InitRequestLedgerMessage)
-        machine = MicroLedgerSimpleConsensus(
-            acceptor.wallet.crypto, event.pairwise.me, acceptor.pairwise_list, acceptor.microledgers, acceptor
-        )
-        success, ledger = await machine.accept_microledger(event.pairwise, propose)
-        print('@')
-    except Exception as e:
-        raise
+    event = await listener.get_one()
+    assert event.pairwise is not None
+    propose = event.message
+    assert isinstance(propose, InitRequestLedgerMessage)
+    machine = MicroLedgerSimpleConsensus(
+        acceptor.wallet.crypto, event.pairwise.me, acceptor.pairwise_list, acceptor.microledgers, acceptor
+    )
+    success, ledger = await machine.accept_microledger(event.pairwise, propose)
+    return success, ledger
 
 
 @pytest.mark.asyncio
@@ -121,7 +113,7 @@ async def test_simple_consensus_init_ledger(A: Agent, B: Agent, C: Agent, ledger
         coro_acceptor1 = routine_of_ledger_creation_acceptor(B)
         coro_acceptor2 = routine_of_ledger_creation_acceptor(C)
 
-        await run_coroutines(coro_creator, coro_acceptor1, coro_acceptor2, timeout=1000)
+        await run_coroutines(coro_creator, coro_acceptor1, coro_acceptor2, timeout=60)
 
         is_exists_for_A = await A.microledgers.is_exists(ledger_name)
         is_exists_for_B = await B.microledgers.is_exists(ledger_name)
@@ -129,6 +121,13 @@ async def test_simple_consensus_init_ledger(A: Agent, B: Agent, C: Agent, ledger
         assert is_exists_for_A
         assert is_exists_for_B
         assert is_exists_for_C
+
+        for agent in [A, B, C]:
+            ledger = await agent.microledgers.ledger(ledger_name)
+            txns = await ledger.get_all_transactions()
+            assert len(txns) == 2
+            assert 'op1' in str(txns)
+            assert 'op2' in str(txns)
     finally:
         await A.close()
         await B.close()

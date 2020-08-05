@@ -35,9 +35,19 @@ class TransportLayers(ABC):
     async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
         raise NotImplemented
 
+    @dispatch(str)
+    @abstractmethod
+    async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
+        raise NotImplemented
+
     @dispatch(str, Pairwise, str)
     @abstractmethod
     async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
+        raise NotImplemented
+
+    @dispatch(str, str)
+    @abstractmethod
+    async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
         raise NotImplemented
 
 
@@ -137,6 +147,18 @@ class Agent(TransportLayers):
             rpc=new_rpc
         )
 
+    @dispatch(str)
+    @abstractmethod
+    async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
+        new_rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        return ThreadBasedCoProtocolTransport(
+            thid=thid,
+            pairwise=None,
+            rpc=new_rpc
+        )
+
     @dispatch(str, Pairwise, str)
     async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
         new_rpc = await AgentRPC.create(
@@ -145,6 +167,19 @@ class Agent(TransportLayers):
         return ThreadBasedCoProtocolTransport(
             thid=thid,
             pairwise=pairwise,
+            rpc=new_rpc,
+            pthid=pthid
+        )
+
+    @dispatch(str, str)
+    @abstractmethod
+    async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
+        new_rpc = await AgentRPC.create(
+            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+        )
+        return ThreadBasedCoProtocolTransport(
+            thid=thid,
+            pairwise=None,
             rpc=new_rpc,
             pthid=pthid
         )

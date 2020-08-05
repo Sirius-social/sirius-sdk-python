@@ -5,7 +5,6 @@ from typing import List, Union
 from ....agent.pairwise import Pairwise
 from ....agent.wallet.abstract.crypto import AbstractCrypto
 from ....agent.pairwise import AbstractPairwiseList
-from ....agent.aries_rfc.utils import verify_signed
 from ....agent.microledgers import Transaction, Microledger, MicroledgerList
 from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
 from ....agent.aries_rfc.feature_0015_acks import Ack, Status
@@ -29,8 +28,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         self.__microledgers = microledgers
         self.__crypto = crypto
         self.__pairwise_list = pairwise_list
-        self.__p2p = {}
+        self.__transport = None
         self.__thread_id = None
+        self.__cached_p2p = {}
         super().__init__(*args, **kwargs)
 
     @property
@@ -61,98 +61,87 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             self, ledger_name: str, participants: List[str], genesis: List[Transaction]
     ) -> (bool, Microledger):
         participants = list(set(participants + [self.me.did]))
-        ledger, genesis = await self.microledgers.create(ledger_name, genesis)
+        await self._setup('simple-consensus-' + uuid.uuid4().hex, self.time_to_live)
         try:
-            await self._setup(participants, 'simple-consensus-' + uuid.uuid4().hex, self.time_to_live)
+            ledger, genesis = await self.microledgers.create(ledger_name, genesis)
             try:
                 await self._init_microledger_internal(ledger, participants, genesis)
-            finally:
-                await self._clean()
-        except Exception as e:
-            await self.microledgers.reset(ledger_name)
-            if isinstance(e, StateMachineTerminatedWithError):
-                return False, None
-        else:
-            return True, ledger
+            except Exception as e:
+                await self.microledgers.reset(ledger_name)
+                if isinstance(e, StateMachineTerminatedWithError):
+                    return False, None
+            else:
+                return True, ledger
+        finally:
+            await self._clean()
 
     async def accept_microledger(self, actor: Pairwise, propose: InitRequestLedgerMessage) -> (bool, Microledger):
         if self.me.did not in propose.participants:
             raise SiriusContextError('Invalid state machine initialization')
-        ledger_name = propose.ledger.get('name', None)
-        self.__thread_id = propose.thread_id
-        if not ledger_name:
-            await self._terminate_with_problem_report(
-                problem_code=REQUEST_PROCESSING_ERROR,
-                explain='Ledger name is Empty!',
-                their_did=actor.their.did,
-            )
+        time_to_live = propose.timeout_sec or self.time_to_live
+        await self._setup(propose.thread_id, time_to_live)
         try:
-            for their_did in propose.participants:
-                if their_did != self.me.did:
-                    if not await self.pairwise_list.is_exists(their_did):
-                        await self._terminate_with_problem_report(
-                            problem_code=REQUEST_PROCESSING_ERROR,
-                            explain=f'Pairwise for DID: "their_did" does not exists!' % their_did,
-                            their_did=their_did
-                        )
-            time_to_live = propose.timeout_sec or self.time_to_live
-            await self._setup(propose.participants, propose.thread_id, time_to_live)
+            ledger_name = propose.ledger.get('name', None)
+            self.__thread_id = propose.thread_id
+            if not ledger_name:
+                await self._terminate_with_problem_report(
+                    problem_code=REQUEST_PROCESSING_ERROR,
+                    explain='Ledger name is Empty!',
+                    their_did=actor.their.did,
+                )
             try:
+                for their_did in propose.participants:
+                    if their_did != self.me.did:
+                        pw = await self.get_p2p(their_did, raise_exception=False)
+                        if pw is None:
+                            await self._terminate_with_problem_report(
+                                problem_code=REQUEST_PROCESSING_ERROR,
+                                explain=f'Pairwise for DID: "their_did" does not exists!' % their_did,
+                                their_did=actor.their.did
+                            )
                 ledger = await self._accept_microledger_internal(actor, propose, time_to_live)
-            finally:
-                await self._clean()
-        except Exception as e:
-            await self.microledgers.reset(ledger_name)
-            if isinstance(e, StateMachineTerminatedWithError):
-                return False, None
-        else:
-            return True, ledger
+            except Exception as e:
+                await self.microledgers.reset(ledger_name)
+                if isinstance(e, StateMachineTerminatedWithError):
+                    return False, None
+            else:
+                return True, ledger
+        finally:
+            await self._clean()
 
     async def _switch(
             self, their_did: str, req: Union[SimpleConsensusMessage, SimpleConsensusProblemReport, Ack]
     ) -> (bool, Union[SimpleConsensusMessage, SimpleConsensusProblemReport]):
         if isinstance(req, SimpleConsensusMessage) or isinstance(req, SimpleConsensusProblemReport) or isinstance(req, Ack):
-            transport = self.__p2p.get(their_did, None)
-            if transport is None:
-                raise SiriusContextError('Setup state machine at first!')
-            ok, resp = await transport.switch(req)
+            pw = await self.get_p2p(their_did)
+            self.__transport.pairwise = pw
+            ok, resp = await self.__transport.switch(req)
             return ok, resp
         else:
             raise SiriusContextError('Unexpected req type')
 
     async def _send(self, their_did: str, message: AriesProtocolMessage, thread_id: str=None):
-        transport = self.__p2p.get(their_did, None)
-        if transport is None:
-            pw = await self.pairwise_list.load_for_did(their_did)
-            if pw:
-                transport = await self.transports.spawn(thread_id or self.__thread_id, pw)
-                await transport.start()
-                try:
-                    await transport.send(message)
-                finally:
-                    await transport.stop()
-            else:
-                raise SiriusContextError('Pairwise for "%s" does not exists!' % their_did)
-        await transport.send(message)
+        pw = await self.get_p2p(their_did)
+        self.__transport.pairwise = pw
+        await self.__transport.send(message)
 
-    async def _setup(self, participants: List[str], thread_id: str, time_to_live: int):
+    async def _setup(self, thread_id: str, time_to_live: int):
         self.__thread_id = thread_id
-        for did in participants:
-            if did != self.me.did:
-                their_did = did
-                pw = await self.pairwise_list.load_for_did(their_did)
-                if pw is None:
-                    raise SiriusContextError('Pairwise for DID "%s" does not exists' % did)
-                transport = await self.transports.spawn(self.__thread_id, pw)
-                await transport.start(time_to_live=time_to_live)
-                self.__p2p[pw.their.did] = transport
+        self.__transport = await self.transports.spawn(thread_id)
+        await self.__transport.start(time_to_live=time_to_live)
 
     async def _clean(self):
-        try:
-            for transport in self.__p2p.values():
-                await transport.stop()
-        finally:
-            self.__p2p.clear()
+        if self.__transport:
+            await self.__transport.stop()
+        self.__transport = None
+
+    async def get_p2p(self, their_did: str, raise_exception: bool = True):
+        if their_did not in self.__cached_p2p.keys():
+            pw = await self.pairwise_list.load_for_did(their_did)
+            if pw is None and raise_exception:
+                raise SiriusContextError('Pairwise for "%s" does not exists!' % their_did)
+            self.__cached_p2p[their_did] = pw
+        return self.__cached_p2p[their_did]
 
     async def _terminate_with_problem_report(self, problem_code: str, explain, their_did: str, raise_exception: bool=True):
         self.__problem_report = SimpleConsensusProblemReport(
