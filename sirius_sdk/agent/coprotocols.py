@@ -36,6 +36,7 @@ class AbstractCoProtocolTransport(ABC):
         self.__time_to_live = None
         self._rpc = rpc
         self._check_protocols = True
+        self._check_verkeys = False
         self.__default_timeout = rpc.timeout
         self.__wallet = DynamicWallet(self._rpc)
         self.__die_timestamp = None
@@ -108,6 +109,13 @@ class AbstractCoProtocolTransport(ABC):
                 )
             finally:
                 await self.__cleanup_context(message)
+            if self._check_verkeys:
+                recipient_verkey = event.get('recipient_verkey', None)
+                sender_verkey = event.get('sender_verkey')
+                if recipient_verkey != self.__my_vk:
+                    raise SiriusInvalidPayloadStructure(f'Unexpected recipient_verkey: {recipient_verkey}')
+                if sender_verkey != self.__their_vk:
+                    raise SiriusInvalidPayloadStructure(f'Unexpected sender_verkey: {sender_verkey}')
             payload = Message(event.get('message', {}))
             if payload:
                 ok, message = restore_message_instance(payload)
@@ -259,14 +267,24 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         self.__sender_order = 0
         self.__received_orders = {}
         self.__their = pairwise.their
+        self.pairwise = pairwise
+        self._check_verkeys = True
+
+    @property
+    def pairwise(self) -> Pairwise:
+        return self.__pairwise
+
+    @pairwise.setter
+    def pairwise(self, value: Pairwise):
+        self.__pairwise = value
         self._setup(
-            their_verkey=pairwise.their.verkey,
-            endpoint=pairwise.their.endpoint,
-            my_verkey=pairwise.me.verkey,
-            routing_keys=pairwise.their.routing_keys
+            their_verkey=value.their.verkey,
+            endpoint=value.their.endpoint,
+            my_verkey=value.me.verkey,
+            routing_keys=value.their.routing_keys
         )
 
-    async def start(self, protocols: List[str]=None, time_to_live: int=None):
+    async def start(self, protocols: List[str] = None, time_to_live: int = None):
         if protocols is None:
             self._check_protocols = False
         await super().start(protocols, time_to_live)
