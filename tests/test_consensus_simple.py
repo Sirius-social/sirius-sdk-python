@@ -271,7 +271,7 @@ async def test_simple_consensus_commit(A: Agent, B: Agent, C: Agent, ledger_name
         txns = [
             {"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"},
             {"reqId": 4, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op4"},
-            {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5"}
+            {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5"},
         ]
         coro_committer = routine_of_txn_committer(A, A2B.me, participants, ledger_for_a, txns)
         coro_acceptor1 = routine_of_txn_acceptor(B)
