@@ -1,12 +1,13 @@
 import uuid
 import logging
+from datetime import datetime
 from typing import List, Union
 
 from ....agent.pairwise import Pairwise
 from ....agent.wallet.abstract.crypto import AbstractCrypto
 from ....agent.pairwise import AbstractPairwiseList
 from ....agent.microledgers import Transaction, Microledger, MicroledgerList
-from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
+from ....agent.sm import AbstractStateMachine
 from ....agent.aries_rfc.feature_0015_acks import Ack, Status
 from .messages import *
 
@@ -68,8 +69,10 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 await self._init_microledger_internal(ledger, participants, genesis)
             except Exception as e:
                 await self.microledgers.reset(ledger_name)
-                if isinstance(e, StateMachineTerminatedWithError):
+                if isinstance(e, SimpleConsensusProblemReport):
                     return False, None
+                else:
+                    raise
             else:
                 return True, ledger
         finally:
@@ -82,7 +85,6 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         await self._setup(propose.thread_id, time_to_live)
         try:
             ledger_name = propose.ledger.get('name', None)
-            self.__thread_id = propose.thread_id
             if not ledger_name:
                 await self._terminate_with_problem_report(
                     problem_code=REQUEST_PROCESSING_ERROR,
@@ -102,10 +104,48 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 ledger = await self._accept_microledger_internal(actor, propose, time_to_live)
             except Exception as e:
                 await self.microledgers.reset(ledger_name)
-                if isinstance(e, StateMachineTerminatedWithError):
+                if isinstance(e, SimpleConsensusProblemReport):
                     return False, None
+                else:
+                    raise
             else:
                 return True, ledger
+        finally:
+            await self._clean()
+
+    async def commit(
+            self, ledger: Microledger, participants: List[str], transactions: List[Transaction]
+    ) -> (bool, Optional[List[Transaction]]):
+        await self._setup('simple-consensus-txns-' + uuid.uuid4().hex, self.time_to_live)
+        try:
+            try:
+                txns = await self._commit_internal(ledger, transactions, participants)
+                return True, txns
+            except Exception as e:
+                await ledger.reset_uncommitted()
+                if isinstance(e, SimpleConsensusProblemReport):
+                    return False, None
+                else:
+                    raise
+        finally:
+            await self._clean()
+
+    async def accept_commit(self, actor: Pairwise, propose: ProposeTransactionsMessage) -> bool:
+        time_to_live = propose.timeout_sec or self.time_to_live
+        await self._setup(propose.thread_id, time_to_live)
+        try:
+            ledger = None
+            try:
+                ledger = await self._load_ledger(actor, propose)
+                await self._accept_commit_internal(ledger, actor, propose)
+                return True
+            except Exception as e:
+                if ledger:
+                    await ledger.reset_uncommitted()
+                if isinstance(e, SimpleConsensusProblemReport):
+                    return False
+                else:
+                    raise
         finally:
             await self._clean()
 
@@ -116,14 +156,28 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             pw = await self.get_p2p(their_did)
             self.__transport.pairwise = pw
             ok, resp = await self.__transport.switch(req)
-            return ok, resp
+            if isinstance(resp, SimpleConsensusMessage) or isinstance(resp, SimpleConsensusProblemReport) or isinstance(resp, Ack):
+                return ok, resp
+            else:
+                await self._terminate_with_problem_report(
+                    problem_code=RESPONSE_NOT_ACCEPTED,
+                    explain=f'Unexpected message with @type = {resp.type}',
+                    their_did=their_did
+                )
         else:
             raise SiriusContextError('Unexpected req type')
 
-    async def _send(self, their_did: str, message: AriesProtocolMessage, thread_id: str=None):
-        pw = await self.get_p2p(their_did)
-        self.__transport.pairwise = pw
-        await self.__transport.send(message)
+    async def _send(self, their_did: Union[str, List[str]], message: AriesProtocolMessage):
+        if isinstance(their_did, str):
+            recipients = [their_did]
+        elif isinstance(their_did, list):
+            recipients = their_did
+        else:
+            raise SiriusContextError('Unexpected their_did type')
+        for did in recipients:
+            pw = await self.get_p2p(did)
+            self.__transport.pairwise = pw
+            await self.__transport.send(message)
 
     async def _setup(self, thread_id: str, time_to_live: int):
         self.__thread_id = thread_id
@@ -135,7 +189,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             await self.__transport.stop()
         self.__transport = None
 
-    async def get_p2p(self, their_did: str, raise_exception: bool = True):
+    async def get_p2p(self, their_did: str, raise_exception: bool = True) -> Pairwise:
         if their_did not in self.__cached_p2p.keys():
             pw = await self.pairwise_list.load_for_did(their_did)
             if pw is None and raise_exception:
@@ -143,11 +197,19 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             self.__cached_p2p[their_did] = pw
         return self.__cached_p2p[their_did]
 
-    async def _terminate_with_problem_report(self, problem_code: str, explain, their_did: str, raise_exception: bool=True):
+    async def _terminate_with_problem_report(
+            self, problem_code: str, explain, their_did: Union[str, List[str]], raise_exception: bool=True
+    ):
         self.__problem_report = SimpleConsensusProblemReport(
             problem_code=problem_code, explain=explain, thread_id=self.__thread_id
         )
-        await self._send(their_did, self.__problem_report)
+        if isinstance(their_did, str):
+            await self._send(their_did, self.__problem_report)
+        elif isinstance(their_did, list):
+            for did in their_did:
+                await self._send(did, self.__problem_report)
+        else:
+            raise SiriusContextError('Unexpected their_did type')
         if raise_exception:
             raise self.__problem_report
 
@@ -287,7 +349,6 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                         )
             elif isinstance(request_commit, SimpleConsensusProblemReport):
                 self.__problem_report = request_commit
-                logging.error('Code: %s; Explain: %s' % (request_commit.problem_code, request_commit.explain))
                 raise self.__problem_report
         else:
             await self._terminate_with_problem_report(
@@ -296,10 +357,185 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 their_did=actor.their.did
             )
 
-    async def commit(
-            self, ledger: Microledger, transactions: List[Transaction]
-    ) -> (bool, List[Transaction]):
-        pass
+    async def _commit_internal(
+            self, ledger: Microledger, transactions: List[Transaction], participants: List[str]
+    ) -> List[Transaction]:
+        participants = list(set(participants + [self.me.did]))
+        neighbours = [did for did in participants if did != self.me.did]
+        for their_did in neighbours:
+            await self.get_p2p(their_did, raise_exception=True)
+        verkeys = {}
+        for their_did in neighbours:
+            pw = await self.get_p2p(their_did)
+            verkeys[their_did] = pw.their.verkey
+        txn_time = str(datetime.utcnow())
+        start, end, txns = await ledger.append(transactions, txn_time)
+        propose = ProposeTransactionsMessage(
+            transactions=txns,
+            state=MicroLedgerState.from_ledger(ledger),
+            participants=participants,
+            timeout_sec=self.time_to_live
+        )
+        # ==== STAGE-1 Propose transactions to participants ====
+        commit = CommitTransactionsMessage(participants=participants)
+        self_pre_commit = PreCommitTransactionsMessage(state=propose.state)
+        await self_pre_commit.sign_state(self.crypto, self.me)
+        commit.add_pre_commit(
+            participant=self.me.did,
+            pre_commit=self_pre_commit
+        )
+        awaited_list = []
+        for their_did in neighbours:
+            ok, pre_commit = await self._switch(their_did, propose)
+            if ok:
+                if isinstance(pre_commit, PreCommitTransactionsMessage):
+                    try:
+                        pre_commit.validate()
+                        success, state = await pre_commit.verify_state(self.crypto, verkeys[their_did])
+                        if not success:
+                            raise SiriusValidationError(
+                                f'Stage-1: Error verifying signed ledger state for participant {their_did}'
+                            )
+                        if pre_commit.state != propose.state:
+                            raise SiriusValidationError(
+                                f'Stage-1: Non-consistent ledger state for participant {their_did}'
+                            )
+                    except SiriusValidationError as e:
+                        await self._terminate_with_problem_report(
+                            RESPONSE_NOT_ACCEPTED,
+                            f'Stage-1: Error for participant {their_did}: "{e.message}"',
+                            awaited_list
+                        )
+                    else:
+                        commit.add_pre_commit(their_did, pre_commit)
+                        awaited_list.append(their_did)
+                elif isinstance(pre_commit, SimpleConsensusProblemReport):
+                    explain = f'Stage-1: Problem report from participant {their_did} "{pre_commit.explain}"'
+                    self.__problem_report = SimpleConsensusProblemReport(pre_commit.problem_code, explain)
+                    await self._send([did for did in neighbours if did != their_did], self.__problem_report)
+                    raise self.__problem_report
+            else:
+                await self._terminate_with_problem_report(
+                    problem_code=RESPONSE_PROCESSING_ERROR,
+                    explain=f'Stage-1: Pre-Commit awaiting terminated by timeout for participant: {their_did}',
+                    their_did=awaited_list
+                )
+        # ===== STAGE-2: Accumulate pre-commits and send commit propose to all participants
+        post_commit_all = PostCommitTransactionsMessage()
+        await post_commit_all.add_commit_sign(self.crypto, commit, self.me)
+        for their_did in neighbours:
+            ok, post_commit = await self._switch(their_did, commit)
+            if ok:
+                if isinstance(post_commit, PostCommitTransactionsMessage):
+                    try:
+                        post_commit.validate()
+                    except SiriusValidationError as e:
+                        await self._terminate_with_problem_report(
+                            RESPONSE_NOT_ACCEPTED,
+                            f'Stage-2: Error for participant {their_did}: "{e.message}"',
+                            neighbours
+                        )
+                    else:
+                        post_commit_all['commits'].extend(post_commit.commits)
+                elif isinstance(post_commit, SimpleConsensusProblemReport):
+                    explain = f'Stage-2: Problem report from participant {their_did} "{post_commit.explain}"'
+                    self.__problem_report = SimpleConsensusProblemReport(post_commit.problem_code, explain)
+                    await self._send([did for did in neighbours if did != their_did], self.__problem_report)
+                    raise self.__problem_report
+            else:
+                await self._terminate_with_problem_report(
+                    problem_code=RESPONSE_PROCESSING_ERROR,
+                    explain=f'Stage-2: Post-Commit awaiting terminated by timeout for participant: {their_did}',
+                    their_did=neighbours
+                )
+        # ===== STAGE-3: Notify all participants with post-commits and finalize process
+        for their_did in neighbours:
+            await self._send(their_did, post_commit_all)
+        uncommitted_size = ledger.uncommitted_size - ledger.size
+        await ledger.commit(uncommitted_size)
+        return txns
 
-    async def accept_commit(self, actor: Pairwise, ledger: Microledger, transactions: List[Transaction]) -> bool:
-        pass
+    async def _load_ledger(self, actor: Pairwise, propose: ProposeTransactionsMessage) -> Microledger:
+        neighbours = [did for did in propose.participants if did != self.me.did]
+        try:
+            propose.validate()
+            if len(propose.participants) < 2:
+                raise SiriusValidationError(f'Stage-1: participant count less than 2')
+            if self.me.did not in propose.participants:
+                raise SiriusValidationError(f'Stage-1: {self.me.did} is not participant')
+            for their_did in neighbours:
+                pw = await self.get_p2p(their_did)
+                if pw is None:
+                    raise SiriusValidationError(f'Stage-1: Pairwise for did: {their_did} does not exists')
+            is_ledger_exists = await self.microledgers.is_exists(propose.state.name)
+            if not is_ledger_exists:
+                raise SiriusValidationError(f'Stage-1: Ledger with name {propose.state.name} does not exists')
+        except SiriusValidationError as e:
+            await self._terminate_with_problem_report(
+                problem_code=RESPONSE_NOT_ACCEPTED,
+                explain=e.message,
+                their_did=actor.their.did
+            )
+        ledger = await self.microledgers.ledger(propose.state.name)
+        return ledger
+
+    async def _accept_commit_internal(self, ledger: Microledger, actor: Pairwise, propose: ProposeTransactionsMessage):
+        neighbours = [did for did in propose.participants if did != self.me.did]
+        # ===== STAGE-1: Process Propose, apply transactions and response ledger state on self-side
+        await ledger.append(propose.transactions)
+        ledger_state = MicroLedgerState.from_ledger(ledger)
+        pre_commit = PreCommitTransactionsMessage(state=MicroLedgerState.from_ledger(ledger))
+        await pre_commit.sign_state(self.crypto, self.me)
+        ok, commit = await self._switch(actor.their.did, pre_commit)
+        if ok:
+            if isinstance(commit, CommitTransactionsMessage):
+                # ===== STAGE-2: Process Commit request, check neighbours signatures
+                try:
+                    if set(commit.participants) != set(propose.participants):
+                        raise SiriusValidationError('Non-consistent participants')
+                    commit.validate()
+                    await commit.verify_pre_commits(self.crypto, ledger_state)
+                except SiriusValidationError as e:
+                    raise self._terminate_with_problem_report(
+                        problem_code=REQUEST_NOT_ACCEPTED,
+                        explain=f'Stage-2: error for actor {actor.their.did}: "{e.message}"',
+                        their_did=actor.their.did
+                    )
+                else:
+                    # ===== STAGE-3: Process post-commit, verify participants operations
+                    post_commit = PostCommitTransactionsMessage()
+                    await post_commit.add_commit_sign(self.crypto, commit, self.me)
+                    ok, post_commit_all = await self._switch(actor.their.did, post_commit)
+                    if ok:
+                        if isinstance(post_commit_all, PostCommitTransactionsMessage):
+                            try:
+                                post_commit_all.validate()
+                            except SiriusValidationError as e:
+                                raise self._terminate_with_problem_report(
+                                    problem_code=REQUEST_NOT_ACCEPTED,
+                                    explain=f'Stage-3: error for actor {actor.their.did}: "{e.message}"',
+                                    their_did=actor.their.did
+                                )
+                            else:
+                                uncommitted_size = ledger_state.uncommitted_size - ledger_state.size
+                                await ledger.commit(uncommitted_size)
+                        elif isinstance(post_commit_all, SimpleConsensusProblemReport):
+                            explain = f'Stage-3: Problem report from actor {actor.their.did}: "{post_commit_all.explain}"'
+                            self.__problem_report = SimpleConsensusProblemReport(post_commit_all.problem_code, explain)
+                            raise self.__problem_report
+                    else:
+                        await self._terminate_with_problem_report(
+                            problem_code=REQUEST_PROCESSING_ERROR,
+                            explain=f'Stage-3: Post-Commit awaiting terminated by timeout for actor: {actor.their.did}',
+                            their_did=actor.their.did
+                        )
+            elif isinstance(pre_commit, SimpleConsensusProblemReport):
+                explain = f'Stage-1: Problem report from actor {actor.their.did}: "{pre_commit.explain}"'
+                self.__problem_report = SimpleConsensusProblemReport(pre_commit.problem_code, explain)
+                raise self.__problem_report
+        else:
+            await self._terminate_with_problem_report(
+                problem_code=REQUEST_PROCESSING_ERROR,
+                explain=f'Stage-1: Commit awaiting terminated by timeout for actor: {actor.their.did}',
+                their_did=actor.their.did
+            )

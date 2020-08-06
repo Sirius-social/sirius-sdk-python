@@ -20,6 +20,13 @@ class Transaction(dict):
         if METADATA_ATTR not in self:
             self[METADATA_ATTR] = {}
 
+    def has_metadata(self) -> bool:
+        if METADATA_ATTR in self.keys():
+            meta = self[METADATA_ATTR]
+            return len(meta.keys()) > 0
+        else:
+            return False
+
     @staticmethod
     def create(*args, **kwargs):
         inst = Transaction(*args, **kwargs)
@@ -151,7 +158,7 @@ class Microledger:
         return txns
 
     async def append(
-            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int]=None
+            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int] = None
     ) -> (int, int, List[Transaction]):
         transactions_to_append = []
         for txn in transactions:

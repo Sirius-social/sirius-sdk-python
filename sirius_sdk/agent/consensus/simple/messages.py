@@ -4,7 +4,7 @@ from typing import List, Optional
 from ....encryption import bytes_to_b58
 from ....errors.exceptions import *
 from ....agent.pairwise import Pairwise
-from ....agent.microledgers import serialize_ordering
+from ....agent.microledgers import serialize_ordering, Microledger
 from ....agent.wallet.abstract.crypto import AbstractCrypto
 from ....agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from ....agent.microledgers import Transaction
@@ -154,3 +154,230 @@ class InitResponseLedgerMessage(InitRequestLedgerMessage):
     def signature(self, did: str) -> Optional[dict]:
         filtered = [p for p in self.signatures if p['participant'] == did]
         return filtered[0] if filtered else None
+
+
+class MicroLedgerState(dict):
+
+    @classmethod
+    def from_ledger(cls, ledger: Microledger):
+        return MicroLedgerState(
+            {
+                'name': ledger.name,
+                'seq_no': ledger.seq_no,
+                'size': ledger.size,
+                'uncommitted_size': ledger.uncommitted_size,
+                'root_hash': ledger.root_hash,
+                'uncommitted_root_hash': ledger.uncommitted_root_hash
+            }
+        )
+
+    def is_filled(self) -> bool:
+        return all(
+            [
+                k in self.keys() for k in
+                ('name', 'seq_no', 'size', 'uncommitted_size', 'root_hash', 'uncommitted_root_hash')
+            ]
+        )
+
+    @property
+    def name(self) -> str:
+        return self['name']
+
+    @name.setter
+    def name(self, value: int):
+        self['name'] = value
+
+    @property
+    def seq_no(self) -> int:
+        return self['seq_no']
+
+    @seq_no.setter
+    def seq_no(self, value: int):
+        self['seq_no'] = value
+
+    @property
+    def size(self) -> int:
+        return self['size']
+
+    @size.setter
+    def size(self, value: int):
+        self['size'] = value
+
+    @property
+    def uncommitted_size(self) -> int:
+        return self['uncommitted_size']
+
+    @uncommitted_size.setter
+    def uncommitted_size(self, value: int):
+        self['uncommitted_size'] = value
+
+    @property
+    def root_hash(self) -> str:
+        return self['root_hash']
+
+    @root_hash.setter
+    def root_hash(self, value: str):
+        self['root_hash'] = value
+
+    @property
+    def uncommitted_root_hash(self) -> str:
+        return self['uncommitted_root_hash']
+
+    @uncommitted_root_hash.setter
+    def uncommitted_root_hash(self, value: str):
+        self['uncommitted_root_hash'] = value
+
+
+class BaseTransactionsMessage(SimpleConsensusMessage):
+
+    NAME = 'stage'
+
+    def __init__(self, transactions: List[Transaction] = None, state: Optional[MicroLedgerState] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if transactions is not None:
+            for txn in transactions:
+                txn = Transaction(txn)
+                if not txn.has_metadata():
+                    raise SiriusContextError('Transaction must have processed by Ledger engine and has metadata')
+            self['transactions'] = transactions
+        if state:
+            self['state'] = state
+
+    @property
+    def thread_id(self) -> Optional[str]:
+        return self.get(THREAD_DECORATOR, {}).get('thid', None)
+
+    @property
+    def transactions(self) -> Optional[List[Transaction]]:
+        txns = self.get('transactions', None)
+        if txns is not None:
+            return [Transaction(txn) for txn in txns]
+        else:
+            return None
+
+    @property
+    def state(self) -> Optional[MicroLedgerState]:
+        state = self.get('state', None)
+        if state is not None:
+            state = MicroLedgerState(state)
+            return state if state.is_filled() else None
+        else:
+            return None
+
+
+class ProposeTransactionsMessage(BaseTransactionsMessage):
+    """Message to process transactions propose by Actor
+    """
+    NAME = 'stage-propose'
+
+    def __init__(self, timeout_sec: int = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if timeout_sec:
+            self['timeout_sec'] = timeout_sec
+
+    @property
+    def timeout_sec(self) -> Optional[int]:
+        return self.get('timeout_sec', None)
+
+    def validate(self):
+        super().validate()
+        if not self.transactions:
+            raise SiriusValidationError('Empty transactions list')
+        for txn in self.transactions:
+            if not txn.has_metadata():
+                raise SiriusValidationError('Transaction has not metadata')
+        if not self.state:
+            raise SiriusValidationError('Empty state')
+
+
+class PreCommitTransactionsMessage(BaseTransactionsMessage):
+    """Message to accumulate participants signed accepts for transactions list
+    """
+    NAME = 'stage-pre-commit'
+
+    async def sign_state(self, api: AbstractCrypto, me: Pairwise.Me):
+        signed = await sign(api, self.state, me.verkey)
+        self['state~sig'] = signed
+
+    async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[MicroLedgerState]):
+        state_signed = self.get('state~sig', None)
+        if state_signed:
+            if state_signed['signer'] == expected_verkey:
+                state, is_success = await verify_signed(api, state_signed)
+                return is_success, MicroLedgerState(state)
+            else:
+                return False, None
+        else:
+            return False, None
+
+
+class CommitTransactionsMessage(BaseTransactionsMessage):
+    """Message to commit transactions list
+    """
+    NAME = 'stage-commit'
+
+    @property
+    def pre_commits(self) -> dict:
+        return self.get('pre_commits', {})
+
+    def add_pre_commit(self, participant: str, pre_commit: PreCommitTransactionsMessage):
+        if 'state~sig' not in pre_commit:
+            raise SiriusContextError(f'Pre-Commit for participant {participant} does not have state~sig attribute')
+        pre_commits = self.pre_commits
+        pre_commits[participant] = pre_commit['state~sig']
+        self['pre_commits'] = pre_commits
+
+    def validate(self):
+        super().validate()
+        for participant in self.participants:
+            if participant not in self.pre_commits.keys():
+                raise SiriusValidationError(f'Pre-Commit for participant "{participant}" does not exists')
+
+    async def verify_pre_commits(self, api: AbstractCrypto, expected_state: MicroLedgerState):
+        states = {}
+        for participant, signed in self.pre_commits.items():
+            state, is_success = await verify_signed(api, signed)
+            if not is_success:
+                raise SiriusValidationError(f'Error verifying pre_commit for participant: {participant}')
+            if state != expected_state:
+                raise SiriusValidationError(f'Ledger state for participant {participant} is not consistent')
+            states[participant] = (state, signed)
+        return states
+
+
+class PostCommitTransactionsMessage(BaseTransactionsMessage):
+    """Message to commit transactions list
+    """
+    NAME = 'stage-post-commit'
+
+    @property
+    def commits(self) -> List[dict]:
+        payload = self.get('commits', [])
+        if payload:
+            return payload
+        else:
+            return []
+
+    async def add_commit_sign(self, api: AbstractCrypto, commit: CommitTransactionsMessage, me: Pairwise.Me):
+        signed = await sign(api, commit, me.verkey)
+        commits = self.commits
+        commits.append(signed)
+        self['commits'] = commits
+
+    async def verify_commits(self, api: AbstractCrypto, expected: CommitTransactionsMessage, verkeys: List[str]) -> bool:
+        actual_verkeys = [commit['signer'] for commit in self.commits]
+        if set(actual_verkeys) != set(verkeys):
+            return False
+        for signed in self.commits:
+            commit, is_success = await verify_signed(api, signed)
+            if is_success:
+                if dict(commit) != dict(expected):
+                    return False
+            else:
+                return False
+        return True
+
+    def validate(self):
+        super().validate()
+        if not self.commits:
+            raise SiriusValidationError('Commits collection is empty')

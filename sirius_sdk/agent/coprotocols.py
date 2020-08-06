@@ -267,7 +267,6 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         self.__sender_order = 0
         self.__received_orders = {}
         self.pairwise = pairwise
-        self._check_verkeys = True
 
     @property
     def pairwise(self) -> Pairwise:
