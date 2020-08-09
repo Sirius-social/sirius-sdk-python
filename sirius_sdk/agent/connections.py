@@ -337,6 +337,7 @@ class AgentRPC(BaseAgentConnection):
         await super().close()
         for ws, session in self.__websockets.values():
             await ws.close()
+            await session.close()
 
     async def __get_websocket(self, url: str):
         tup = self.__websockets.get(url, None)

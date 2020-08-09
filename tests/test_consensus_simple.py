@@ -4,9 +4,6 @@ from datetime import datetime
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.errors.exceptions import *
-from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.agent.microledgers import Transaction
 from sirius_sdk.agent.consensus.simple.state_machines import MicroLedgerSimpleConsensus
 from sirius_sdk.agent.consensus.simple.messages import *
 

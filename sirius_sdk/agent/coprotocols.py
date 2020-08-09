@@ -130,10 +130,18 @@ class AbstractCoProtocolTransport(ABC):
         except SiriusTimeoutIO:
             return False, None
 
-    async def get_one(self) -> Message:
+    async def get_one(self) -> (Optional[Message], str, Optional[str]):
         self._rpc.timeout = self.__get_io_timeout()
-        msg = await self._rpc.read_protocol_message()
-        return msg
+        event = await self._rpc.read_protocol_message()
+        if 'message' in event:
+            ok, message = restore_message_instance(event['message'])
+            if not ok:
+                message = Message(event['message'])
+        else:
+            message = None
+        sender_verkey = event.get('sender_verkey', None)
+        recipient_verkey = event.get('recipient_verkey', None)
+        return message, sender_verkey, recipient_verkey
 
     async def send(self, message: Message):
         """Send message and don't wait answer
