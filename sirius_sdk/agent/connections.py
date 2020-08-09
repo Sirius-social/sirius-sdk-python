@@ -1,4 +1,5 @@
 import json
+import aiohttp
 import asyncio
 import datetime
 from abc import ABC, abstractmethod
@@ -116,6 +117,7 @@ class AgentRPC(BaseAgentConnection):
         self.__tunnel_coprotocols = None
         self.__endpoints = []
         self.__networks = []
+        self.__connector = aiohttp.TCPConnector(verify_ssl=False, keepalive_timeout=60)
 
     @property
     def endpoints(self) -> List[Endpoint]:
@@ -197,7 +199,7 @@ class AgentRPC(BaseAgentConnection):
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
             params=params
         )
-        ok, body = await http_send(wired, endpoint, timeout=self.timeout)
+        ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__connector)
         if not ok:
             raise SiriusRPCError(body.decode())
         else:
