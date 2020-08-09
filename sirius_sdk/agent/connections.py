@@ -43,7 +43,7 @@ class BaseAgentConnection(ABC):
 
     def __init__(
             self, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int=IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+            p2p: P2PConnection, timeout: int = IO_TIMEOUT, loop: asyncio.AbstractEventLoop = None
     ):
         self._connector = WebSocketConnector(
             server_address=server_address,
@@ -118,6 +118,7 @@ class AgentRPC(BaseAgentConnection):
         self.__endpoints = []
         self.__networks = []
         self.__websockets = {}
+        self.__prefer_agent_side = True
         self.__connector = aiohttp.TCPConnector(verify_ssl=False, keepalive_timeout=60)
 
     @property
@@ -196,18 +197,27 @@ class AgentRPC(BaseAgentConnection):
             'recipient_verkeys': recipient_verkeys,
             'sender_verkey': my_vk
         }
-        wired = await self.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
-            params=params
-        )
-        if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
-            ws = await self.__get_websocket(endpoint)
-            await ws.send_bytes(wired)
-            ok, body = True, b''
+        if self.__prefer_agent_side:
+            params['timeout'] = self.timeout
+            params['endpoint_address'] = endpoint
+            ok, body = await self.remote_call(
+                msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message',
+                params=params
+            )
         else:
-            ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__connector)
+            wired = await self.remote_call(
+                msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
+                params=params
+            )
+            if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
+                ws = await self.__get_websocket(endpoint)
+                await ws.send_bytes(wired)
+                ok, body = True, b''
+            else:
+                ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__connector)
+            body = body.decode()
         if not ok:
-            raise SiriusRPCError(body.decode())
+            raise SiriusRPCError(body)
         else:
             if coprotocol:
                 response = await self.read_protocol_message()

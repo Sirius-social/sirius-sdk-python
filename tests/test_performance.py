@@ -121,8 +121,8 @@ async def test_send_message_via_transport(agent1: Agent, agent2: Agent):
                 "response_requested": True
             })
             await transport_for_a.send(msg)
-            resp = await transport_for_b.get_one()
-            assert resp['message']['@id'] == msg['@id']
+            message, sender_vk, recip_vk = await transport_for_b.get_one()
+            assert message['@id'] == msg['@id']
         print('\n>STOP')
         stamp2 = datetime.now()
         delta = stamp2 - stamp1
