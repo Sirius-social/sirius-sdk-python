@@ -6,6 +6,7 @@ import pytest
 from sirius_sdk import Agent
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.messaging import Message
+from sirius_sdk.agent.coprotocols import AbstractCoProtocolTransport
 from .conftest import get_pairwise
 from .helpers import run_coroutines
 
@@ -123,6 +124,58 @@ async def test_send_message_via_transport(agent1: Agent, agent2: Agent):
             await transport_for_a.send(msg)
             message, sender_vk, recip_vk = await transport_for_b.get_one()
             assert message['@id'] == msg['@id']
+        print('\n>STOP')
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'>timeout: {delta.seconds}')
+    finally:
+        await agent1.close()
+        await agent2.close()
+
+
+@pytest.mark.asyncio
+async def test_switch_via_transport_in_coros(agent1: Agent, agent2: Agent):
+    await agent1.open()
+    await agent2.open()
+    try:
+        a2b = await get_pairwise(agent1, agent2)
+        b2a = await get_pairwise(agent2, agent1)
+        thread_id = 'thread-' + uuid.uuid4().hex
+        transport_for_a = await agent1.spawn(thread_id, a2b)
+        await transport_for_a.start()
+        transport_for_b = await agent2.spawn(thread_id, b2a)
+        await transport_for_b.start()
+
+        async def __producer(t: AbstractCoProtocolTransport):
+            for n in range(TEST_ITERATIONS // 2):
+                msg = Message({
+                    '@id': 'message-id-' + uuid.uuid4().hex,
+                    '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/test/1.0/message',
+                    "comment": "RUN",
+                    "response_requested": True
+                })
+                ok, resp = await t.switch(msg)
+                assert ok is True
+            msg = Message({
+                '@id': 'message-id-' + uuid.uuid4().hex,
+                '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/test/1.0/message',
+                "comment": "STOP",
+                "response_requested": True
+            })
+            await t.send(msg)
+
+        async def __consumer(t: AbstractCoProtocolTransport):
+            message, sender_vk, recip_vk = await t.get_one()
+            while True:
+                ok, message = await t.switch(message)
+                if message['comment'] == 'STOP':
+                    return
+
+        print('\n>START')
+        stamp1 = datetime.now()
+        producer = __producer(transport_for_a)
+        consumer = __consumer(transport_for_b)
+        await run_coroutines(producer, consumer, timeout=60)
         print('\n>STOP')
         stamp2 = datetime.now()
         delta = stamp2 - stamp1
