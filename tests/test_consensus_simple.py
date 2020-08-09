@@ -140,6 +140,7 @@ async def test_transaction_messaging(A: Agent, B: Agent, ledger_name: str):
         )
         x = MicroLedgerState.from_ledger(ledger_for_a)
         assert state == x
+        assert state.hash == x.hash
         propose = ProposeTransactionsMessage(
             transactions=new_txns,
             state=state
@@ -161,9 +162,9 @@ async def test_transaction_messaging(A: Agent, B: Agent, ledger_name: str):
         )
         await pre_commit.sign_state(B.wallet.crypto, b2a.me)
         pre_commit.validate()
-        ok, loaded_state = await pre_commit.verify_state(A.wallet.crypto, a2b.their.verkey)
+        ok, loaded_state_hash = await pre_commit.verify_state(A.wallet.crypto, a2b.their.verkey)
         assert ok is True
-        assert loaded_state == state
+        assert loaded_state_hash == state.hash
         # A -> B
         commit = CommitTransactionsMessage()
         commit.add_pre_commit(a2b.their.did, pre_commit)

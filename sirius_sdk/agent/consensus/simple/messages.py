@@ -1,3 +1,4 @@
+import json
 import hashlib
 from typing import List, Optional
 
@@ -227,6 +228,11 @@ class MicroLedgerState(dict):
     def uncommitted_root_hash(self, value: str):
         self['uncommitted_root_hash'] = value
 
+    @property
+    def hash(self) -> str:
+        dump = json.dumps(self, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+        return hashlib.md5(dump.encode()).hexdigest()
+
 
 class BaseTransactionsMessage(SimpleConsensusMessage):
 
@@ -241,7 +247,9 @@ class BaseTransactionsMessage(SimpleConsensusMessage):
                     raise SiriusContextError('Transaction must have processed by Ledger engine and has metadata')
             self['transactions'] = transactions
         if state:
+            state = MicroLedgerState(state)
             self['state'] = state
+            self['hash'] = state.hash
 
     @property
     def thread_id(self) -> Optional[str]:
@@ -263,6 +271,10 @@ class BaseTransactionsMessage(SimpleConsensusMessage):
             return state if state.is_filled() else None
         else:
             return None
+
+    @property
+    def hash(self) -> Optional[str]:
+        return self.get('hash', None)
 
 
 class ProposeTransactionsMessage(BaseTransactionsMessage):
@@ -288,6 +300,8 @@ class ProposeTransactionsMessage(BaseTransactionsMessage):
                 raise SiriusValidationError('Transaction has not metadata')
         if not self.state:
             raise SiriusValidationError('Empty state')
+        if not self.hash:
+            raise SiriusValidationError('Empty hash')
 
 
 class PreCommitTransactionsMessage(BaseTransactionsMessage):
@@ -296,15 +310,16 @@ class PreCommitTransactionsMessage(BaseTransactionsMessage):
     NAME = 'stage-pre-commit'
 
     async def sign_state(self, api: AbstractCrypto, me: Pairwise.Me):
-        signed = await sign(api, self.state, me.verkey)
-        self['state~sig'] = signed
+        signed = await sign(api, self.hash, me.verkey)
+        self['hash~sig'] = signed
+        del self['state']
 
-    async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[MicroLedgerState]):
-        state_signed = self.get('state~sig', None)
-        if state_signed:
-            if state_signed['signer'] == expected_verkey:
-                state, is_success = await verify_signed(api, state_signed)
-                return is_success, MicroLedgerState(state)
+    async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[str]):
+        hash_signed = self.get('hash~sig', None)
+        if hash_signed:
+            if hash_signed['signer'] == expected_verkey:
+                state_hash, is_success = await verify_signed(api, hash_signed)
+                return is_success, state_hash
             else:
                 return False, None
         else:
@@ -321,10 +336,10 @@ class CommitTransactionsMessage(BaseTransactionsMessage):
         return self.get('pre_commits', {})
 
     def add_pre_commit(self, participant: str, pre_commit: PreCommitTransactionsMessage):
-        if 'state~sig' not in pre_commit:
-            raise SiriusContextError(f'Pre-Commit for participant {participant} does not have state~sig attribute')
+        if 'hash~sig' not in pre_commit:
+            raise SiriusContextError(f'Pre-Commit for participant {participant} does not have hash~sig attribute')
         pre_commits = self.pre_commits
-        pre_commits[participant] = pre_commit['state~sig']
+        pre_commits[participant] = pre_commit['hash~sig']
         self['pre_commits'] = pre_commits
 
     def validate(self):
@@ -336,12 +351,12 @@ class CommitTransactionsMessage(BaseTransactionsMessage):
     async def verify_pre_commits(self, api: AbstractCrypto, expected_state: MicroLedgerState):
         states = {}
         for participant, signed in self.pre_commits.items():
-            state, is_success = await verify_signed(api, signed)
+            state_hash, is_success = await verify_signed(api, signed)
             if not is_success:
                 raise SiriusValidationError(f'Error verifying pre_commit for participant: {participant}')
-            if state != expected_state:
+            if state_hash != expected_state.hash:
                 raise SiriusValidationError(f'Ledger state for participant {participant} is not consistent')
-            states[participant] = (state, signed)
+            states[participant] = (expected_state, signed)
         return states
 
 
@@ -366,12 +381,14 @@ class PostCommitTransactionsMessage(BaseTransactionsMessage):
 
     async def verify_commits(self, api: AbstractCrypto, expected: CommitTransactionsMessage, verkeys: List[str]) -> bool:
         actual_verkeys = [commit['signer'] for commit in self.commits]
-        if set(actual_verkeys) != set(verkeys):
+        if not set(verkeys).issubset(set(actual_verkeys)):
             return False
         for signed in self.commits:
             commit, is_success = await verify_signed(api, signed)
             if is_success:
-                if dict(commit) != dict(expected):
+                cleaned_commit = {k: v for k, v in commit.items() if not k.startswith('~')}
+                cleaned_expect = {k: v for k, v in expected.items() if not k.startswith('~')}
+                if cleaned_commit != cleaned_expect:
                     return False
             else:
                 return False

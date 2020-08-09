@@ -385,6 +385,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             pre_commit=self_pre_commit
         )
         awaited_list = []
+        stamp1 = datetime.now()
         for their_did in neighbours:
             ok, pre_commit = await self._switch(their_did, propose)
             if ok:
@@ -396,7 +397,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                             raise SiriusValidationError(
                                 f'Stage-1: Error verifying signed ledger state for participant {their_did}'
                             )
-                        if pre_commit.state != propose.state:
+                        if pre_commit.hash != propose.state.hash:
                             raise SiriusValidationError(
                                 f'Stage-1: Non-consistent ledger state for participant {their_did}'
                             )
@@ -420,8 +421,12 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     explain=f'Stage-1: Pre-Commit awaiting terminated by timeout for participant: {their_did}',
                     their_did=awaited_list
                 )
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'=========== STAGE 1 DELTA: {delta.seconds}===========')
         # ===== STAGE-2: Accumulate pre-commits and send commit propose to all participants
         post_commit_all = PostCommitTransactionsMessage()
+        stamp1 = datetime.now()
         await post_commit_all.add_commit_sign(self.crypto, commit, self.me)
         for their_did in neighbours:
             ok, post_commit = await self._switch(their_did, commit)
@@ -448,11 +453,22 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     explain=f'Stage-2: Post-Commit awaiting terminated by timeout for participant: {their_did}',
                     their_did=neighbours
                 )
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'=========== STAGE 2 DELTA: {delta.seconds}===========')
         # ===== STAGE-3: Notify all participants with post-commits and finalize process
-        for their_did in neighbours:
-            await self._send(their_did, post_commit_all)
+        stamp1 = datetime.now()
+        await self._send(neighbours, post_commit_all)
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'=========== STAGE 3 DELTA: {delta.seconds}===========')
+
+        stamp1 = datetime.now()
         uncommitted_size = ledger.uncommitted_size - ledger.size
         await ledger.commit(uncommitted_size)
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'=========== COMMIT DELTA: {delta.seconds}===========')
         return txns
 
     async def _load_ledger(self, actor: Pairwise, propose: ProposeTransactionsMessage) -> Microledger:
@@ -505,11 +521,14 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     # ===== STAGE-3: Process post-commit, verify participants operations
                     post_commit = PostCommitTransactionsMessage()
                     await post_commit.add_commit_sign(self.crypto, commit, self.me)
+
                     ok, post_commit_all = await self._switch(actor.their.did, post_commit)
                     if ok:
                         if isinstance(post_commit_all, PostCommitTransactionsMessage):
                             try:
                                 post_commit_all.validate()
+                                verkeys = [(await self.get_p2p(did)).their.verkey for did in neighbours]
+                                await post_commit_all.verify_commits(self.crypto, commit, verkeys)
                             except SiriusValidationError as e:
                                 raise self._terminate_with_problem_report(
                                     problem_code=REQUEST_NOT_ACCEPTED,
