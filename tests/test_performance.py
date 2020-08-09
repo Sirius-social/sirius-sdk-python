@@ -4,11 +4,68 @@ from datetime import datetime
 import pytest
 
 from sirius_sdk import Agent
+from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.messaging import Message
 from .conftest import get_pairwise
+from .helpers import run_coroutines
 
 
 TEST_ITERATIONS = 100
+
+
+async def routine_for_pinger(agent: Agent, p: Pairwise, thread_id: str):
+    transport = await agent.spawn(thread_id, p)
+    await transport.start()
+    try:
+        for n in range(TEST_ITERATIONS):
+            ping = Message({
+                '@id': 'message-id-' + uuid.uuid4().hex,
+                '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/test/1.0/ping',
+                "comment": "Hi",
+            })
+            ok, pong = await transport.switch(ping)
+            assert ok
+            assert pong['@id'] == ping['@id']
+    finally:
+        await transport.stop()
+
+
+@pytest.mark.asyncio
+async def test_wallet_access(agent1: Agent, agent2: Agent):
+    await agent1.open()
+    await agent2.open()
+    try:
+        a2b = await get_pairwise(agent1, agent2)
+        print('\n>START')
+        stamp1 = datetime.now()
+        for n in range(TEST_ITERATIONS):
+            pw = await agent1.wallet.pairwise.get_pairwise(a2b.their.did)
+        print('\n>STOP')
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'>timeout: {delta.seconds}')
+    finally:
+        await agent1.close()
+        await agent2.close()
+
+
+@pytest.mark.asyncio
+async def test_decode_message(agent1: Agent):
+    await agent1.open()
+    try:
+        seed = '000000000000000000000000000SEED1'
+        packed = b'{"protected": "eyJlbmMiOiAieGNoYWNoYTIwcG9seTEzMDVfaWV0ZiIsICJ0eXAiOiAiSldNLzEuMCIsICJhbGciOiAiQXV0aGNyeXB0IiwgInJlY2lwaWVudHMiOiBbeyJlbmNyeXB0ZWRfa2V5IjogInBKcW1xQS1IVWR6WTNWcFFTb2dySGx4WTgyRnc3Tl84YTFCSmtHU2VMT014VUlwT0RQWTZsMVVsaVVvOXFwS0giLCAiaGVhZGVyIjogeyJraWQiOiAiM1ZxZ2ZUcDZRNFZlRjhLWTdlVHVXRFZBWmFmRDJrVmNpb0R2NzZLR0xtZ0QiLCAic2VuZGVyIjogIjRlYzhBeFRHcWtxamd5NHlVdDF2a0poeWlYZlNUUHo1bTRKQjk1cGZSMG1JVW9KajAwWmswNmUyUEVDdUxJYmRDck8xeTM5LUhGTG5NdW5YQVJZWk5rZ2pyYV8wYTBQODJpbVdNcWNHc1FqaFd0QUhOcUw1OGNkUUYwYz0iLCAiaXYiOiAiVU1PM2o1ZHZwQnFMb2Rvd3V0c244WEMzTkVqSWJLb2oifX1dfQ==", "iv": "MchkHF2M-4hneeUJ", "ciphertext": "UgcdsV-0rIkP25eJuRSROOuqiTEXp4NToKjPMmqqtJs-Ih1b5t3EEbrrHxeSfPsHtlO6J4OqA1jc5uuD3aNssUyLug==", "tag": "sQD8qgJoTrRoyQKPeCSBlQ=="}'
+        await agent1.wallet.did.create_and_store_my_did(seed=seed)
+        print('\n>START')
+        stamp1 = datetime.now()
+        for n in range(TEST_ITERATIONS):
+            unpacked = await agent1.wallet.crypto.unpack_message(packed)
+        print('\n>STOP')
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'>timeout: {delta.seconds}')
+    finally:
+        await agent1.close()
 
 
 @pytest.mark.asyncio
