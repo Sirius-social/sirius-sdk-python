@@ -117,6 +117,7 @@ class AgentRPC(BaseAgentConnection):
         self.__tunnel_coprotocols = None
         self.__endpoints = []
         self.__networks = []
+        self.__websockets = {}
         self.__connector = aiohttp.TCPConnector(verify_ssl=False, keepalive_timeout=60)
 
     @property
@@ -199,7 +200,12 @@ class AgentRPC(BaseAgentConnection):
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
             params=params
         )
-        ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__connector)
+        if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
+            ws = await self.__get_websocket(endpoint)
+            await ws.send_bytes(wired)
+            ok, body = True, b''
+        else:
+            ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__connector)
         if not ok:
             raise SiriusRPCError(body.decode())
         else:
@@ -326,6 +332,24 @@ class AgentRPC(BaseAgentConnection):
         self.__endpoints = endpoint_collection
         # Extract Networks
         self.__networks = context.get('~networks', [])
+
+    async def close(self):
+        await super().close()
+        for ws, session in self.__websockets.values():
+            await ws.close()
+
+    async def __get_websocket(self, url: str):
+        tup = self.__websockets.get(url, None)
+        if tup is None:
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout))
+            ws = await session.ws_connect(url=url)
+            self.__websockets[url] = (ws, session)
+        else:
+            ws, session = tup
+            if ws.closed:
+                ws = session.ws_connect(url=url)
+                self.__websockets[url] = (ws, session)
+        return ws
 
 
 class AgentEvents(BaseAgentConnection):
