@@ -7,7 +7,7 @@ from sirius_sdk.messaging import Message, register_message_class
 from .helpers import ServerTestSuite
 
 
-class TrustPingMessage(Message):
+class TrustPingMessageUnderTest(Message):
     pass
 
 
@@ -146,11 +146,11 @@ async def test_listener_restore_message(test_suite: ServerTestSuite):
                 their_did=entity1['did'], my_did=entity2['did']
             )
         # Bind Message class to protocol
-        register_message_class(TrustPingMessage, protocol='trust_ping')
+        register_message_class(TrustPingMessageUnderTest, protocol='trust_ping_test')
         # Prepare message
         trust_ping = Message({
             '@id': 'trust-ping-message-' + uuid.uuid4().hex,
-            '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping',
+            '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping_test/1.0/ping',
             "comment": "Hi. Are you listening?",
             "response_requested": True
         })
@@ -163,7 +163,7 @@ async def test_listener_restore_message(test_suite: ServerTestSuite):
         )
         event = await agent2_listener.get_one(timeout=5)
         msg = event['message']
-        assert isinstance(msg, TrustPingMessage), 'Unexpected msg type: ' + str(type(msg))
+        assert isinstance(msg, TrustPingMessageUnderTest), 'Unexpected msg type: ' + str(type(msg))
     finally:
         await agent1.close()
         await agent2.close()
