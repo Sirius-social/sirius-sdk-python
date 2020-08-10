@@ -156,12 +156,12 @@ class AgentRPC(BaseAgentConnection):
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
         if self._timeout:
-            expiration_utc = datetime.datetime.utcnow() + datetime.timedelta(seconds=self._timeout)
+            expiration_time = datetime.datetime.now() + datetime.timedelta(seconds=self._timeout)
         else:
-            expiration_utc = None
+            expiration_time = None
         future = Future(
             tunnel=self.__tunnel_rpc,
-            expiration_utc=expiration_utc
+            expiration_time=expiration_time
         )
         request = build_request(
             msg_type=msg_type,

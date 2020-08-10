@@ -26,7 +26,7 @@ class Future:
     response awaiting routines.
     """
 
-    def __init__(self, tunnel: AddressedTunnel, expiration_utc: datetime.datetime=None):
+    def __init__(self, tunnel: AddressedTunnel, expiration_time: datetime.datetime = None):
         """
         :param tunnel: communication tunnel for server-side cloud agent
         :param expiration_time: time of response expiration
@@ -36,7 +36,7 @@ class Future:
         self.__read_ok = False
         self.__tunnel = tunnel
         self.__exception = None
-        self.__expiration_stamp = expiration_utc
+        self.expiration_time = expiration_time
 
     @property
     def promise(self):
@@ -48,7 +48,7 @@ class Future:
         return {
             'id': self.__id,
             'channel_address': self.__tunnel.address,
-            'expiration_stamp': self.__expiration_stamp.timestamp() if self.__expiration_stamp else None
+            'expiration_stamp': self.expiration_time.timestamp() if self.expiration_time else None
         }
 
     async def wait(self, timeout: int=None) -> bool:
@@ -62,13 +62,13 @@ class Future:
         try:
             if timeout == 0:
                 return False
-            if self.__expiration_stamp:
-                expires_time = self.__expiration_stamp
+            if self.expiration_time:
+                expires_time = self.expiration_time
             elif timeout:
-                expires_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=timeout)
+                expires_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
             else:
-                expires_time = datetime.datetime.utcnow() + datetime.timedelta(days=365)
-            while datetime.datetime.utcnow() < expires_time:
+                expires_time = datetime.datetime.now() + datetime.timedelta(days=365)
+            while datetime.datetime.now() < expires_time:
                 timedelta = expires_time - datetime.datetime.utcnow()
                 timeout = max(timedelta.seconds, 0)
                 payload = await self.__tunnel.receive(timeout)
