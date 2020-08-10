@@ -17,8 +17,10 @@ INDY_AGENT = None
 def pytest_configure():
     # Address of TestSuite
     pytest.test_suite_baseurl = os.getenv('TEST_SUITE_BASE_URL') or 'http://localhost'
+    pytest.test_suite_overlay_address = 'http://10.0.0.90'
     # Back compatibility testing
     pytest.old_agent_address = os.getenv('INDY_AGENT_BASE_URL') or 'http://127.0.0.1:88'
+    pytest.old_agent_overlay_address = 'http://10.0.0.52:8888'
     pytest.old_agent_root = {
         'username': 'root',
         'password': 'root'
