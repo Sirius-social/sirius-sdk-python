@@ -163,7 +163,7 @@ async def test_listener_restore_message(test_suite: ServerTestSuite):
         )
         event = await agent2_listener.get_one(timeout=5)
         msg = event['message']
-        assert isinstance(msg, TrustPingMessage)
+        assert isinstance(msg, TrustPingMessage), 'Unexpected msg type: ' + str(type(msg))
     finally:
         await agent1.close()
         await agent2.close()
