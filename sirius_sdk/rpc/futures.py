@@ -65,11 +65,11 @@ class Future:
             if self.__expiration_stamp:
                 expires_time = self.__expiration_stamp
             elif timeout:
-                expires_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+                expires_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=timeout)
             else:
-                expires_time = datetime.datetime.now() + datetime.timedelta(days=365)
-            while datetime.datetime.now() < expires_time:
-                timedelta = expires_time - datetime.datetime.now()
+                expires_time = datetime.datetime.utcnow() + datetime.timedelta(days=365)
+            while datetime.datetime.utcnow() < expires_time:
+                timedelta = expires_time - datetime.datetime.utcnow()
                 timeout = max(timedelta.seconds, 0)
                 payload = await self.__tunnel.receive(timeout)
                 if (payload.get('@type') == MSG_TYPE) and (payload.get('~thread', {}).get('thid', None) == self.__id):
