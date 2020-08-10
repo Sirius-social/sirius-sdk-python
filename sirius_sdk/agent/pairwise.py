@@ -135,15 +135,15 @@ class WalletPairwiseList(AbstractPairwiseList):
     def _restore_pairwise(metadata: dict):
         pairwise = Pairwise(
             me=Pairwise.Me(
-                did=metadata['me']['did'],
-                verkey=metadata['me']['verkey']
+                did=metadata.get('me', {}).get('did', None),
+                verkey=metadata.get('me', {}).get('verkey', None)
             ),
             their=Pairwise.Their(
-                did=metadata['their']['did'],
-                verkey=metadata['their']['verkey'],
-                label=metadata['their']['label'],
-                endpoint=metadata['their']['endpoint']['address'],
-                routing_keys=metadata['their']['endpoint']['routing_keys']
+                did=metadata.get('their', {}).get('did', None),
+                verkey=metadata.get('their', {}).get('verkey', None),
+                label=metadata.get('their', {}).get('label', None),
+                endpoint=metadata.get('their', {}).get('endpoint', {}).get('address', None),
+                routing_keys=metadata.get('their', {}).get('endpoint', {}).get('routing_keys', None),
             ),
             metadata=metadata
         )
