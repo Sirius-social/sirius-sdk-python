@@ -6,7 +6,7 @@ from ..errors.exceptions import *
 from ..messaging import *
 from ..messaging.fields import DIDField
 from .wallet.wallets import DynamicWallet
-from .connections import AgentRPC
+from .connections import AgentRPC, RoutingBatch
 from .pairwise import TheirEndpoint, Pairwise
 
 
@@ -151,7 +151,7 @@ class AbstractCoProtocolTransport(ABC):
         """
         if not self.__is_setup:
             raise SiriusPendingOperation('You must Setup protocol instance at first')
-        self._rpc.timeout = self.__default_timeout
+        self._rpc.timeout = self.__get_io_timeout()
         await self.__setup_context(message)
         await self._rpc.send_message(
             message=message,
@@ -161,6 +161,20 @@ class AbstractCoProtocolTransport(ABC):
             routing_keys=self.__routing_keys,
             coprotocol=False
         )
+
+    async def send_many(self, message: Message, to: List[Pairwise]) -> List[Any]:
+        batches = [
+            RoutingBatch(p.their.verkey, p.their.endpoint, p.me.verkey, p.their.routing_keys)
+            for p in to
+        ]
+        if not self.__is_setup:
+            raise SiriusPendingOperation('You must Setup protocol instance at first')
+        self._rpc.timeout = self.__get_io_timeout()
+        await self.__setup_context(message)
+        results = await self._rpc.send_message_batched(
+            message, batches
+        )
+        return results
 
     async def __setup_context(self, message: Message):
         if self.PLEASE_ACK_DECORATOR in message:

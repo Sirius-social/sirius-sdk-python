@@ -105,6 +105,22 @@ class BaseAgentConnection(ABC):
         pass
 
 
+class RoutingBatch(dict):
+
+    def __init__(
+            self, their_vk: Union[List[str], str], endpoint: str,
+            my_vk: Optional[str] = None, routing_keys: Optional[List[str]] = None, *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        if isinstance(their_vk, str):
+            self['recipient_verkeys'] = [their_vk]
+        else:
+            self['recipient_verkeys'] = their_vk
+        self['endpoint_address'] = endpoint
+        self['sender_verkey'] = my_vk
+        self['routing_keys'] = routing_keys or []
+
+
 class AgentRPC(BaseAgentConnection):
     """RPC service.
 
@@ -224,6 +240,20 @@ class AgentRPC(BaseAgentConnection):
                 return response
             else:
                 return None
+
+    async def send_message_batched(self, message: Message, batches: List[RoutingBatch]) -> List[Any]:
+        if not self._connector.is_open:
+            raise SiriusConnectionClosed('Open agent connection at first')
+        params = {
+            'message': message,
+            'timeout': self.timeout,
+            'batches': batches,
+        }
+        results = await self.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message_batched',
+            params=params
+        )
+        return results
 
     async def read_protocol_message(self) -> Message:
         response = await self.__tunnel_coprotocols.receive(timeout=self._timeout)
