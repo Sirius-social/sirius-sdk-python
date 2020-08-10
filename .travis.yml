@@ -3,9 +3,6 @@ language: python
 services:
   - docker
   
-env:
-  - TEST_SUITE_BASE_URL=http://localhost INDY_AGENT_BASE_URL=http://127.0.0.1:88
-  
 before_install:
   # Run TestSuite
   - cd ./test_suite
@@ -23,4 +20,4 @@ install:
   - pip install -r requirements.txt
 
 script:
-  - pytest --verbose --full-trace
+  - pytest
