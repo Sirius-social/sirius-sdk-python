@@ -1,9 +1,6 @@
 r"""https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
 """
 import re
-import time
-import json
-import struct
 import base64
 from typing import List, Optional
 from urllib.parse import urljoin

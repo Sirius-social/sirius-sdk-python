@@ -38,7 +38,7 @@ class DIDDoc(dict):
                 ]
             )
 
-    def extract_service(self, high_priority: bool=True, type_: str='IndyAgent'):
+    def extract_service(self, high_priority: bool = True, type_: str = 'IndyAgent'):
         services = self.get("service", [])
         if services:
             ret = None
