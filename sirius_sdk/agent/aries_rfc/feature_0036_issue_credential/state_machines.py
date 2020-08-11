@@ -83,6 +83,8 @@ class Issuer(AbstractStateMachine):
                     raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type))
             except StateMachineTerminatedWithError as e:
                 self.__problem_report = IssueProblemReport(e.problem_code, e.explain)
+                if e.notify:
+                    await self.__send(self.__problem_report)
                 return False
             else:
                 return True
@@ -115,12 +117,14 @@ class Issuer(AbstractStateMachine):
                 except SiriusValidationError as e:
                     raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, e.message)
                 return resp
+            elif isinstance(resp, IssueProblemReport):
+                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
             else:
                 raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, 'Unexpected response @type: %s' % str(resp.type))
         else:
             raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, 'Response awaiting terminated by timeout')
 
-    async def __send(self, msg: Union[BaseIssueCredentialMessage, Ack]):
+    async def __send(self, msg: Union[BaseIssueCredentialMessage, Ack, IssueProblemReport]):
         await self.__transport.send(msg)
 
 
@@ -186,6 +190,8 @@ class Holder(AbstractStateMachine):
                 await self.__send(ack)
             except StateMachineTerminatedWithError as e:
                 self.__problem_report = IssueProblemReport(e.problem_code, e.explain)
+                if e.notify:
+                    await self.__send(self.__problem_report)
                 return False, None
             else:
                 return True, cred_id
@@ -218,10 +224,12 @@ class Holder(AbstractStateMachine):
                 except SiriusValidationError as e:
                     raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
                 return resp
+            elif isinstance(resp, IssueProblemReport):
+                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
             else:
                 raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, 'Unexpected issuer request @type: %s' % str(resp.type))
         else:
             raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, 'Issuer request awaiting terminated by timeout')
 
-    async def __send(self, msg: Union[BaseIssueCredentialMessage, Ack]):
+    async def __send(self, msg: Union[BaseIssueCredentialMessage, Ack, IssueProblemReport]):
         await self.__transport.send(msg)

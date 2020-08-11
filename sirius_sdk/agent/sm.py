@@ -31,7 +31,8 @@ class AbstractStateMachine(ABC):
 
 class StateMachineTerminatedWithError(BaseSiriusException):
 
-    def __init__(self, problem_code: str, explain: str, *args, **kwargs):
+    def __init__(self, problem_code: str, explain: str, notify: bool = True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.problem_code = problem_code
         self.explain = explain
+        self.notify = notify
