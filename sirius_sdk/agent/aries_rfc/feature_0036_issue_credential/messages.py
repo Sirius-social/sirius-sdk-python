@@ -7,11 +7,6 @@ from ....errors.exceptions import *
 from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 
 
-PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
-OFFER_PROCESSING_ERROR = 'offer_processing_error'
-REQUEST_NOT_ACCEPTED = "request_not_accepted"
-ISSUE_PROCESSING_ERROR = 'issue_processing_error'
-RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
 CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
 CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/credential-translation"
 ISSUER_SCHEMA_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/issuer-schema"
@@ -84,7 +79,7 @@ class BaseIssueCredentialMessage(AriesProtocolMessage, metaclass=RegisterMessage
         self[THREAD_DECORATOR] = thread
 
 
-class ConnProblemReport(AriesProblemReport, metaclass=RegisterMessage):
+class IssueProblemReport(AriesProblemReport, metaclass=RegisterMessage):
 
     PROTOCOL = BaseIssueCredentialMessage.PROTOCOL
 
@@ -251,6 +246,10 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
         else:
             return cred_def
 
+    @property
+    def expires_time(self) -> Optional[str]:
+        return self.get('~timing', {}).get('expires_time', None)
+
     def parse(self) -> (dict, dict, dict):
         offer_attaches = self.get('offers~attach', None)
         if isinstance(offer_attaches, dict):
@@ -351,3 +350,44 @@ class IssueCredentialMessage(BaseIssueCredentialMessage):
                     }
                 }
             ]
+
+    @property
+    def cred_id(self) -> Optional[str]:
+        attaches = self.get('credentials~attach', None)
+        if attaches:
+            if isinstance(attaches, dict):
+                attaches = [attaches]
+            if isinstance(attaches, list):
+                attach = attaches[0]
+                return attach.get('@id', None)
+            else:
+                return None
+        else:
+            return None
+
+    @property
+    def cred(self) -> Optional[dict]:
+        attaches = self.get('credentials~attach', None)
+        if attaches:
+            if isinstance(attaches, dict):
+                attaches = [attaches]
+            if isinstance(attaches, list):
+                attach = attaches[0]
+                b64 = attach.get('data', {}).get('base64', None)
+                if b64:
+                    body = base64.b64decode(b64)
+                    body = json.loads(body.decode())
+                    return body
+                else:
+                    return None
+            else:
+                return None
+        else:
+            return None
+
+    def validate(self):
+        super().validate()
+        if 'credentials~attach' not in self:
+            raise SiriusValidationError('Expected issue attribute "credentials~attach" missing')
+        if self.cred is None:
+            raise SiriusValidationError('Credential is empty in "credentials~attach" field')

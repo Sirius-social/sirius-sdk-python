@@ -7,7 +7,7 @@ from .agent import TransportLayers
 
 class AbstractStateMachine(ABC):
 
-    def __init__(self, transports: TransportLayers, time_to_live: int=60):
+    def __init__(self, transports: TransportLayers, time_to_live: int = 60):
         """
         :param transports: aries-rfc transports factory
         :param time_to_live: state machine time to live to finish progress

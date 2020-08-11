@@ -3,8 +3,13 @@ import json
 import struct
 import base64
 from typing import Any
+from datetime import datetime
 
 from ..wallet.abstract.crypto import AbstractCrypto
+
+
+def utc_to_str(dt: datetime):
+    dt.strftime('%Y-%m-%dT%H:%M:%S') + '+0000'
 
 
 async def sign(crypto: AbstractCrypto, value: Any, verkey: str) -> dict:
