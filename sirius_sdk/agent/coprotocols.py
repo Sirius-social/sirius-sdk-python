@@ -341,6 +341,11 @@ class ThreadBasedCoProtocolTransport(AbstractCoProtocolTransport):
         self.__prepare_message(message)
         await super().send(message)
 
+    async def send_many(self, message: Message, to: List[Pairwise]) -> List[Any]:
+        self.__prepare_message(message)
+        ret = await super().send_many(message, to)
+        return ret
+
     def __prepare_message(self, message: Message):
         if self.THREAD_DECORATOR not in message:  # Don't rewrite existing ~thread decorator
             thread_decorator = {

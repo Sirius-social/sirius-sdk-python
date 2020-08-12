@@ -1,3 +1,4 @@
+import copy
 from typing import List
 from datetime import datetime
 
@@ -46,17 +47,20 @@ async def routine_of_txn_committer(
     return success, txns
 
 
-async def routine_of_txn_acceptor(acceptor: Agent):
+async def routine_of_txn_acceptor(acceptor: Agent, txns: List[Transaction] = None):
     listener = await acceptor.subscribe()
-    event = await listener.get_one()
-    assert event.pairwise is not None
-    propose = event.message
-    assert isinstance(propose, ProposeTransactionsMessage)
-    machine = MicroLedgerSimpleConsensus(
-        acceptor.wallet.crypto, event.pairwise.me, acceptor.pairwise_list, acceptor.microledgers, acceptor
-    )
-    success = await machine.accept_commit(event.pairwise, propose)
-    return success
+    while True:
+        event = await listener.get_one()
+        assert event.pairwise is not None
+        propose = event.message
+        if isinstance(propose, ProposeTransactionsMessage):
+            if txns:
+                propose['transactions'] = txns
+            machine = MicroLedgerSimpleConsensus(
+                acceptor.wallet.crypto, event.pairwise.me, acceptor.pairwise_list, acceptor.microledgers, acceptor
+            )
+            success = await machine.accept_commit(event.pairwise, propose)
+            return success
 
 
 @pytest.mark.asyncio
@@ -291,6 +295,80 @@ async def test_simple_consensus_commit(A: Agent, B: Agent, C: Agent, ledger_name
             assert 'op3' in str(all_txns)
             assert 'op4' in str(all_txns)
             assert 'op5' in str(all_txns)
+    finally:
+        await A.close()
+        await B.close()
+        await C.close()
+
+
+@pytest.mark.asyncio
+async def test_simple_consensus_error(A: Agent, B: Agent, C: Agent, ledger_name: str):
+    await A.open()
+    await B.open()
+    await C.open()
+    try:
+        A2B = await get_pairwise(A, B)
+        A2C = await get_pairwise(A, C)
+        assert A2B.me == A2C.me
+        B2A = await get_pairwise(B, A)
+        B2C = await get_pairwise(B, C)
+        assert B2A.me == B2C.me
+        C2A = await get_pairwise(C, A)
+        C2B = await get_pairwise(C, B)
+        assert C2A.me == C2B.me
+        participants = [
+            A2B.me.did,
+            A2B.their.did,
+            A2C.their.did
+        ]
+        genesis = [
+            {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"},
+            {"reqId": 2, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op2"}
+        ]
+        ledger_for_a, _ = await A.microledgers.create(ledger_name, genesis)
+        initial_state_root_hash = ledger_for_a.root_hash
+        await B.microledgers.create(ledger_name, genesis)
+        await C.microledgers.create(ledger_name, genesis)
+
+        txns = [
+            {"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"},
+            {"reqId": 4, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op4"},
+            {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5"},
+        ]
+        broken_txns = [
+            {"reqId": 3, "identifier": "BROKEN-5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", "txnMetadata": {"seqNo": 4}},
+            {"reqId": 4, "identifier": "BROKEN-2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op4", "txnMetadata": {"seqNo": 5}},
+            {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5", "txnMetadata": {"seqNo": 6}},
+        ]
+        broken_txns = [Transaction(txn) for txn in broken_txns]
+        coro_committer = routine_of_txn_committer(A, A2B.me, participants, ledger_for_a, txns)
+        coro_acceptor1 = routine_of_txn_acceptor(B, broken_txns)
+        coro_acceptor2 = routine_of_txn_acceptor(C)
+
+        stamp1 = datetime.now()
+        print('> begin')
+        results = await run_coroutines(coro_committer, coro_acceptor1, coro_acceptor2, timeout=60)
+        print('> end')
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'***** Consensus timeout: {delta.seconds}')
+        for res in results:
+            if type(res) is tuple:
+                val = res[0]
+            else:
+                val = res
+            assert val is False
+
+        ledger_for_a = await A.microledgers.ledger(ledger_name)
+        ledger_for_b = await B.microledgers.ledger(ledger_name)
+        ledger_for_c = await C.microledgers.ledger(ledger_name)
+        for ledger in [ledger_for_a, ledger_for_b, ledger_for_c]:
+            await ledger.reload()
+            assert ledger.root_hash == initial_state_root_hash
+            all_txns = await ledger.get_all_transactions()
+            assert 'op3' not in str(all_txns)
+            assert 'op4' not in str(all_txns)
+            assert 'op5' not in str(all_txns)
     finally:
         await A.close()
         await B.close()

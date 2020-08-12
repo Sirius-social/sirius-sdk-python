@@ -272,11 +272,14 @@ class InMemoryChannel(ReadOnlyChannel, WriteOnlyChannel):
         return True
 
 
-async def run_coroutines(*args, timeout: int=15):
+async def run_coroutines(*args, timeout: int = 15):
+    results = []
     items = [i for i in args]
     done, pending = await asyncio.wait(items, timeout=timeout, return_when=asyncio.FIRST_EXCEPTION)
     for f in done:
         if f.exception():
             raise f.exception()
+        results.append(f.result())
     for f in pending:
         f.cancel()
+    return results
