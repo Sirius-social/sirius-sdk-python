@@ -7,7 +7,7 @@ from ....agent.pairwise import Pairwise
 from ....agent.wallet.abstract.crypto import AbstractCrypto
 from ....agent.pairwise import AbstractPairwiseList
 from ....agent.microledgers import Transaction, Microledger, MicroledgerList
-from ....agent.sm import AbstractStateMachine
+from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
 from ....agent.aries_rfc.feature_0015_acks import Ack, Status
 from .messages import *
 
@@ -69,7 +69,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 await self._init_microledger_internal(ledger, participants, genesis)
             except Exception as e:
                 await self.microledgers.reset(ledger_name)
-                if isinstance(e, SimpleConsensusProblemReport):
+                if isinstance(e, StateMachineTerminatedWithError):
                     return False, None
                 else:
                     raise
@@ -104,7 +104,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 ledger = await self._accept_microledger_internal(actor, propose, time_to_live)
             except Exception as e:
                 await self.microledgers.reset(ledger_name)
-                if isinstance(e, SimpleConsensusProblemReport):
+                if isinstance(e, StateMachineTerminatedWithError):
                     return False, None
                 else:
                     raise
@@ -123,7 +123,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 return True, txns
             except Exception as e:
                 await ledger.reset_uncommitted()
-                if isinstance(e, SimpleConsensusProblemReport):
+                if isinstance(e, StateMachineTerminatedWithError):
                     return False, None
                 else:
                     raise
@@ -142,7 +142,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             except Exception as e:
                 if ledger:
                     await ledger.reset_uncommitted()
-                if isinstance(e, SimpleConsensusProblemReport):
+                if isinstance(e, StateMachineTerminatedWithError):
                     return False
                 else:
                     raise
@@ -198,7 +198,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         return self.__cached_p2p[their_did]
 
     async def _terminate_with_problem_report(
-            self, problem_code: str, explain, their_did: Union[str, List[str]], raise_exception: bool=True
+            self, problem_code: str, explain, their_did: Union[str, List[str]], raise_exception: bool = True
     ):
         self.__problem_report = SimpleConsensusProblemReport(
             problem_code=problem_code, explain=explain, thread_id=self.__thread_id
@@ -211,7 +211,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         else:
             raise SiriusContextError('Unexpected their_did type')
         if raise_exception:
-            raise self.__problem_report
+            raise StateMachineTerminatedWithError(problem_code, explain)
 
     async def _init_microledger_internal(
             self, ledger: Microledger, participants: List[str], genesis: List[Transaction]
@@ -239,7 +239,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 elif isinstance(response, SimpleConsensusProblemReport):
                     self.__problem_report = response
                     logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
-                    raise self.__problem_report
+                    raise StateMachineTerminatedWithError(response.problem_code, response.explain)
             else:
                 await self._terminate_with_problem_report(
                     problem_code=RESPONSE_PROCESSING_ERROR,
@@ -249,19 +249,19 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         # ============= STAGE 2: COMMIT ============
         acks = []
         for their_did in neighbours:
-            sub_neighbours = [did for did in neighbours if did != their_did]
             ok, response = await self._switch(their_did, request_commit)
             if ok:
-                acks.append(their_did)
+                if isinstance(response, SimpleConsensusProblemReport):
+                    neighbours = [did for did in neighbours if did != their_did]
+                    await self._terminate_with_problem_report(response.problem_code, response.explain, neighbours)
+                else:
+                    acks.append(their_did)
             else:
-                self.__problem_report = SimpleConsensusProblemReport(
-                    problem_code=RESPONSE_PROCESSING_ERROR,
-                    explain='Stage-2: Response awaiting was terminated for participant: %s' % their_did,
-                    thread_id=self.__thread_id
+                await self._terminate_with_problem_report(
+                    RESPONSE_PROCESSING_ERROR,
+                    'Stage-2: Response awaiting was terminated for participant: %s' % their_did,
+                    neighbours
                 )
-                for did in sub_neighbours:
-                    await self._send(did, self.__problem_report)
-                raise self.__problem_report
         # ============== STAGE 3: POST-COMMIT ============
         if set(acks) == set(neighbours):
             for their_did in neighbours:
@@ -277,7 +277,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             )
             for did in neighbours:
                 await self._send(did, self.__problem_report)
-            raise self.__problem_report
+            await self._terminate_with_problem_report(
+                self.__problem_report.problem_code, self.__problem_report.explain, neighbours
+            )
 
     async def _accept_microledger_internal(
             self, actor: Pairwise, propose: InitRequestLedgerMessage, timeout: int
@@ -340,7 +342,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                             self.__problem_report = resp
                             logging.error(
                                 'Code: %s; Explain: %s' % (resp.problem_code, resp.explain))
-                            raise self.__problem_report
+                            raise StateMachineTerminatedWithError(
+                                self.__problem_report.problem_code, self.__problem_report.explain
+                            )
                     else:
                         await self._terminate_with_problem_report(
                             problem_code=REQUEST_PROCESSING_ERROR,
@@ -349,7 +353,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                         )
             elif isinstance(request_commit, SimpleConsensusProblemReport):
                 self.__problem_report = request_commit
-                raise self.__problem_report
+                raise StateMachineTerminatedWithError(
+                    self.__problem_report.problem_code, self.__problem_report.explain
+                )
         else:
             await self._terminate_with_problem_report(
                 problem_code=REQUEST_PROCESSING_ERROR,
@@ -405,7 +411,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                         await self._terminate_with_problem_report(
                             RESPONSE_NOT_ACCEPTED,
                             f'Stage-1: Error for participant {their_did}: "{e.message}"',
-                            awaited_list
+                            neighbours
                         )
                     else:
                         commit.add_pre_commit(their_did, pre_commit)
@@ -414,7 +420,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     explain = f'Stage-1: Problem report from participant {their_did} "{pre_commit.explain}"'
                     self.__problem_report = SimpleConsensusProblemReport(pre_commit.problem_code, explain)
                     await self._send([did for did in neighbours if did != their_did], self.__problem_report)
-                    raise self.__problem_report
+                    raise StateMachineTerminatedWithError(
+                        self.__problem_report.problem_code, self.__problem_report.explain
+                    )
             else:
                 await self._terminate_with_problem_report(
                     problem_code=RESPONSE_PROCESSING_ERROR,
@@ -446,7 +454,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     explain = f'Stage-2: Problem report from participant {their_did} "{post_commit.explain}"'
                     self.__problem_report = SimpleConsensusProblemReport(post_commit.problem_code, explain)
                     await self._send([did for did in neighbours if did != their_did], self.__problem_report)
-                    raise self.__problem_report
+                    raise StateMachineTerminatedWithError(
+                        self.__problem_report.problem_code, self.__problem_report.explain
+                    )
             else:
                 await self._terminate_with_problem_report(
                     problem_code=RESPONSE_PROCESSING_ERROR,
@@ -512,7 +522,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     commit.validate()
                     await commit.verify_pre_commits(self.crypto, ledger_state)
                 except SiriusValidationError as e:
-                    raise self._terminate_with_problem_report(
+                    await self._terminate_with_problem_report(
                         problem_code=REQUEST_NOT_ACCEPTED,
                         explain=f'Stage-2: error for actor {actor.their.did}: "{e.message}"',
                         their_did=actor.their.did
@@ -530,7 +540,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                                 verkeys = [(await self.get_p2p(did)).their.verkey for did in neighbours]
                                 await post_commit_all.verify_commits(self.crypto, commit, verkeys)
                             except SiriusValidationError as e:
-                                raise self._terminate_with_problem_report(
+                                await self._terminate_with_problem_report(
                                     problem_code=REQUEST_NOT_ACCEPTED,
                                     explain=f'Stage-3: error for actor {actor.their.did}: "{e.message}"',
                                     their_did=actor.their.did
@@ -541,7 +551,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                         elif isinstance(post_commit_all, SimpleConsensusProblemReport):
                             explain = f'Stage-3: Problem report from actor {actor.their.did}: "{post_commit_all.explain}"'
                             self.__problem_report = SimpleConsensusProblemReport(post_commit_all.problem_code, explain)
-                            raise self.__problem_report
+                            raise StateMachineTerminatedWithError(
+                                self.__problem_report.problem_code, self.__problem_report.explain
+                            )
                     else:
                         await self._terminate_with_problem_report(
                             problem_code=REQUEST_PROCESSING_ERROR,
@@ -551,7 +563,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             elif isinstance(pre_commit, SimpleConsensusProblemReport):
                 explain = f'Stage-1: Problem report from actor {actor.their.did}: "{pre_commit.explain}"'
                 self.__problem_report = SimpleConsensusProblemReport(pre_commit.problem_code, explain)
-                raise self.__problem_report
+                raise StateMachineTerminatedWithError(
+                    self.__problem_report.problem_code, self.__problem_report.explain
+                )
         else:
             await self._terminate_with_problem_report(
                 problem_code=REQUEST_PROCESSING_ERROR,
