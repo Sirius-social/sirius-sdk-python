@@ -13,5 +13,5 @@ class AbstractImmutableCollection(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def fetch(self, tags: dict, limit: int=None) -> (List[Any], int):
+    async def fetch(self, tags: dict, limit: int = None) -> (List[Any], int):
         raise NotImplemented

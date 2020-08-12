@@ -1,4 +1,5 @@
 import json
+import copy
 import logging
 from typing import List, Optional, Union
 
@@ -126,7 +127,7 @@ class CredentialDefinition(JsonSerializable):
             instance.support_revocation = data.get('support_revocation', False)
             return instance
 
-    def __init__(self, tag: str, schema: Schema, config: Config=None, body: dict=None, seq_no: int=None):
+    def __init__(self, tag: str, schema: Schema, config: Config = None, body: dict = None, seq_no: int = None):
         self.__tag = tag
         self.__schema = schema
         self.__config = config or CredentialDefinition.Config()
@@ -141,6 +142,14 @@ class CredentialDefinition(JsonSerializable):
     def id(self) -> Optional[str]:
         if self.body:
             return self.body.get('id', None)
+        else:
+            return None
+
+    @property
+    def submitter_did(self) -> Optional[str]:
+        if self.id:
+            parts = self.id.split(':')
+            return parts[0]
         else:
             return None
 
@@ -164,7 +173,8 @@ class CredentialDefinition(JsonSerializable):
         return {
             'schema': self.schema.serialize(),
             'config': self.config.serialize(),
-            'body': self.body
+            'body': self.body,
+            'seq_no': self.seq_no
         }
 
     @classmethod
@@ -179,7 +189,76 @@ class CredentialDefinition(JsonSerializable):
             raise RuntimeError('Unexpected buffer Type')
         schema = Schema.deserialize(data['schema'])
         config = CredentialDefinition.Config.deserialize(data['config'])
-        return CredentialDefinition(schema, config, data['body'])
+        body = data['body']
+        seq_no = data['seq_no']
+        return CredentialDefinition(body['tag'], schema, config, body, seq_no)
+
+
+class CredentialDefinitionFilters:
+
+    def __init__(self):
+        self.__extras = {}
+        self.__tags = {'category': 'cred_def'}
+
+    @property
+    def tags(self) -> dict:
+        d = copy.copy(self.__tags)
+        d.update(self.__extras)
+        return d
+
+    @property
+    def extras(self) -> dict:
+        return self.__extras
+
+    @extras.setter
+    def extras(self, value: dict):
+        self.__extras = value
+
+    def extra(self, name: str, value: str):
+        self.__extras[name] = value
+
+    @property
+    def tag(self) -> Optional[str]:
+        return self.__tags.get('tag', None)
+
+    @tag.setter
+    def tag(self, value: str):
+        if value:
+            self.__tags['tag'] = value
+        elif 'tag' in self.__tags:
+            del self.__tags['tag']
+
+    @property
+    def id(self) -> Optional[str]:
+        return self.__tags.get('id', None)
+
+    @id.setter
+    def id(self, value: str):
+        self.__tags['id'] = value
+
+    @property
+    def submitter_did(self) -> Optional[str]:
+        return self.__tags.get('submitter_did', None)
+
+    @submitter_did.setter
+    def submitter_did(self, value: str):
+        self.__tags['submitter_did'] = value
+
+    @property
+    def schema_id(self) -> Optional[str]:
+        return self.__tags.get('schema_id', None)
+
+    @schema_id.setter
+    def schema_id(self, value: str):
+        self.__tags['schema_id'] = value
+
+    @property
+    def seq_no(self) -> Optional[int]:
+        return self.__tags.get('seq_no', None)
+
+    @seq_no.setter
+    def seq_no(self, value: int):
+        self.__tags['seq_no'] = value
 
 
 class Ledger:
@@ -226,7 +305,9 @@ class Ledger:
                 logging.error(reason)
             return False, None
 
-    async def register_cred_def(self, cred_def: CredentialDefinition, submitter_did: str) -> (bool, CredentialDefinition):
+    async def register_cred_def(
+            self, cred_def: CredentialDefinition, submitter_did: str, tags: dict = None
+    ) -> (bool, CredentialDefinition):
         cred_def_id, body = await self._issuer.issuer_create_and_store_credential_def(
             issuer_did=submitter_did,
             schema=cred_def.schema.body,
@@ -246,6 +327,7 @@ class Ledger:
                 body=body,
                 seq_no=txn_response['result']['txnMetadata']['seqNo']
             )
+            await self.__ensure_exists_in_storage(ledger_cred_def, submitter_did, tags)
             return True, ledger_cred_def
         else:
             return False, None
@@ -269,27 +351,84 @@ class Ledger:
         else:
             return None
 
-    async def fetch_schemas(self, filters: SchemaFilters) -> List[Schema]:
+    async def fetch_schemas(
+            self, id_: str = None, name: str = None, version: str = None, submitter_did: str = None
+    ) -> List[Schema]:
+        filters = SchemaFilters()
+        if id_:
+            filters.id = id_
+        if name:
+            filters.name = name
+        if version:
+            filters.version = version
+        if submitter_did:
+            filters.submitter_did = submitter_did
         fetched, total_count = await self._storage.fetch(filters.tags)
         return [Schema.deserialize(item) for item in fetched]
 
-    async def __ensure_exists_in_storage(self, schema: Schema, submitter_did: str):
+    async def fetch_cred_defs(
+            self, tag: str = None, id_: str = None, submitter_did: str = None,
+            schema_id: str = None, seq_no: int = None, **kwargs
+    ) -> List[CredentialDefinition]:
+        filters = CredentialDefinitionFilters()
+        if tag:
+            filters.tag = tag
+        if id_:
+            filters.id = id_
+        if submitter_did:
+            filters.submitter_did = submitter_did
+        if schema_id:
+            filters.schema_id = schema_id
+        if seq_no:
+            filters.seq_no = seq_no
+        filters.extras = kwargs
+        fetched, total_count = await self._storage.fetch(filters.tags)
+        return [CredentialDefinition.deserialize(item) for item in fetched]
+
+    async def __ensure_exists_in_storage(
+            self, entity: Union[Schema, CredentialDefinition], submitter_did: str, search_tags: dict = None
+    ):
         await self._storage.select_db(self.__db)
-        tags = {
-            'id': schema.id,
-            'category': 'schema'
-        }
-        _, count = await self._storage.fetch(tags=tags)
-        if count == 0:
-            tags.update(
-                {
-                    'id': schema.id,
-                    'name': schema.name,
-                    'version': schema.version,
-                    'submitter_did': submitter_did
-                }
-            )
-            await self._storage.add(
-                value=schema.serialize(),
-                tags=tags
-            )
+        if isinstance(entity, Schema):
+            schema = entity
+            tags = {
+                'id': schema.id,
+                'category': 'schema'
+            }
+            _, count = await self._storage.fetch(tags=tags)
+            if count == 0:
+                tags.update(
+                    {
+                        'id': schema.id,
+                        'name': schema.name,
+                        'version': schema.version,
+                        'submitter_did': submitter_did
+                    }
+                )
+                await self._storage.add(
+                    value=schema.serialize(),
+                    tags=tags
+                )
+        elif isinstance(entity, CredentialDefinition):
+            cred_def = entity
+            tags = {
+                'id': cred_def.id,
+                'seq_no': cred_def.seq_no,
+                'category': 'cred_def'
+            }
+            _, count = await self._storage.fetch(tags=tags)
+            if count == 0:
+                tags.update(
+                    {
+                        'id': cred_def.id,
+                        'tag': cred_def.tag,
+                        'schema_id': cred_def.schema.id,
+                        'submitter_did': cred_def.submitter_did
+                    }
+                )
+                if search_tags:
+                    tags.update(search_tags)
+                await self._storage.add(
+                    value=cred_def.serialize(),
+                    tags=tags
+                )

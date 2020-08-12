@@ -76,10 +76,7 @@ async def test_schema_fetching(agent1: Agent):
         ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did)
         assert ok is True
 
-        filters = SchemaFilters()
-        filters.name = schema_name
-
-        fetches = await ledger.fetch_schemas(filters)
+        fetches = await ledger.fetch_schemas(name=schema_name)
         assert len(fetches) == 1
         assert fetches[0].issuer_did == did
 
@@ -108,11 +105,19 @@ async def test_register_cred_def(agent1: Agent):
         assert ok is True
         assert ledger_cred_def.body is not None
         assert ledger_cred_def.seq_no > 0
+        assert ledger_cred_def.submitter_did == did
 
         ok, ledger_cred_def2 = await ledger.register_cred_def(cred_def=cred_def, submitter_did=did)
         assert ok is True
         assert ledger_cred_def.body == ledger_cred_def2.body
         assert ledger_cred_def2.seq_no > ledger_cred_def.seq_no
+
+        ser = ledger_cred_def.serialize()
+        loaded = CredentialDefinition.deserialize(ser)
+        assert loaded.body == ledger_cred_def.body
+        assert loaded.seq_no == ledger_cred_def.seq_no
+        assert loaded.schema.body == ledger_cred_def.schema.body
+        assert loaded.config.serialize() == ledger_cred_def.config.serialize()
 
     finally:
         await agent1.close()
