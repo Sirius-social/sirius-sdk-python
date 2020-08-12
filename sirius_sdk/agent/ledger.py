@@ -254,11 +254,12 @@ class CredentialDefinitionFilters:
 
     @property
     def seq_no(self) -> Optional[int]:
-        return self.__tags.get('seq_no', None)
+        value = self.__tags.get('seq_no', None)
+        return int(value) if value else None
 
     @seq_no.setter
     def seq_no(self, value: int):
-        self.__tags['seq_no'] = value
+        self.__tags['seq_no'] = str(value)
 
 
 class Ledger:
@@ -413,7 +414,7 @@ class Ledger:
             cred_def = entity
             tags = {
                 'id': cred_def.id,
-                'seq_no': cred_def.seq_no,
+                'seq_no': str(cred_def.seq_no),
                 'category': 'cred_def'
             }
             _, count = await self._storage.fetch(tags=tags)

@@ -107,7 +107,9 @@ async def test_register_cred_def(agent1: Agent):
         assert ledger_cred_def.seq_no > 0
         assert ledger_cred_def.submitter_did == did
 
-        ok, ledger_cred_def2 = await ledger.register_cred_def(cred_def=cred_def, submitter_did=did)
+        ok, ledger_cred_def2 = await ledger.register_cred_def(
+            cred_def=cred_def, submitter_did=did, tags={'my_tag': 'my-value'}
+        )
         assert ok is True
         assert ledger_cred_def.body == ledger_cred_def2.body
         assert ledger_cred_def2.seq_no > ledger_cred_def.seq_no
@@ -119,5 +121,9 @@ async def test_register_cred_def(agent1: Agent):
         assert loaded.schema.body == ledger_cred_def.schema.body
         assert loaded.config.serialize() == ledger_cred_def.config.serialize()
 
+        results = await ledger.fetch_cred_defs(schema_id=schema_id)
+        assert len(results) == 2
+        results = await ledger.fetch_cred_defs(my_tag='my-value')
+        assert len(results) == 1
     finally:
         await agent1.close()
