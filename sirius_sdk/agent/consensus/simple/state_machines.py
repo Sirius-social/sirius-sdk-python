@@ -233,8 +233,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         if isinstance(their_did, str):
             await self._send(their_did, self.__problem_report)
         elif isinstance(their_did, list):
-            for did in their_did:
-                await self._send(did, self.__problem_report)
+            await self._send(their_did, self.__problem_report)
         else:
             raise SiriusContextError('Unexpected their_did type')
         if raise_exception:
@@ -255,57 +254,50 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         request_commit = InitResponseLedgerMessage()
         request_commit.assign_from(propose)
         neighbours = [did for did in participants if did != self.me.did]
-        for their_did in neighbours:
-            ok, response = await self._switch(their_did, propose)
-            if ok:
-                if isinstance(response, InitResponseLedgerMessage):
-                    response.validate()
-                    await response.check_signatures(self.crypto, their_did)
-                    signature = response.signature(their_did)
-                    request_commit.signatures.append(signature)
-                elif isinstance(response, SimpleConsensusProblemReport):
-                    self.__problem_report = response
-                    logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
-                    raise StateMachineTerminatedWithError(response.problem_code, response.explain)
-            else:
-                await self._terminate_with_problem_report(
-                    problem_code=RESPONSE_PROCESSING_ERROR,
-                    explain='Stage-1: Response awaiting was terminated by timeout for participant: %s' % their_did,
-                    their_did=their_did
-                )
+
+        results = await self._switch_multiple(neighbours, propose)
+        neighbours_responses = {did: msg for (ok, msg), did in zip(results, neighbours) if ok is True}
+        if len(neighbours) != len(neighbours):
+            error_neighbours = [did for (ok, _), did in zip(results, neighbours) if not ok]
+            await self._terminate_with_problem_report(
+                problem_code=REQUEST_PROCESSING_ERROR,
+                explain='Stage-1: Participants [%s] unreachable' % ','.join(error_neighbours),
+                their_did=neighbours
+            )
+
+        for their_did, response in neighbours_responses.items():
+            if isinstance(response, InitResponseLedgerMessage):
+                response.validate()
+                await response.check_signatures(self.crypto, their_did)
+                signature = response.signature(their_did)
+                request_commit.signatures.append(signature)
+            elif isinstance(response, SimpleConsensusProblemReport):
+                self.__problem_report = response
+                logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
+                raise StateMachineTerminatedWithError(response.problem_code, response.explain)
+
         # ============= STAGE 2: COMMIT ============
+        results = await self._switch_multiple(neighbours, request_commit)
+        neighbours_responses = {did: msg for (ok, msg), did in zip(results, neighbours) if ok is True}
+
         acks = []
-        for their_did in neighbours:
-            ok, response = await self._switch(their_did, request_commit)
-            if ok:
-                if isinstance(response, SimpleConsensusProblemReport):
-                    neighbours = [did for did in neighbours if did != their_did]
-                    await self._terminate_with_problem_report(response.problem_code, response.explain, neighbours)
-                else:
-                    acks.append(their_did)
+        for their_did, response in neighbours_responses.items():
+            if isinstance(response, SimpleConsensusProblemReport):
+                neighbours = [did for did in neighbours if did != their_did]
+                await self._terminate_with_problem_report(response.problem_code, response.explain, neighbours)
             else:
-                await self._terminate_with_problem_report(
-                    RESPONSE_PROCESSING_ERROR,
-                    'Stage-2: Response awaiting was terminated for participant: %s' % their_did,
-                    neighbours
-                )
+                acks.append(their_did)
         # ============== STAGE 3: POST-COMMIT ============
         if set(acks) == set(neighbours):
-            for their_did in neighbours:
-                ack = Ack(thread_id=self.__thread_id, status=Status.OK)
-                await self._send(their_did, ack)
+            ack = Ack(thread_id=self.__thread_id, status=Status.OK)
+            await self._send(neighbours, ack)
         else:
             acks_str = ','.join(acks)
             neighbours_str = ','.join(neighbours)
-            self.__problem_report = SimpleConsensusProblemReport(
-                problem_code=REQUEST_PROCESSING_ERROR,
-                explain=f'Stage-3: Actual list of acceptors: [{acks_str}]  Expected: [{neighbours_str}]',
-                thread_id=self.__thread_id
-            )
-            for did in neighbours:
-                await self._send(did, self.__problem_report)
             await self._terminate_with_problem_report(
-                self.__problem_report.problem_code, self.__problem_report.explain, neighbours
+                REQUEST_PROCESSING_ERROR,
+                f'Stage-3: Actual list of acceptors: [{acks_str}]  Expected: [{neighbours_str}]',
+                neighbours
             )
 
     async def _accept_microledger_internal(
