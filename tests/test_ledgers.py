@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.agent.ledger import SchemaFilters, CredentialDefinition
+from sirius_sdk.agent.ledger import CredentialDefinition
 
 
 @pytest.mark.asyncio
