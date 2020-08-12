@@ -53,7 +53,7 @@ class AnonCredsProxy(AbstractAnonCreds):
     async def issuer_create_credential_offer(self, cred_def_id: str) -> dict:
         return await self.__rpc.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/issuer_create_credential_offer',
-            params=dict(red_def_id=cred_def_id)
+            params=dict(cred_def_id=cred_def_id)
         )
 
     async def issuer_create_credential(
