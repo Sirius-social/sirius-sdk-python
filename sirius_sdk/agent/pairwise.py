@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
+from urllib.parse import urlparse, urlunparse
 
 from .wallet.abstract.pairwise import AbstractPairwise
 
@@ -10,6 +11,20 @@ class TheirEndpoint:
         self.endpoint = endpoint
         self.verkey = verkey
         self.routing_keys = routing_keys or []
+
+    @property
+    def netloc(self) -> Optional[str]:
+        if self.endpoint:
+            return urlparse(self.endpoint).netloc
+        else:
+            return None
+
+    @netloc.setter
+    def netloc(self, value: str):
+        if self.endpoint:
+            components = list(urlparse(self.endpoint))
+            components[1] = value
+            self.endpoint = urlunparse(components)
 
 
 class Pairwise:
