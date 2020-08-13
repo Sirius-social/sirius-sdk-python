@@ -91,7 +91,7 @@ async def test_sane(agent1: Agent, agent2: Agent):
         )
 
         results = await run_coroutines(coro_issuer, coro_holder, timeout=60)
-
+        print(str(results))
         cred_id = None
         for res in results:
             if type(res) is tuple:
