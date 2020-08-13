@@ -5,6 +5,7 @@ from ....agent.pairwise import Pairwise
 from ....agent.codec import encode
 from ....agent.aries_rfc.utils import utc_to_str
 from ....agent.ledger import Schema, CredentialDefinition
+from ....errors.indy_exceptions import WalletItemNotFound
 from ....agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
 from ..feature_0015_acks import Ack, Status
@@ -175,16 +176,8 @@ class Holder(AbstractStateMachine):
                 except SiriusValidationError as e:
                     raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
                 # Step-3: Store credential
-                cred_older = await self.__api.prover_get_credential(issue_msg.cred_id)
-                if cred_older:
-                    # Delete older credential
-                    await self.__api.prover_delete_credential(issue_msg.cred_id)
-                cred_id = await self.__api.prover_store_credential(
-                    cred_req_metadata=json.loads(cred_metadata),
-                    cred=issue_msg.cred,
-                    cred_def=offer.cred_def,
-                    rev_reg_def=None,
-                    cred_id=issue_msg.cred_id
+                cred_id = await self._store_credential(
+                    cred_metadata, issue_msg.cred, offer.cred_def, None, issue_msg.cred_id
                 )
                 ack = Ack(thread_id=issue_msg.id, status=Status.OK)
                 await self.__send(ack)
@@ -205,6 +198,25 @@ class Holder(AbstractStateMachine):
     @property
     def protocols(self) -> List[str]:
         return [BaseIssueCredentialMessage.PROTOCOL, Ack.PROTOCOL]
+
+    async def _store_credential(
+            self, cred_metadata: dict, cred: dict, cred_def: dict, rev_reg_def: Optional[dict], cred_id: Optional[str]
+    ) -> str:
+        try:
+            cred_older = await self.__api.prover_get_credential(cred_id)
+        except WalletItemNotFound:
+            cred_older = None
+        if cred_older:
+            # Delete older credential
+            await self.__api.prover_delete_credential(cred_id)
+        cred_id = await self.__api.prover_store_credential(
+            cred_req_metadata=cred_metadata,
+            cred=cred,
+            cred_def=cred_def,
+            rev_reg_def=rev_reg_def,
+            cred_id=cred_id
+        )
+        return cred_id
 
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__issuer)

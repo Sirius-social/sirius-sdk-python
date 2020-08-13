@@ -2,14 +2,35 @@ import time
 import json
 import struct
 import base64
+import logging
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
+
+from pytime import pytime
 
 from ..wallet.abstract.crypto import AbstractCrypto
 
 
 def utc_to_str(dt: datetime):
-    dt.strftime('%Y-%m-%dT%H:%M:%S') + '+0000'
+    return dt.strftime('%Y-%m-%dT%H:%M:%S') + '+0000'
+
+
+def str_to_utc(s: str, raise_exceptions: bool = True) -> Optional[datetime]:
+    tz_shift = None
+    try:
+        if '+' in s:
+            s, shift = s.split('+')
+            tz_shift = timedelta(hours=int(shift))
+        s = s.replace('T', ' ')
+        ret = pytime.parse(s)
+        return ret + tz_shift
+    except:
+        logging.exception('Error while parse datetime')
+        if raise_exceptions:
+            raise
+        else:
+            return None
 
 
 async def sign(crypto: AbstractCrypto, value: Any, verkey: str) -> dict:

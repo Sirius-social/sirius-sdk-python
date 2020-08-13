@@ -183,10 +183,10 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
                         }
                     }
                 )
-            if expires_time:
-                self['~timing'] = {
-                    "expires_time": expires_time
-                }
+        if expires_time:
+            self['~timing'] = {
+                "expires_time": expires_time
+            }
 
     @property
     def comment(self) -> Optional[str]:
