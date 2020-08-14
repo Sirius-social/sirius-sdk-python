@@ -134,7 +134,7 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
     def __init__(
             self, comment: str = None, offer: dict = None, cred_def: dict = None,
             preview: List[ProposedAttrib] = None, issuer_schema: dict = None, translation: List[AttribTranslation] = None,
-            expires_time: Any = None, *args, **kwargs
+            expires_time: str = None, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         if comment:

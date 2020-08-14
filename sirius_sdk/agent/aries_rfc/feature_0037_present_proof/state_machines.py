@@ -3,8 +3,6 @@ from datetime import datetime, timedelta
 
 from ....agent.pairwise import Pairwise
 from ....agent.aries_rfc.utils import utc_to_str
-from ....agent.ledger import Schema, CredentialDefinition
-from ....errors.indy_exceptions import WalletItemNotFound
 from ....agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
 from ..feature_0015_acks import Ack, Status
@@ -111,6 +109,42 @@ class Prover(AbstractStateMachine):
         self.__transport = None
         self.__problem_report = None
 
+    async def prove(self, request: RequestPresentationMessage, master_secret_id: str) -> bool:
+        await self.__start()
+        try:
+            try:
+                # Step-1: Process proof-request
+                try:
+                    request.validate()
+                except SiriusValidationError as e:
+                    raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
+                success, cred_infos = await self._extract_credentials_info(request.proof_request)
+                if success:
+                    # Step-2: Build proof
+                    proof = {}
+                    # Step-3: Send proof and wait Ack to check success from Verifier side
+                    presentation_msg = PresentationMessage(proof)
+                    presentation_msg.please_ack = True
+                    # Step-3: Walt ACK
+                    ack = await self.__switch(presentation_msg)
+                    if isinstance(ack, Ack):
+                        return True
+                    else:
+                        raise StateMachineTerminatedWithError(
+                            RESPONSE_FOR_UNKNOWN_REQUEST, 'Unexpected response @type: %s' % str(ack.type)
+                        )
+                else:
+                    raise StateMachineTerminatedWithError(
+                        REQUEST_PROCESSING_ERROR, 'No proof correspondent to proof-request'
+                    )
+            except StateMachineTerminatedWithError as e:
+                self.__problem_report = PresentProofProblemReport(e.problem_code, e.explain)
+                if e.notify:
+                    await self.__send(self.__problem_report)
+                return False
+        finally:
+            await self.__stop()
+
     @property
     def problem_report(self) -> PresentProofProblemReport:
         return self.__problem_report
@@ -118,6 +152,22 @@ class Prover(AbstractStateMachine):
     @property
     def protocols(self) -> List[str]:
         return [BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL]
+
+    async def _extract_credentials_info(self, proof_request) -> (bool, Optional[dict]):
+        # Extract credentials from wallet that satisfy to request
+        proof_response = await self.__api.prover_search_credentials_for_proof_req(proof_request, limit_referents=1)
+        requested_credentials = {
+            'self_attested_attributes': {},
+            'requested_attributes': {},
+            'requested_predicates': {}
+        }
+        for referent_id, cred_infos in proof_response['requested_attributes'].items():
+            cred_info = cred_infos[0]  # Get first
+            requested_credentials['requested_attributes']['referent_id'] = cred_info
+        for referent_id, predicates in proof_response['requested_predicates'].items():
+            pred_info = predicates[0]  # Get first
+            requested_credentials['requested_predicates'][referent_id] = pred_info
+        return True, {}
 
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__verifier)

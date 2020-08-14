@@ -6,7 +6,7 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 import pytest
 
-from sirius_sdk import Agent
+from sirius_sdk import Agent, Pairwise
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from sirius_sdk.encryption import P2PConnection
@@ -64,6 +64,33 @@ class IndyAgent:
         assert ok is True
         return invitation
 
+    async def create_and_store_my_did(self, seed: str = None) -> (str, str):
+        url = '/agent/admin/wallets/%s/did/create_and_store_my_did/' % self.WALLET
+        params = {'pass_phrase': self.PASS_PHRASE}
+        if seed:
+            params['seed'] = seed
+        ok, resp = await self.__http_post(url, params)
+        assert ok is True
+        return resp['did'], resp['verkey']
+
+    async def create_pairwise_statically(self, pw: Pairwise):
+        url = '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % self.WALLET
+        metadata = {
+            'label': pw.their.label,
+            'their_vk': pw.their.verkey,
+            'my_vk': pw.me.verkey,
+            'their_endpoint': pw.their.endpoint
+        }
+        params = {'pass_phrase': self.PASS_PHRASE}
+        params.update({
+            'my_did': pw.me.did,
+            'their_did': pw.their.did,
+            'their_verkey': pw.their.verkey,
+            'metadata': metadata
+        })
+        ok, resp = await self.__http_post(url, params)
+        assert ok is True
+
     async def ensure_is_alive(self):
         inc_timeout = 10
         for n in range(1, self.SETUP_TIMEOUT, inc_timeout):
@@ -109,7 +136,6 @@ class IndyAgent:
                 )
                 assert ok is True
                 self.__default_invitation = invitaion
-        print('!')
 
     async def __http_get(self, path: str):
         url = urljoin(self.__address, path)
@@ -256,7 +282,6 @@ class InMemoryChannel(ReadOnlyChannel, WriteOnlyChannel):
         async def internal_reading():
             nonlocal ret
             ret = await self.queue.get()
-            print('!')
 
         done, pending = await asyncio.wait([internal_reading()], timeout=timeout)
 

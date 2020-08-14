@@ -5,13 +5,14 @@ from datetime import datetime, timedelta
 import pytest
 
 from sirius_sdk import Agent, Pairwise
+from sirius_sdk.agent.wallet import NYMRole
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
 from sirius_sdk.agent.ledger import Schema, CredentialDefinition
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential import Issuer, Holder, AttribTranslation, \
     ProposedAttrib, OfferCredentialMessage
 
 from .conftest import get_pairwise
-from .helpers import run_coroutines
+from .helpers import run_coroutines, IndyAgent
 
 
 async def run_issuer(
@@ -107,3 +108,58 @@ async def test_sane(agent1: Agent, agent2: Agent):
     finally:
         await issuer.close()
         await holder.close()
+
+
+@pytest.mark.asyncio
+async def test_issuer_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
+    issuer = agent1
+    await issuer.open()
+    try:
+        endpoint_issuer = [e for e in issuer.endpoints if e.routing_keys == []][0].address
+        did_issuer, verkey_issuer = await issuer.wallet.did.create_and_store_my_did()
+        did_holder, verkey_holder = await indy_agent.create_and_store_my_did()
+        pairwise_for_issuer = Pairwise(
+            me=Pairwise.Me(did_issuer, verkey_issuer),
+            their=Pairwise.Their(did_holder, 'Holder', indy_agent.endpoint['url'], verkey_holder)
+        )
+        pairwise_for_holder = Pairwise(
+            me=Pairwise.Me(did_holder, verkey_holder),
+            their=Pairwise.Their(did_issuer, 'Issuer', endpoint_issuer, verkey_issuer)
+        )
+        pairwise_for_issuer.their.netloc = pytest.old_agent_overlay_address.replace('http://', '')
+        pairwise_for_holder.their.netloc = pytest.test_suite_overlay_address.replace('http://', '')
+        await indy_agent.create_pairwise_statically(pairwise_for_holder)
+        await issuer.wallet.did.store_their_did(did_holder, verkey_holder)
+        await issuer.pairwise_list.ensure_exists(pairwise_for_issuer)
+
+        schema_name = 'schema_' + uuid.uuid4().hex
+        schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
+            did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
+        )
+        ledger = issuer.ledger('default')
+        ok, resp = await issuer.wallet.ledger.write_nym(
+            'default', 'Th7MpTaRZVRYnPiabds81Y', did_issuer, verkey_issuer, 'Issuer', NYMRole.TRUST_ANCHOR
+        )
+        assert ok is True
+        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        assert ok is True
+
+        ok, cred_def = await ledger.register_cred_def(
+            cred_def=CredentialDefinition(tag='TAG', schema=schema),
+            submitter_did=did_issuer
+        )
+        assert ok is True
+
+        cred_id = 'cred-id-' + uuid.uuid4().hex
+        coro_issuer = run_issuer(
+            agent=issuer, holder=pairwise_for_issuer,
+            values={'attr1': 'Value-1', 'attr2': 567, 'attr3': 5.7},
+            schema=schema, cred_def=cred_def, cred_id=cred_id
+        )
+
+        results = await run_coroutines(coro_issuer, timeout=60)
+        print(str(results))
+        assert len(results) == 1
+        assert results[0] is True
+    finally:
+        await issuer.close()

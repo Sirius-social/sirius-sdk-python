@@ -174,6 +174,10 @@ class RequestPresentationMessage(BasePresentProofMessage):
         else:
             return None
 
+    @property
+    def expires_time(self) -> Optional[str]:
+        return self.get('~timing', {}).get('expires_time', None)
+
 
 class PresentationMessage(BasePresentProofMessage):
 

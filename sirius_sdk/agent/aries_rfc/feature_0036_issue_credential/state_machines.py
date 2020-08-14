@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from ....agent.pairwise import Pairwise
 from ....agent.codec import encode
-from ....agent.aries_rfc.utils import utc_to_str
+from ....agent.aries_rfc.utils import utc_to_str, str_to_utc
 from ....agent.ledger import Schema, CredentialDefinition
 from ....errors.indy_exceptions import WalletItemNotFound
 from ....agent.wallet.abstract.anoncreds import AbstractAnonCreds
