@@ -23,19 +23,17 @@ class Issuer(AbstractStateMachine):
     
     def __init__(
             self, api: AbstractAnonCreds, holder: Pairwise,
-            comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE,
             *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.__api = api
         self.__holder = holder
         self.__transport = None
-        self.__comment = comment
-        self.__locale = locale
         self.__problem_report = None
 
     async def issue(
             self, values: dict, schema: Schema, cred_def: CredentialDefinition,
+            comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE,
             preview: List[Any] = None, translation: List[AttribTranslation] = None, cred_id: str = None
     ) -> bool:
         await self.__start()
@@ -45,8 +43,8 @@ class Issuer(AbstractStateMachine):
                 offer = await self.__api.issuer_create_credential_offer(cred_def_id=cred_def.id)
                 expires_time = datetime.utcnow() + timedelta(seconds=self.time_to_live)
                 offer_msg = OfferCredentialMessage(
-                    comment=self.__comment,
-                    locale=self.__locale,
+                    comment=comment,
+                    locale=locale,
                     offer=offer,
                     cred_def=cred_def.body,
                     preview=preview,
@@ -73,8 +71,8 @@ class Issuer(AbstractStateMachine):
                 cred, cred_revoc_id, revoc_reg_delta = ret
                 # Step-3: Issue and wait Ack
                 issue_msg = IssueCredentialMessage(
-                    comment=self.__comment,
-                    locale=self.__locale,
+                    comment=comment,
+                    locale=locale,
                     cred=cred,
                     cred_id=cred_id
                 )
