@@ -20,12 +20,13 @@ async def run_issuer(
         preview: List[ProposedAttrib] = None, translation: List[AttribTranslation] = None, cred_id: str = None
 ):
     machine = Issuer(
-        api=agent.wallet.anoncreds, holder=holder, comment='Hello Iam issuer', transports=agent
+        api=agent.wallet.anoncreds, holder=holder, transports=agent
     )
     success = await machine.issue(
         values=values,
         schema=schema,
         cred_def=cred_def,
+        comment='Hello Iam issuer',
         preview=preview,
         translation=translation,
         cred_id=cred_id
