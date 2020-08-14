@@ -163,3 +163,38 @@ async def test_issuer_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
         assert results[0] is True
     finally:
         await issuer.close()
+
+
+@pytest.mark.asyncio
+async def test_holder_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
+    holder = agent1
+    await holder.open()
+    try:
+        endpoint_holder = [e for e in holder.endpoints if e.routing_keys == []][0].address
+        did_issuer, verkey_issuer = await indy_agent.create_and_store_my_did()
+        did_holder, verkey_holder = await holder.wallet.did.create_and_store_my_did()
+        pairwise_for_issuer = Pairwise(
+            me=Pairwise.Me(did_issuer, verkey_issuer),
+            their=Pairwise.Their(did_holder, 'Holder', endpoint_holder, verkey_holder)
+        )
+        pairwise_for_holder = Pairwise(
+            me=Pairwise.Me(did_holder, verkey_holder),
+            their=Pairwise.Their(did_issuer, 'Issuer', indy_agent.endpoint['url'], verkey_issuer)
+        )
+        pairwise_for_issuer.their.netloc = pytest.test_suite_overlay_address.replace('http://', '')
+        pairwise_for_holder.their.netloc = pytest.old_agent_overlay_address.replace('http://', '')
+        await indy_agent.create_pairwise_statically(pairwise_for_issuer)
+        await holder.wallet.did.store_their_did(did_issuer, verkey_issuer)
+        await holder.pairwise_list.ensure_exists(pairwise_for_holder)
+
+        ok, resp = await agent1.wallet.ledger.write_nym(
+            'default', 'Th7MpTaRZVRYnPiabds81Y', did_issuer, verkey_issuer, 'Issuer', NYMRole.TRUST_ANCHOR
+        )
+        assert ok is True
+        # Register schema
+        schema_name = 'schema_' + uuid.uuid4().hex
+        schema_id, schema = await indy_agent.register_schema(did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3'])
+        cred_def_id, cred_def = await indy_agent.register_cred_def(did_issuer, schema_id, 'TAG')
+
+    finally:
+        await holder.close()

@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from typing import List, Any
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
@@ -10,6 +11,8 @@ from sirius_sdk import Agent, Pairwise
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from sirius_sdk.encryption import P2PConnection
+from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential import ProposedAttrib as IssuingProposedAttrib, \
+    AttribTranslation as IssuingAttribTranslation
 
 
 class IndyAgent:
@@ -29,7 +32,7 @@ class IndyAgent:
         self.__default_invitation = None
 
     @property
-    def endpoint(self) -> str:
+    def endpoint(self) -> dict:
         return self.__endpoint
 
     @property
@@ -90,6 +93,67 @@ class IndyAgent:
         })
         ok, resp = await self.__http_post(url, params)
         assert ok is True
+
+    async def register_schema(self, issuer_did: str, name: str, version: str, attributes: List[str]) -> (str, dict):
+        url = '/agent/admin/wallets/%s/did/%s/ledger/register_schema/' % (self.WALLET, issuer_did)
+        params = {
+            'pass_phrase': self.PASS_PHRASE,
+            'name': name,
+            'version': version,
+            'attributes': attributes
+        }
+        ok, resp = await self.__http_post(url, params)
+        assert ok is True
+        return resp['schema_id'], resp['schema']
+
+    async def register_cred_def(
+            self, submitter_did: str, schema_id : str, tag: str, support_revocation: bool = False
+    ):
+        url = '/agent/admin/wallets/%s/did/%s/cred_def/create_and_send/' % (self.WALLET, submitter_did)
+        params = {
+            'pass_phrase': self.PASS_PHRASE,
+            'schema_id': schema_id,
+            'tag': tag,
+            'support_revocation': support_revocation
+        }
+        ok, resp = await self.__http_post(url, params)
+        assert ok is True
+        return resp['id'], resp['cred_def']
+
+    async def issue_credential(
+            self, cred_def_id: str, cred_def: dict, values: dict, their_did: str,
+            comment: str = None, locale: str = None, issuer_schema: dict = None,
+            preview: List[IssuingProposedAttrib] = None, translation: List[IssuingAttribTranslation] = None,
+            rev_reg_id: str = None, cred_id: str = None, ttl: int = 60
+    ) -> Any:
+        url = '/agent/admin/wallets/%s/messaging/issue_credential/' % self.WALLET
+        params = {
+            'pass_phrase': self.PASS_PHRASE,
+            'cred_def_id': cred_def_id,
+            'cred_def': cred_def,
+            'values': values,
+            'their_did': their_did
+        }
+        if comment:
+            params['comment'] = comment
+        if locale:
+            params['locale'] = locale
+        if issuer_schema:
+            params['issuer_schema'] = issuer_schema
+        if preview:
+            params['preview'] = preview
+        if translation:
+            params['translation'] = translation
+        if rev_reg_id:
+            params['rev_reg_id'] = rev_reg_id
+        if cred_id:
+            params['cred_id'] = cred_id
+        if ttl:
+            params['ttl'] = ttl
+        params['collect_log'] = True
+        ok, resp = await self.__http_post(url, params)
+        assert ok is True
+        return resp
 
     async def ensure_is_alive(self):
         inc_timeout = 10
