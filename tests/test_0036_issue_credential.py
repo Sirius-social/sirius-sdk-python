@@ -53,6 +53,23 @@ async def run_holder(agent: Agent, issuer: Pairwise, master_secret_id: str):
     return success, cred_id
 
 
+async def run_issuer_indy_agent(
+        indy_agent: IndyAgent, cred_def_id: str, cred_def: dict, values: dict, their_did: str,
+        issuer_schema: dict = None, preview: List[ProposedAttrib] = None, translation: List[AttribTranslation] = None,
+        rev_reg_id: str = None, cred_id: str = None, ttl: int = 60
+) -> bool:
+    log = await indy_agent.issue_credential(
+        cred_def_id, cred_def, values, their_did, 'Test issuer', None, issuer_schema, preview, translation,
+        rev_reg_id, cred_id, ttl
+    )
+    if len(log) > 2:
+        last = log[-1]['message']
+        pred = log[-2]['message']
+        return ('Received ACK' in pred) and ('Done' in last)
+    else:
+        return False
+
+
 @pytest.mark.asyncio
 async def test_sane(agent1: Agent, agent2: Agent):
     issuer = agent1
@@ -196,6 +213,37 @@ async def test_holder_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
         schema_name = 'schema_' + uuid.uuid4().hex
         schema_id, schema = await indy_agent.register_schema(did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3'])
         cred_def_id, cred_def = await indy_agent.register_cred_def(did_issuer, schema_id, 'TAG')
+
+        master_secret_name = 'secret-' + uuid.uuid4().hex
+        holder_secret_id = await holder.wallet.anoncreds.prover_create_master_secret(master_secret_name)
+        cred_id = 'cred-id-' + uuid.uuid4().hex
+
+        coro_issuer = run_issuer_indy_agent(
+            indy_agent=indy_agent, cred_def_id=cred_def_id, cred_def=cred_def,
+            values={'attr1': 'Value-1', 'attr2': 567, 'attr3': 5.7},
+            their_did=pairwise_for_issuer.their.did,
+            issuer_schema=schema, rev_reg_id=None,
+            cred_id=cred_id
+        )
+        coro_holder = run_holder(
+            agent=holder,
+            issuer=pairwise_for_holder,
+            master_secret_id=holder_secret_id
+        )
+
+        results = await run_coroutines(coro_issuer, coro_holder, timeout=60)
+        assert len(results) == 2
+
+        for res in results:
+            if type(res) is tuple:
+                ok, cred_id = res
+            else:
+                ok = res
+            assert ok is True
+
+        assert cred_id is not None
+        cred = await holder.wallet.anoncreds.prover_get_credential(cred_id)
+        assert cred
 
     finally:
         await holder.close()
