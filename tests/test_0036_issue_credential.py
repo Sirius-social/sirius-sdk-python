@@ -110,7 +110,6 @@ async def test_sane(agent1: Agent, agent2: Agent):
         )
 
         results = await run_coroutines(coro_issuer, coro_holder, timeout=60)
-        print(str(results))
         cred_id = None
         for res in results:
             if type(res) is tuple:
@@ -176,7 +175,6 @@ async def test_issuer_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
         )
 
         results = await run_coroutines(coro_issuer, timeout=60)
-        print(str(results))
         assert len(results) == 1
         assert results[0] is True
     finally:
