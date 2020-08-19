@@ -154,6 +154,7 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
         print('Run state machines')
         results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
         print('Finish state machines')
+        print(str(results))
         assert len(results) == 2
         for res in results:
             assert res is True
