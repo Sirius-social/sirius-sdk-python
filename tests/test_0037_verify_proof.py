@@ -113,7 +113,7 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
             "version": "0.1",
             "requested_attributes": {
                 attr_referent_id: {
-                    "names": ["attr1", "attr2", "attr3"],
+                    "name": "attr1",
                     "restrictions": {
                         "issuer_did": did_issuer
                     }
