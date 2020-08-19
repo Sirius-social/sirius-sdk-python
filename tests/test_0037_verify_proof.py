@@ -56,11 +56,13 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
     await prover.open()
     await verifier.open()
     try:
+        print('Establish pairwises')
         i2p = await get_pairwise(issuer, prover)
         p2i = await get_pairwise(prover, issuer)
         v2p = await get_pairwise(verifier, prover)
         p2v = await get_pairwise(prover, verifier)
 
+        print('Register schema')
         did_issuer, verkey_issuer = i2p.me.did, i2p.me.verkey
         schema_name = 'schema_' + uuid.uuid4().hex
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
@@ -70,11 +72,14 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
         ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
 
+        print('Register credential def')
         ok, cred_def = await ledger.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )
         assert ok is True
+
+        print('Prepare Prover')
         master_secret_name = 'secret-' + uuid.uuid4().hex
         prover_secret_id = await prover.wallet.anoncreds.prover_create_master_secret(master_secret_name)
         cred_values = {'attr1': 'Value-1', 'attr2': 456, 'attr3': 5.87}
@@ -140,8 +145,9 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
             verifier=p2v,
             master_secret_id=prover_secret_id
         )
-        print('@')
+        print('Run state machines')
         results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
+        print('Finish state machines')
         assert len(results) == 2
         for res in results:
             assert res is True
