@@ -142,10 +142,25 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
         )
         print('@')
         results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
+        assert len(results) == 2
         for res in results:
             assert res is True
 
     finally:
         await issuer.close()
         await prover.close()
+        await verifier.close()
+
+
+@pytest.mark.asyncio
+async def test_back_compatibility(agent1: Agent, agent2: Agent, agent3: IndyAgent):
+    issuer = agent1
+    prover = agent3
+    verifier = agent2
+    await issuer.open()
+    await verifier.open()
+    try:
+        pass
+    finally:
+        await issuer.close()
         await verifier.close()
