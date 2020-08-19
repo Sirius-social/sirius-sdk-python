@@ -19,11 +19,14 @@ from .helpers import run_coroutines, IndyAgent
 async def run_verifier(
         agent: Agent, prover: Pairwise, proof_request: dict, translation: List[AttribTranslation] = None
 ) -> bool:
-    machine = Verifier(
-        api=agent.wallet.anoncreds, cache=agent.wallet.cache, prover=prover, pool_name='default', transports=agent
-    )
-    success = await machine.verify(proof_request, translation=translation, comment='I am Verifier')
-    return success
+    try:
+        machine = Verifier(
+            api=agent.wallet.anoncreds, cache=agent.wallet.cache, prover=prover, pool_name='default', transports=agent
+        )
+        success = await machine.verify(proof_request, translation=translation, comment='I am Verifier')
+        return success
+    except Exception as e:
+        print('==== Verifier routine Exception: ' + repr(e))
 
 
 async def run_prover(agent: Agent, verifier: Pairwise, master_secret_id: str):
@@ -39,12 +42,15 @@ async def run_prover(agent: Agent, verifier: Pairwise, master_secret_id: str):
         delta = expire - datetime.utcnow()
         if delta.seconds > 0:
             ttl = delta.seconds
-    machine = Prover(
-        api=agent.wallet.anoncreds, cache=agent.wallet.cache, verifier=verifier,
-        pool_name='default', transports=agent, time_to_live=ttl
-    )
-    success = await machine.prove(request, master_secret_id)
-    return success
+    try:
+        machine = Prover(
+            api=agent.wallet.anoncreds, cache=agent.wallet.cache, verifier=verifier,
+            pool_name='default', transports=agent, time_to_live=ttl
+        )
+        success = await machine.prove(request, master_secret_id)
+        return success
+    except Exception as e:
+        print('==== Prover routine Exception: ' + repr(e))
 
 
 @pytest.mark.asyncio
