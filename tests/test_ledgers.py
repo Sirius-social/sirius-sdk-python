@@ -53,9 +53,11 @@ async def test_schema_loading(agent1: Agent, agent2: Agent):
         seed2 = '000000000000000000000000Trustee0'
         did2, verkey2 = await agent2.wallet.did.create_and_store_my_did(seed=seed2)
         ledger2 = agent2.ledger('default')
-        loaded_schema = await ledger2.load_schema(id_=schema.id, submitter_did=did2)
-        assert loaded_schema is not None
-        assert loaded_schema == schema
+
+        for n in range(5):
+            loaded_schema = await ledger2.load_schema(id_=schema.id, submitter_did=did2)
+            assert loaded_schema is not None
+            assert loaded_schema == schema
     finally:
         await agent1.close()
         await agent2.close()
@@ -106,9 +108,10 @@ async def test_register_cred_def(agent1: Agent):
         assert ledger_cred_def.body is not None
         assert ledger_cred_def.seq_no > 0
         assert ledger_cred_def.submitter_did == did
+        my_value = 'my-value-' + uuid.uuid4().hex
 
         ok, ledger_cred_def2 = await ledger.register_cred_def(
-            cred_def=cred_def, submitter_did=did, tags={'my_tag': 'my-value'}
+            cred_def=cred_def, submitter_did=did, tags={'my_tag': my_value}
         )
         assert ok is True
         assert ledger_cred_def.body == ledger_cred_def2.body
@@ -123,7 +126,26 @@ async def test_register_cred_def(agent1: Agent):
 
         results = await ledger.fetch_cred_defs(schema_id=schema_id)
         assert len(results) == 2
-        results = await ledger.fetch_cred_defs(my_tag='my-value')
+        results = await ledger.fetch_cred_defs(my_tag=my_value)
         assert len(results) == 1
+
+        print('#')
+        xxx = await agent1.wallet.anoncreds.to_unqualified(ledger_cred_def.id)
+        parts = ledger_cred_def.id.split(':')
+        print(str(parts))
+        for n in range(5):
+            print('n: ' + str(n))
+            # x = await ledger.load_cred_def(ledger_cred_def.id, did)
+            # assert x == ledger_cred_def.body
+            req = await agent1.wallet.ledger.build_get_txn_request(
+                submitter_did=did,
+                ledger_type=None,
+                seq_no=1
+            )
+            resp = await agent1.wallet.ledger.submit_request(
+                pool_name='default',
+                request=req
+            )
+            print('@')
     finally:
         await agent1.close()
