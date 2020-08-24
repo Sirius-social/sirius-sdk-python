@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 from ..base import JsonSerializable
 from ..storages import AbstractImmutableCollection
 from ..errors.indy_exceptions import LedgerNotFound
+from ..errors.exceptions import SiriusInvalidPayloadStructure
 from .wallet.abstract.ledger import AbstractLedger
 from .wallet.abstract.anoncreds import AnonCredSchema, AbstractAnonCreds
 from .wallet.abstract.cache import AbstractCache, CacheOptions
@@ -288,6 +289,44 @@ class Ledger:
         )
         return Schema(**body)
 
+    async def load_cred_def(self, id_: str, submitter_did: str) -> CredentialDefinition:
+        cred_def_body = await self._cache.get_cred_def(
+            pool_name=self.name,
+            submitter_did=submitter_did,
+            id_=id_,
+            options=CacheOptions()
+        )
+        tag = cred_def_body.get('tag')
+        schema_seq_no = int(cred_def_body['schemaId'])
+        cred_def_seq_no = int(cred_def_body['id'].split(':')[3]) + 1
+        txn_request = await self._api.build_get_txn_request(
+            submitter_did=submitter_did,
+            ledger_type=None,
+            seq_no=schema_seq_no
+        )
+        resp = await self._api.sign_and_submit_request(
+            pool_name=self.name,
+            submitter_did=submitter_did,
+            request=txn_request
+        )
+        if resp['op'] == 'REPLY':
+            txn_data = resp['result']['data']
+            schema_body = {
+                'name': txn_data['txn']['data']['data']['name'],
+                'version': txn_data['txn']['data']['data']['version'],
+                'attrNames': txn_data['txn']['data']['data']['attr_names'],
+                'id': txn_data['txnMetadata']['txnId'],
+                'seqNo': txn_data['txnMetadata']['seqNo']
+            }
+            schema_body['ver'] = schema_body['id'].split(':')[-1]
+            schema = Schema(**schema_body)
+            cred_def = CredentialDefinition(
+                tag=tag, schema=schema, body=cred_def_body, seq_no=cred_def_seq_no
+            )
+            return cred_def
+        else:
+            raise SiriusInvalidPayloadStructure()
+
     async def register_schema(self, schema: AnonCredSchema, submitter_did: str) -> (bool, Schema):
         success, txn_response = await self._api.register_schema(
             pool_name=self.name,
@@ -315,11 +354,20 @@ class Ledger:
             tag=cred_def.tag,
             config=cred_def.config.serialize()
         )
-        success, txn_response = await self._api.register_cred_def(
-            pool_name=self.name,
+        build_request = await self._api.build_cred_def_request(
             submitter_did=submitter_did,
             data=body
         )
+        signed_request = await self._api.sign_request(
+            submitter_did=submitter_did,
+            request=build_request
+        )
+        resp = await self._api.submit_request(self.name, signed_request)
+        success = resp.get('op', None) == 'REPLY'
+        if success:
+            txn_response = resp
+        else:
+            return False, None
         if success:
             ledger_cred_def = CredentialDefinition(
                 tag=cred_def.tag,
@@ -330,8 +378,6 @@ class Ledger:
             )
             await self.__ensure_exists_in_storage(ledger_cred_def, submitter_did, tags)
             return True, ledger_cred_def
-        else:
-            return False, None
 
     async def ensure_schema_exists(self, schema: AnonCredSchema, submitter_did: str) -> Optional[Schema]:
         try:

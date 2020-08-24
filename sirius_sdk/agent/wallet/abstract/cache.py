@@ -88,7 +88,7 @@ class AbstractCache(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def get_cred_def(self, pool_name: str, submitter_did: str, id_: str, options: CacheOptions) -> str:
+    async def get_cred_def(self, pool_name: str, submitter_did: str, id_: str, options: CacheOptions) -> dict:
         """
         Gets credential definition json data for specified credential definition id.
         If data is present inside of cache, cached data is returned.

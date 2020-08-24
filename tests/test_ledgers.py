@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.agent.ledger import CredentialDefinition
+from sirius_sdk.agent.ledger import CredentialDefinition, CacheOptions
 
 
 @pytest.mark.asyncio
@@ -129,23 +129,14 @@ async def test_register_cred_def(agent1: Agent):
         results = await ledger.fetch_cred_defs(my_tag=my_value)
         assert len(results) == 1
 
-        print('#')
-        xxx = await agent1.wallet.anoncreds.to_unqualified(ledger_cred_def.id)
         parts = ledger_cred_def.id.split(':')
         print(str(parts))
-        for n in range(5):
-            print('n: ' + str(n))
-            # x = await ledger.load_cred_def(ledger_cred_def.id, did)
-            # assert x == ledger_cred_def.body
-            req = await agent1.wallet.ledger.build_get_txn_request(
-                submitter_did=did,
-                ledger_type=None,
-                seq_no=1
-            )
-            resp = await agent1.wallet.ledger.submit_request(
-                pool_name='default',
-                request=req
-            )
-            print('@')
+
+        opts = CacheOptions()
+        for n in range(3):
+            cached_body = await agent1.wallet.cache.get_cred_def('default', did, ledger_cred_def.id, opts)
+            assert cached_body == ledger_cred_def.body
+            cred_def = await ledger.load_cred_def(ledger_cred_def.id, did)
+            assert cred_def.body == cached_body
     finally:
         await agent1.close()

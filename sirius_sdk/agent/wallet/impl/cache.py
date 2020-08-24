@@ -13,7 +13,7 @@ class CacheProxy(AbstractCache):
             params=dict(pool_name=pool_name, submitter_did=submitter_did, id_=id_, options=options)
         )
 
-    async def get_cred_def(self, pool_name: str, submitter_did: str, id_: str, options: CacheOptions) -> str:
+    async def get_cred_def(self, pool_name: str, submitter_did: str, id_: str, options: CacheOptions) -> dict:
         return await self.__rpc.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/get_cred_def',
             params=dict(pool_name=pool_name, submitter_did=submitter_did, id_=id_, options=options)

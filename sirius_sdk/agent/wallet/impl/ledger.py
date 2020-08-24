@@ -64,7 +64,7 @@ class LedgerProxy(AbstractLedger):
 
     async def submit_request(self, pool_name: str, request: dict) -> dict:
         return await self.__rpc.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/submit_request',
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/submit_request',
             params=dict(pool_name=pool_name, request=request)
         )
 
@@ -154,7 +154,7 @@ class LedgerProxy(AbstractLedger):
 
     async def build_cred_def_request(self, submitter_did: str, data: dict) -> dict:
         return await self.__rpc.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/build_cred_def_request',
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/build_cred_def_request',
             params=dict(submitter_did=submitter_did, data=data)
         )
 
