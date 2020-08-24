@@ -5,10 +5,9 @@ from datetime import datetime
 import pytest
 
 from sirius_sdk import Agent, Pairwise
-from sirius_sdk.agent.wallet import NYMRole
 from sirius_sdk.agent.codec import encode
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
-from sirius_sdk.agent.ledger import Schema, CredentialDefinition
+from sirius_sdk.agent.ledger import CredentialDefinition
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof import Verifier, Prover, AttribTranslation, \
     RequestPresentationMessage
 
