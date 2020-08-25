@@ -32,7 +32,7 @@ setup(
     ],
     packages=["sirius_sdk"],
     python_requires='>=3.6',
-    include_package_data=True,
+    include_package_data=False,
     install_requires=[
         'aiohttp==3.6.2',
         'base58==2.0.0',
