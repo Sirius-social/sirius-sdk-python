@@ -3,13 +3,13 @@ import copy
 import logging
 from typing import List, Optional, Union
 
-from ..base import JsonSerializable
-from ..storages import AbstractImmutableCollection
-from ..errors.indy_exceptions import LedgerNotFound
-from ..errors.exceptions import SiriusInvalidPayloadStructure
-from .wallet.abstract.ledger import AbstractLedger
-from .wallet.abstract.anoncreds import AnonCredSchema, AbstractAnonCreds
-from .wallet.abstract.cache import AbstractCache, CacheOptions
+from sirius_sdk.base import JsonSerializable
+from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.errors.indy_exceptions import LedgerNotFound
+from sirius_sdk.errors.exceptions import SiriusInvalidPayloadStructure
+from sirius_sdk.agent.wallet.abstract.ledger import AbstractLedger
+from sirius_sdk.agent.wallet.abstract.anoncreds import AnonCredSchema, AbstractAnonCreds
+from sirius_sdk.agent.wallet.abstract.cache import AbstractCache, CacheOptions
 
 
 class Schema(AnonCredSchema, JsonSerializable):

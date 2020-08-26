@@ -3,13 +3,13 @@ import logging
 from datetime import datetime
 from typing import List, Union, Tuple
 
-from ....agent.pairwise import Pairwise
-from ....agent.wallet.abstract.crypto import AbstractCrypto
-from ....agent.pairwise import AbstractPairwiseList
-from ....agent.microledgers import Transaction, Microledger, MicroledgerList
-from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
-from ....agent.aries_rfc.feature_0015_acks import Ack, Status
-from .messages import *
+from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.pairwise import AbstractPairwiseList
+from sirius_sdk.agent.microledgers import Transaction, Microledger, MicroledgerList
+from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
+from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
+from sirius_sdk.agent.consensus.simple.messages import *
 
 # Problem codes
 REQUEST_NOT_ACCEPTED = "request_not_accepted"

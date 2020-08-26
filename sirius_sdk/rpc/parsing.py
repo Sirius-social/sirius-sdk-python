@@ -1,10 +1,10 @@
 import base64
 from typing import Any
 
-from ..agent.wallet import CacheOptions, PurgeOptions, RetrieveRecordOptions, NYMRole, PoolAction, KeyDerivationMethod
-from ..rpc.futures import Future
-from ..messaging import Message, Type
-from ..errors.exceptions import SiriusInvalidType, SiriusInvalidPayloadStructure
+from sirius_sdk.agent.wallet import CacheOptions, PurgeOptions, RetrieveRecordOptions, NYMRole, PoolAction, KeyDerivationMethod
+from sirius_sdk.rpc.futures import Future
+from sirius_sdk.messaging import Message, Type
+from sirius_sdk.errors.exceptions import SiriusInvalidType, SiriusInvalidPayloadStructure
 
 
 MSG_TYPE_FUTURE = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/future'

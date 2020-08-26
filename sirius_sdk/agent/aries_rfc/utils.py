@@ -9,7 +9,7 @@ from typing import Optional
 
 from pytime import pytime
 
-from ..wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 
 
 def utc_to_str(dt: datetime):

@@ -6,7 +6,7 @@ from typing import Optional, Iterable
 import base58
 import dateutil.parser
 
-from ..errors.exceptions import SiriusFieldTypeError, SiriusFieldValueError
+from sirius_sdk.errors.exceptions import SiriusFieldTypeError, SiriusFieldValueError
 
 
 class FieldValidator(metaclass=ABCMeta):

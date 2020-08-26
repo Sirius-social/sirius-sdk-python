@@ -4,18 +4,18 @@ from typing import List, Union, Optional
 
 from multipledispatch import dispatch
 
-from ..messaging import Message
-from ..encryption import P2PConnection
-from ..storages import AbstractImmutableCollection
-from .listener import Listener
-from .pairwise import Pairwise, TheirEndpoint
-from .wallet.wallets import DynamicWallet
-from .ledger import Ledger
-from .pairwise import AbstractPairwiseList, WalletPairwiseList
-from .storages import InWalletImmutableCollection
-from .microledgers import MicroledgerList
-from .coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
-from .connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
+from sirius_sdk.messaging import Message
+from sirius_sdk.encryption import P2PConnection
+from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.agent.listener import Listener
+from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
+from sirius_sdk.agent.wallet.wallets import DynamicWallet
+from sirius_sdk.agent.ledger import Ledger
+from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
+from sirius_sdk.agent.storages import InWalletImmutableCollection
+from sirius_sdk.agent.microledgers import MicroledgerList
+from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
+from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
 
 class TransportLayers(ABC):

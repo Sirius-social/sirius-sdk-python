@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
-from ..abstract.crypto import AbstractCrypto
-from ....agent.connections import AgentRPC
+from sirius_sdk.agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 
 
 class CryptoProxy(AbstractCrypto):

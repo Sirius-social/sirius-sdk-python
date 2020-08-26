@@ -1,12 +1,12 @@
 from enum import Enum
 
-from .did import *
-from .cache import *
-from .crypto import *
-from .ledger import *
-from .pairwise import *
-from .anoncreds import *
-from .non_secrets import *
+from sirius_sdk.agent.wallet.abstract.did import *
+from sirius_sdk.agent.wallet.abstract.cache import *
+from sirius_sdk.agent.wallet.abstract.crypto import *
+from sirius_sdk.agent.wallet.abstract.ledger import *
+from sirius_sdk.agent.wallet.abstract.pairwise import *
+from sirius_sdk.agent.wallet.abstract.anoncreds import *
+from sirius_sdk.agent.wallet.abstract.non_secrets import *
 
 
 class KeyDerivationMethod(Enum):

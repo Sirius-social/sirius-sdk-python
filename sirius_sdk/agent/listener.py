@@ -2,10 +2,10 @@ import sys
 import asyncio
 from typing import Optional, List
 
-from ..agent.connections import AgentEvents
-from ..errors.exceptions import SiriusConnectionClosed
-from ..messaging import Message, restore_message_instance
-from ..agent.pairwise import AbstractPairwiseList, Pairwise
+from sirius_sdk.agent.connections import AgentEvents
+from sirius_sdk.errors.exceptions import SiriusConnectionClosed
+from sirius_sdk.messaging import Message, restore_message_instance
+from sirius_sdk.agent.pairwise import AbstractPairwiseList, Pairwise
 
 
 PY_35 = sys.version_info >= (3, 5)

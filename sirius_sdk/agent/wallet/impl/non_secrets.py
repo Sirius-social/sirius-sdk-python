@@ -1,8 +1,8 @@
 from typing import List, Optional
 
 from sirius_sdk.agent.wallet import RetrieveRecordOptions
-from ..abstract.non_secrets import AbstractNonSecrets
-from ....agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
+from sirius_sdk.agent.connections import AgentRPC
 
 
 class NonSecretsProxy(AbstractNonSecrets):

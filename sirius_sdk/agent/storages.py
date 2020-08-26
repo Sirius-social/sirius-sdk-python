@@ -2,9 +2,9 @@ import json
 import uuid
 from typing import List, Any
 
-from ..base import JsonSerializable
-from ..storages import AbstractImmutableCollection
-from .wallet.abstract.non_secrets import AbstractNonSecrets, RetrieveRecordOptions
+from sirius_sdk.base import JsonSerializable
+from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets, RetrieveRecordOptions
 
 
 class InWalletImmutableCollection(AbstractImmutableCollection):

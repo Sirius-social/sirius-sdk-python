@@ -1,5 +1,5 @@
-from ..abstract.cache import AbstractCache, PurgeOptions, CacheOptions
-from ....agent.connections import AgentRPC
+from sirius_sdk.agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.abstract.cache import AbstractCache, PurgeOptions, CacheOptions
 
 
 class CacheProxy(AbstractCache):

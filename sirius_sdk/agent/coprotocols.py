@@ -2,12 +2,12 @@ from abc import ABC
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from ..errors.exceptions import *
-from ..messaging import *
-from ..messaging.fields import DIDField
-from .wallet.wallets import DynamicWallet
-from .connections import AgentRPC, RoutingBatch
-from .pairwise import TheirEndpoint, Pairwise
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.messaging import *
+from sirius_sdk.messaging.fields import DIDField
+from sirius_sdk.agent.wallet.wallets import DynamicWallet
+from sirius_sdk.agent.connections import AgentRPC, RoutingBatch
+from sirius_sdk.agent.pairwise import TheirEndpoint, Pairwise
 
 
 class AbstractCoProtocolTransport(ABC):

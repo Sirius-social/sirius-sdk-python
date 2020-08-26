@@ -2,8 +2,8 @@ import json
 from typing import Sequence
 from collections import OrderedDict
 
-from .custom import *
-from ..errors.exceptions import SiriusCryptoError
+from sirius_sdk.errors.exceptions import SiriusCryptoError
+from sirius_sdk.encryption.custom import *
 
 
 def ensure_is_bytes(b58_or_bytes: Union[str, bytes]) -> bytes:

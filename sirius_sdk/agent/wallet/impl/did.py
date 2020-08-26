@@ -1,7 +1,7 @@
 from typing import Any, Optional, List
 
-from ..abstract.did import AbstractDID
-from ....agent.connections import AgentRPC
+from sirius_sdk.agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 
 
 class DIDProxy(AbstractDID):

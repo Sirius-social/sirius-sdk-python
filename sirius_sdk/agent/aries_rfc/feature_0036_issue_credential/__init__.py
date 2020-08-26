@@ -1,6 +1,6 @@
-from .state_machines import Issuer, Holder
-from .messages import OfferCredentialMessage, RequestCredentialMessage, IssueCredentialMessage, \
-    IssueProblemReport, ProposedAttrib, AttribTranslation
+from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines import Issuer, Holder
+from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import OfferCredentialMessage, \
+    RequestCredentialMessage, IssueCredentialMessage, IssueProblemReport, ProposedAttrib, AttribTranslation
 
 
 __all__ = [

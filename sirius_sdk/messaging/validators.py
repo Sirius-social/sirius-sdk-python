@@ -1,6 +1,6 @@
-from ..errors.exceptions import SiriusValidationError
-from .message import Message
-from .fields import *
+from sirius_sdk.errors.exceptions import SiriusValidationError
+from sirius_sdk.messaging.message import Message
+from sirius_sdk.messaging.fields import *
 
 
 ID = '@id'

@@ -1,7 +1,7 @@
 from typing import Optional, List, Any
 
-from ..abstract.pairwise import AbstractPairwise
-from ....agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.abstract.pairwise import AbstractPairwise
+from sirius_sdk.agent.connections import AgentRPC
 
 
 class PairwiseProxy(AbstractPairwise):

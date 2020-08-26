@@ -1,6 +1,6 @@
-from .custom import *
-from .ed25519 import pack_message, unpack_message
-from .p2p import P2PConnection
+from sirius_sdk.encryption.custom import *
+from sirius_sdk.encryption.ed25519 import pack_message, unpack_message
+from sirius_sdk.encryption.p2p import P2PConnection
 
 
 __all__ = [

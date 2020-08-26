@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ..base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
 
 
 class Ping(AriesProtocolMessage, metaclass=RegisterMessage):

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
 
-from .wallet.abstract.pairwise import AbstractPairwise
+from sirius_sdk.agent.wallet.abstract.pairwise import AbstractPairwise
 
 
 class TheirEndpoint:

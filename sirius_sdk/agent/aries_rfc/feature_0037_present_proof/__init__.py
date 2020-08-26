@@ -1,6 +1,6 @@
-from .state_machines import Verifier, Prover
-from .messages import ProposedAttrib, ProposedPredicate, AttribTranslation, PresentProofProblemReport, \
-    RequestPresentationMessage, PresentationMessage
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.state_machines import Verifier, Prover
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.messages import ProposedAttrib, ProposedPredicate, \
+    AttribTranslation, PresentProofProblemReport, RequestPresentationMessage, PresentationMessage
 
 
 __all__ = [

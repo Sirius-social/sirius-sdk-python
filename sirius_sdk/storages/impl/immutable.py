@@ -1,6 +1,6 @@
 from typing import Optional, Any, List
 
-from ..abstract.immutable import AbstractImmutableCollection
+from sirius_sdk.storages.abstract.immutable import AbstractImmutableCollection
 
 
 class InMemoryImmutableCollection(AbstractImmutableCollection):
@@ -19,7 +19,7 @@ class InMemoryImmutableCollection(AbstractImmutableCollection):
         item = (value, tags)
         self.__selected_db.append(item)
 
-    async def fetch(self, tags: dict) -> List[Any]:
+    async def fetch(self, tags: dict, limit: int = None) -> (List[Any], int):
         result = []
         for item in self.__selected_db:
             value_ = item[0]

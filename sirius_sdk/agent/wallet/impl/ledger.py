@@ -1,8 +1,8 @@
 from typing import Optional, Any, List
 
 from sirius_sdk.agent.wallet import NYMRole
-from ..abstract.ledger import AbstractLedger
-from ....agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.abstract.ledger import AbstractLedger
+from sirius_sdk.agent.connections import AgentRPC
 
 
 class LedgerProxy(AbstractLedger):

@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
-from ....base import JsonSerializable
+from sirius_sdk.base import JsonSerializable
 
 
 class RetrieveRecordOptions(JsonSerializable):

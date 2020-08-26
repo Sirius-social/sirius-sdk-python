@@ -1,4 +1,4 @@
-from ..coprotocols import *
+from sirius_sdk.agent.coprotocols import *
 
 ARIES_DOC_URI = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/'
 THREAD_DECORATOR = '~thread'

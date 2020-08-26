@@ -1,4 +1,4 @@
-from ...messaging import check_for_attributes
+from sirius_sdk.messaging import check_for_attributes
 
 
 class DIDDoc(dict):

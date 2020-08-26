@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 
-from ....base import JsonSerializable
+from sirius_sdk.base import JsonSerializable
 
 
 class CacheOptions(JsonSerializable):

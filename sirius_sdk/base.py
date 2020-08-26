@@ -5,8 +5,8 @@ from urllib.parse import urljoin
 
 import aiohttp
 
-from .messaging import Message
-from .errors.exceptions import *
+from sirius_sdk.messaging import Message
+from sirius_sdk.errors.exceptions import *
 
 
 class JsonSerializable:

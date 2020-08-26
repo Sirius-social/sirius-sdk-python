@@ -5,12 +5,12 @@ import datetime
 from abc import ABC, abstractmethod
 from typing import List, Any, Union, Optional
 
-from ..base import WebSocketConnector
-from ..encryption import P2PConnection
-from ..rpc import AddressedTunnel, build_request, Future
-from ..messaging import Message, Type as MessageType
-from ..errors.exceptions import *
-from .transport import http_send
+from sirius_sdk.base import WebSocketConnector
+from sirius_sdk.encryption import P2PConnection
+from sirius_sdk.rpc import AddressedTunnel, build_request, Future
+from sirius_sdk.messaging import Message, Type as MessageType
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.agent.transport import http_send
 
 
 class Endpoint:

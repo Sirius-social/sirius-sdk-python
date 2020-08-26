@@ -2,14 +2,14 @@ import json
 import hashlib
 from typing import List, Optional
 
-from ....encryption import bytes_to_b58
-from ....errors.exceptions import *
-from ....agent.pairwise import Pairwise
-from ....agent.microledgers import serialize_ordering, Microledger
-from ....agent.wallet.abstract.crypto import AbstractCrypto
-from ....agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
-from ....agent.microledgers import Transaction
-from ....agent.aries_rfc.utils import sign, verify_signed
+from sirius_sdk.encryption import bytes_to_b58
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.agent.microledgers import serialize_ordering, Microledger
+from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
+from sirius_sdk.agent.microledgers import Transaction
+from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
 
 
 class SimpleConsensusMessage(AriesProtocolMessage, metaclass=RegisterMessage):

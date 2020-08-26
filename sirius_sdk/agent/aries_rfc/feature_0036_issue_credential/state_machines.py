@@ -1,15 +1,15 @@
 from typing import List, Union
 from datetime import datetime, timedelta
 
-from ....agent.pairwise import Pairwise
-from ....agent.codec import encode
-from ....agent.aries_rfc.utils import utc_to_str, str_to_utc
-from ....agent.ledger import Schema, CredentialDefinition
-from ....errors.indy_exceptions import WalletItemNotFound
-from ....agent.wallet.abstract.anoncreds import AbstractAnonCreds
-from ....agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
-from ..feature_0015_acks import Ack, Status
-from .messages import *
+from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.agent.codec import encode
+from sirius_sdk.agent.aries_rfc.utils import utc_to_str, str_to_utc
+from sirius_sdk.agent.ledger import Schema, CredentialDefinition
+from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
+from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
+from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
+from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
+from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import *
 
 
 PROPOSE_NOT_ACCEPTED = "propose_not_accepted"

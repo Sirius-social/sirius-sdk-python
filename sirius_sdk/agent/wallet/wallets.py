@@ -1,11 +1,11 @@
-from ..connections import AgentRPC
-from .impl.did import DIDProxy
-from .impl.cache import CacheProxy
-from .impl.crypto import CryptoProxy
-from .impl.ledger import LedgerProxy
-from .impl.pairwise import PairwiseProxy
-from .impl.anoncreds import AnonCredsProxy
-from .impl.non_secrets import NonSecretsProxy
+from sirius_sdk.agent.connections import AgentRPC
+from sirius_sdk.agent.wallet.impl.did import DIDProxy
+from sirius_sdk.agent.wallet.impl.cache import CacheProxy
+from sirius_sdk.agent.wallet.impl.crypto import CryptoProxy
+from sirius_sdk.agent.wallet.impl.ledger import LedgerProxy
+from sirius_sdk.agent.wallet.impl.pairwise import PairwiseProxy
+from sirius_sdk.agent.wallet.impl.anoncreds import AnonCredsProxy
+from sirius_sdk.agent.wallet.impl.non_secrets import NonSecretsProxy
 
 
 class DynamicWallet:

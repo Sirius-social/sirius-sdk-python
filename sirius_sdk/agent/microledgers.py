@@ -1,8 +1,8 @@
 import json
 from typing import List, Union, Dict
 
-from .connections import AgentRPC
-from ..errors.exceptions import *
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.agent.connections import AgentRPC
 
 
 METADATA_ATTR = 'txnMetadata'

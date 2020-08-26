@@ -1,6 +1,6 @@
 from typing import Optional, Any
 
-from ..abstract.kv_storage import AbstractKeyValueStorage
+from sirius_sdk.storages.abstract.kv_storage import AbstractKeyValueStorage
 
 
 class InMemoryKeyValueStorage(AbstractKeyValueStorage):

@@ -1,12 +1,12 @@
 import json
 import logging
 
-from ....agent.pairwise import Pairwise, TheirEndpoint
-from ....agent.agent import Endpoint
-from ....agent.sm import AbstractStateMachine
-from ..feature_0015_acks import Ack, Status
-from ..feature_0048_trust_ping import Ping
-from .messages import *
+from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
+from sirius_sdk.agent.agent import Endpoint
+from sirius_sdk.agent.sm import AbstractStateMachine
+from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
+from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping import Ping
+from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.messages import *
 
 
 # Problem codes

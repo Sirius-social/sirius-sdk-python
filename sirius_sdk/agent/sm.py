@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from ..errors.exceptions import BaseSiriusException
-from .agent import TransportLayers
+from sirius_sdk.errors.exceptions import BaseSiriusException
+from sirius_sdk.agent.agent import TransportLayers
 
 
 class AbstractStateMachine(ABC):

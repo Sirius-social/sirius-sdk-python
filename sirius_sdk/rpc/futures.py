@@ -5,9 +5,9 @@ import logging
 import datetime
 from typing import Any, Optional
 
-from ..errors.exceptions import *
-from ..errors.indy_exceptions import *
-from .tunnel import AddressedTunnel
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.errors.indy_exceptions import *
+from sirius_sdk.rpc.tunnel import AddressedTunnel
 
 MSG_TYPE = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/future'
 

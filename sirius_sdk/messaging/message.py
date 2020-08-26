@@ -6,8 +6,8 @@ https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-a
 import json
 import uuid
 
-from ..errors.exceptions import *
-from .type import Type, Semver
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.messaging.type import Type, Semver
 
 
 # Registry for restoring message instance from payload

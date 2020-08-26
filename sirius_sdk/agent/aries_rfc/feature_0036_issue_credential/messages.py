@@ -3,8 +3,8 @@ import base64
 from typing import List, Optional
 from collections import UserDict
 
-from ....errors.exceptions import *
-from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 
 
 CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"

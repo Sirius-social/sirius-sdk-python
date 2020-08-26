@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
-from ....errors.exceptions import *
+from sirius_sdk.errors.exceptions import *
 
 
 class AnonCredSchema:

@@ -1,9 +1,9 @@
 import json
 
-from ..encryption import P2PConnection
-from ..base import ReadOnlyChannel, WriteOnlyChannel
-from ..messaging import Message
-from ..errors.exceptions import *
+from sirius_sdk.encryption import P2PConnection
+from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
+from sirius_sdk.messaging import Message
+from sirius_sdk.errors.exceptions import *
 
 
 class AddressedTunnel:

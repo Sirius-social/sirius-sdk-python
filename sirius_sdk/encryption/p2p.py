@@ -1,8 +1,8 @@
 import json
 from typing import Tuple, Union
 
-from ..errors.exceptions import SiriusCryptoError
-from . import pack_message, unpack_message
+from sirius_sdk.errors.exceptions import SiriusCryptoError
+from sirius_sdk.encryption import pack_message, unpack_message
 
 
 class P2PConnection:

@@ -5,13 +5,13 @@ import base64
 from typing import List, Optional
 from urllib.parse import urljoin
 
-from ....errors.exceptions import *
-from ....messaging import Message, check_for_attributes
-from ....agent.agent import Agent
-from ....agent.wallet.abstract.crypto import AbstractCrypto
-from ..base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
-from ..did_doc import DIDDoc
-from ..utils import sign, verify_signed
+from sirius_sdk.errors.exceptions import *
+from sirius_sdk.messaging import Message, check_for_attributes
+from sirius_sdk.agent.agent import Agent
+from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
+from sirius_sdk.agent.aries_rfc.did_doc import DIDDoc
+from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
 
 
 class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
