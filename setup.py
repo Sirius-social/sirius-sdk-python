@@ -10,7 +10,7 @@ with open(os.path.join(HERE, "README.md")) as fid:
 
 setup(
     name="sirius-sdk",
-    version="1.0.2",
+    version="1.0.3",
     description="SDK for developing Smart-Contracts in Self-sovereign-identity world.",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -32,7 +32,7 @@ setup(
     ],
     packages=["sirius_sdk"],
     python_requires='>=3.6',
-    include_package_data=False,
+    include_package_data=True,
     install_requires=[
         'aiohttp==3.6.2',
         'base58==2.0.0',
