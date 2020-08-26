@@ -1,5 +1,5 @@
 import os.path
-from setuptools import setup
+from setuptools import setup, find_packages
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 
@@ -10,7 +10,7 @@ with open(os.path.join(HERE, "README.md")) as fid:
 
 setup(
     name="sirius-sdk",
-    version="1.0.3",
+    version="1.0.4",
     description="SDK for developing Smart-Contracts in Self-sovereign-identity world.",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -30,7 +30,7 @@ setup(
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft :: Windows',
     ],
-    packages=["sirius_sdk"],
+    packages=find_packages(),
     python_requires='>=3.6',
     include_package_data=True,
     install_requires=[
