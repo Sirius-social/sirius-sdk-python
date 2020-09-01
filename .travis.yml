@@ -25,6 +25,7 @@ script:
   - pytest tests/test_future_promise.py
   - pytest tests/test_agent.py
   - pytest tests/test_storages.py
+  - pytest tests/test_wallet.py
   - pytest tests/test_microledgers.py
   - pytest tests/test_ledgers.py
   - pytest tests/test_coprotocols.py

@@ -144,6 +144,11 @@ def ledger_name() -> str:
     return 'Ledger-' + uuid.uuid4().hex
 
 
+@pytest.fixture()
+def default_network() -> str:
+    return 'default'
+
+
 async def get_pairwise(me: Agent, their: Agent):
     suite = get_suite_singleton()
     me_params = suite.get_agent_params(me.name)
