@@ -18,5 +18,6 @@ Consensus procedure usually is part of IT infrastructure that builds trust envir
 `Microledger  <https://decentralized-id.com/hyperledger/hgf-2018/Microledgers-Edgechains-Hardman-HGF/>`_ concept make developer free to select The most convenient BFT algorithm for every business process, served in Microledger context, independently.
 
 Solving problem in same manner we have usefull outcomes:
+
   - Transactions that transmitted across participants of **Microledgers** are localized in small business process (moving some goods in supply-chain process for example). So, you decrease impact of RPS limitation problem compared to approaches based on global network.
   - You may concentrate business abstractions in your consensus code thanks to **Microledger** nature. Your consensus procedure solve BFT problem on level of business relationships, but not on low-level of IT-infrastructure. 
