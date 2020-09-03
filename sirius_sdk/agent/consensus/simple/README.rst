@@ -21,3 +21,12 @@ Solving problem in same manner we have usefull outcomes:
 
   - Transactions that transmitted across participants of **Microledgers** are localized in small business process (moving some goods in supply-chain process for example). So, you decrease impact of RPS limitation problem compared to approaches based on global network.
   - You may concentrate business abstractions in your consensus code thanks to **Microledger** nature. Your consensus procedure solve BFT problem on level of business relationships, but not on low-level of IT-infrastructure. 
+  - Setup Trust environment across participants through **Merkle-Proof** thanks to immutable transactions logs.
+
+
+Tutorial
+===============
+Simple Consensus procedure consists of two blocks:
+
+  - block 1: creating new ledger
+  - block 2: accept transaction to existing ledger by all dealers in Microledger environment.
