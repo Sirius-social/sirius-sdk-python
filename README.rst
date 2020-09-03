@@ -24,6 +24,6 @@ Installation
 ===============
 .. code-block::
 
-    > pip install sirius-sdk
+    pip install sirius-sdk
 
 
