@@ -400,3 +400,19 @@ async def test_attribute_operations_in_network(agent1: Agent, agent2: Agent, def
     finally:
         await agent1.close()
         await agent2.close()
+
+
+@pytest.mark.asyncio
+async def test_issue_verify_credential_in_network(agent1: Agent, agent2: Agent, agent3: Agent, default_network: str):
+    await agent1.open()
+    await agent2.open()
+    await agent3.open()
+    issuer = agent1.wallet
+    holder = agent2.wallet
+    verifier = agent3.wallet
+    try:
+        assert 0
+    finally:
+        await agent1.close()
+        await agent2.close()
+        await agent3.close()

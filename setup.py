@@ -17,6 +17,12 @@ setup(
     url="https://github.com/Sirius-social/sirius-sdk-python",
     author="Networks Synergy",
     author_email="support@socialsirius.com",
+    project_urls={
+        'Chat: Telegram': 'https://t.me/sirius_sdk',
+        'CI: Travis': 'https://github.com/Sirius-social/sirius-sdk-python/runs/1058851181',
+        'GitHub: issues': 'https://github.com/Sirius-social/sirius-sdk-python/issues',
+        'GitHub: repo': 'https://github.com/Sirius-social/sirius-sdk-python',
+    },
     license="Apache License",
     maintainer=', '.join(('Pavel Minenkov <minikspb@gmail.com>',)),
     classifiers=[
