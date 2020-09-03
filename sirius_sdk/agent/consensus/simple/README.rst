@@ -28,5 +28,12 @@ Tutorial
 ===============
 Simple Consensus procedure consists of two blocks:
 
-  - block 1: creating new ledger
+  - block 1: creating new transactions ledger
   - block 2: accept transaction to existing ledger by all dealers in Microledger environment.
+
+
+***************
+Block 1: Creating new Ledger.
+***************
+Before starting of serve business process in trust environment via immutable logs in Microledger participants, we should define procedure of establishing new log instance by every dealer. In this step actor initialize transaction log by genesis and make sure all microledger participants received and accept genesis block.
+
