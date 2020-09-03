@@ -24,8 +24,6 @@ Installation
 ===============
 .. code-block::
 
-    Status: 200
-    Content-type: text/html; charset=utf-8
-    Body: <!doctype html> ...
+    > pip install sirius-sdk
 
 
