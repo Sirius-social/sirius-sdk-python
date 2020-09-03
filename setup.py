@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 HERE = os.path.abspath(os.path.dirname(__file__))
 
 # The text of the README file
-with open(os.path.join(HERE, "README.md")) as fid:
+with open(os.path.join(HERE, "README.rst")) as fid:
     README = fid.read()
 
 
@@ -13,7 +13,7 @@ setup(
     version="1.0.4",
     description="SDK for developing Smart-Contracts in Self-sovereign-identity world.",
     long_description=README,
-    long_description_content_type="text/markdown",
+    long_description_content_type="text/x-rst",
     url="https://github.com/Sirius-social/sirius-sdk-python",
     author="Networks Synergy",
     author_email="support@socialsirius.com",
