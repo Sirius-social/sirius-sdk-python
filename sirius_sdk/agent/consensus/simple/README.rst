@@ -57,7 +57,8 @@ Before starting of serve business process in trust environment via immutable log
         "root_hash": "xxx"
     },
     "ledger~hash": {
-
+        "base58": "EcLFhsY7UhBCQoMbKMaAcAYbRCVWbYkNJZ2oSEDsgDvC",
+        "func": "sha256"
     },
     "participants": [
         "did:peer:Th7MpTaRZVRYnPiabds81Y",
