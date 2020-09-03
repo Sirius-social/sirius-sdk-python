@@ -48,14 +48,12 @@ Before starting of serve business process in trust environment via immutable log
     "ledger": {
         "genesis": [
           {
-            "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC",
-            "op": "op1",
-            "reqId": 1,
-            "txnMetadata": {}
+            ...,
+            "txnMetadata": {"seqNo": 2}
           }
         ],
         "name": "Ledger-7b929353ebb1450b979aa336a0338677",
-        "root_hash": "xxx"
+        "root_hash": "3sgNJmsXpmin7P5C6jpHiqYfeWwej5L6uYdYoXTMc1XQ"
     },
     "ledger~hash": {
         "base58": "EcLFhsY7UhBCQoMbKMaAcAYbRCVWbYkNJZ2oSEDsgDvC",
