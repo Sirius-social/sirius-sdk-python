@@ -22,11 +22,10 @@ Key Features
 
 Installation
 ===============
-.. code-block:: shell
-   :linenos:
+.. code-block::
 
-   pip install sirius-sdk
+    Status: 200
+    Content-type: text/html; charset=utf-8
+    Body: <!doctype html> ...
 
 
-
-fntn
