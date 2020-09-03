@@ -1,4 +1,3 @@
-
 ==================================
 Simple consensus procedure
 ==================================
@@ -9,4 +8,4 @@ Simple consensus procedure
 
 Summary
 ===============
-Simple Consensus procedure defines 
+Simple Consensus procedure demonstrate how **Sirius SDK** helps to define algorithm to solve BFT problem aside participants (deal contragents)
