@@ -85,6 +85,15 @@ Before starting of serve business process in trust environment via immutable log
         }
     ]
   }
+ 
+Every time actor needs to initialize new transaction log, it should initialize transactions ledger by genesis block, calc merkle tree root, then notify all dealers in **Microledger** context and make sure all of them initialized self copy of transactions log.
+
+- **timeout_sec**: optiobnal field, set time to live for state machine
+- **ledger**: contains genesis transactions block, name and root_hash (merkle-proofs)
+- **ledger~hash**: hash of ledger 
+- **participants**: list of dealers who serve transactions
+- **signatures**: signatures of ledger~hash for participants
+
 
 2. Participant accept new transaction log creation
 ^^^^^^^^^^^^^^^^^^^^^
