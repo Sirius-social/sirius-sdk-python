@@ -37,7 +37,8 @@ Block 1: Creating new Ledger.
 ***************
 Before starting of serve business process in trust environment via immutable logs in Microledger participants, we should define procedure of establishing new log instance by every dealer. In this step actor initialize transaction log by genesis and make sure all microledger participants received and accept genesis block.
 
-**1. Transactions log initialization: actor notify all participants**
+1. Transactions log initialization: actor notify all participants
+===============
 
 .. code-block:: python
 
