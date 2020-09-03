@@ -37,16 +37,50 @@ Block 1: Creating new Ledger.
 ***************
 Before starting of serve business process in trust environment via immutable logs in Microledger participants, we should define procedure of establishing new log instance by every dealer. In this step actor initialize transaction log by genesis and make sure all microledger participants received and accept genesis block.
 
+**1. Transactions log initialization: actor notify all participants**
+
 .. code-block:: python
 
   {
-    "@type": "initialize-request",
-    "timeout_sec": 60,
+    "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/initialize-request",
+    "timeout_sec": 60,              # optional
     "ledger": {
-
+        "genesis": [
+          {
+            "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC",
+            "op": "op1",
+            "reqId": 1,
+            "txnMetadata": {}
+          }
+        ],
+        "name": "Ledger-7b929353ebb1450b979aa336a0338677",
+        "root_hash": "xxx"
     },
     "ledger~hash": {
 
-    }
-
+    },
+    "participants": [
+        "did:peer:Th7MpTaRZVRYnPiabds81Y",
+        "did:peer:T8MtAB98aCkgNLtNfQx6WG"
+     ],
+     "signatures": [
+        {
+          "participant": "did:peer:Th7MpTaRZVRYnPiabds81Y",
+          "signature": {
+            "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+            "sig_data": "AAAAAF9RXJd7ImZ1bmMiOiAic2hhMjU2Ii...",
+            "signature": "ns8Av8kvy1K0mAR08v3flwce9yxyaB0wSjI_dzbpAxiBxSpZ2-YpN-0vifDHMf7yn4c6UC57nv1GFRdo6IQ0Bw==",
+            "signer": "FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4"
+           }
+        },
+        {
+          "participant": "did:peer:T8MtAB98aCkgNLtNfQx6WG",
+          "signature": {
+            "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+            "sig_data": "AAAAAF9RXJd...",
+            "signature": "_Oh48kK9I_QNiBRJfU-_HPAUxyIcrn3Ba8QwspSqiy8AMLMN4h8vbozImSr2dnVS2RaOfimWDgWVtZCTvbdjBQ==",
+            "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1"
+          }
+        }
+    ]
   }
