@@ -43,6 +43,7 @@ Before starting of serve business process in trust environment via immutable log
 .. code-block:: python
 
   {
+    "@id": "2edc21c7-4111-4fb2-88af-fa8479068a59",
     "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/initialize-request",
     "timeout_sec": 60,              # optional
     "ledger": {
@@ -92,6 +93,7 @@ Before starting of serve business process in trust environment via immutable log
 .. code-block:: python
 
   {
+    "@id": "30140f93-d96c-4a41-8b8f-98587685d07e",
     "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/initialize-response",
     "ledger": {
         "genesis": [
