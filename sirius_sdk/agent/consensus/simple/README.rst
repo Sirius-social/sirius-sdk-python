@@ -92,7 +92,7 @@ Every time actor needs to initialize new transaction log, it should initialize t
 - **ledger**: contains genesis transactions block, name and root_hash (merkle-proofs)
 - **ledger~hash**: hash of ledger 
 - **participants**: list of dealers who serve transactions
-- **signatures**: signatures of ledger~hash for participants
+- **signatures**: `signatures  <https://github.com/hyperledger/aries-rfcs/tree/master/features/0234-signature-decorator>`_ of ledger~hash for participants
 
 
 2. Participant accept new transaction log creation
