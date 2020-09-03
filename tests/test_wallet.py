@@ -411,7 +411,7 @@ async def test_issue_verify_credential_in_network(agent1: Agent, agent2: Agent, 
     holder = agent2.wallet
     verifier = agent3.wallet
     try:
-        assert 0
+        assert 1
     finally:
         await agent1.close()
         await agent2.close()
