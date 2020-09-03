@@ -17,7 +17,7 @@ Key Features
 
   - Setup `Indy Agent <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0004-agents>`_ in Cloud (Sirius Hub) or deploy self developed one
   - Configure private keys management system on your side: database, **HSM**, `Indy Wallet <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0050-wallets>`_, etc.
-  - Configure Trust environment with your contragents via `Microledgers <https://github.com/sovrin-foundation/protocol#the-relationship-agent-plane>`_, `Sovrin Network <https://sovrin.org/>`_, other `Indy Ledgers <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0051-dkms>`_, `Triple Signed Receips <https://opentransactions.org/wiki/Triple-Signed_Receipts>`_ out of box.
+  - Configure Trust environment with your contragents via `Microledgers <https://github.com/sovrin-foundation/protocol#the-relationship-agent-plane>`_, `Sovrin Network <https://sovrin.org/>`_, other `Indy Ledgers <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0051-dkms>`_, `Triple Signed Receips <https://opentransactions.org/wiki/Triple-Signed_Receipts>`_, Merkle-Proofs out of the box.
 
 
 Installation
