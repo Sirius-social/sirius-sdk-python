@@ -84,3 +84,51 @@ Before starting of serve business process in trust environment via immutable log
         }
     ]
   }
+
+2. Participant accept new transaction log creation
+^^^^^^^^^^^^^^^^^^^^^
+
+
+.. code-block:: python
+
+  {
+    "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/initialize-response",
+    "ledger": {
+        "genesis": [
+          {
+            ...
+            "txnMetadata": {"seqNo": 1}
+          }
+        ],
+        "name": "Ledger-7b929353ebb1450b979aa336a0338677",
+        "root_hash": "3sgNJmsXpmin7P5C6jpHiqYfeWwej5L6uYdYoXTMc1XQ"
+    },
+    "ledger~hash": {
+        "base58": "EcLFhsY7UhBCQoMbKMaAcAYbRCVWbYkNJZ2oSEDsgDvC",
+        "func": "sha256"
+    },
+    "participants": [
+        "did:peer:Th7MpTaRZVRYnPiabds81Y",
+        "did:peer:T8MtAB98aCkgNLtNfQx6WG"
+     ],
+     "signatures": [
+        {
+          "participant": "did:peer:Th7MpTaRZVRYnPiabds81Y",
+          "signature": {
+            "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+            "sig_data": "AAAAAF9RXJd7ImZ1bmMiOiAic2hhMjU2Ii...",
+            "signature": "ns8Av8kvy1K0mAR08v3flwce9yxyaB0wSjI_dzbpAxiBxSpZ2-YpN-0vifDHMf7yn4c6UC57nv1GFRdo6IQ0Bw==",
+            "signer": "FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4"
+           }
+        },
+        {
+          "participant": "did:peer:T8MtAB98aCkgNLtNfQx6WG",
+          "signature": {
+            "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+            "sig_data": "AAAAAF9RXJd...",
+            "signature": "_Oh48kK9I_QNiBRJfU-_HPAUxyIcrn3Ba8QwspSqiy8AMLMN4h8vbozImSr2dnVS2RaOfimWDgWVtZCTvbdjBQ==",
+            "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1"
+          }
+        }
+    ]
+  }
