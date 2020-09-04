@@ -67,7 +67,7 @@ Reference
 Simple Consensus procedure covers two use-cases:
 
   - use-cases 1: creating new transactions ledger
-  - use-cases 2: accept transaction to existing ledger by all dealers in Microledger environment.
+  - use-cases 2: accept transaction to existing ledger by all dealers in Microledger space.
 
 
 ***************
@@ -207,7 +207,7 @@ If there is no problems, actor sends `Ack message  <https://github.com/hyperledg
 
 
 ***************
-Use-Case 2: Accept transaction to existing ledger by all dealers in Microledger environment.
+Use-Case 2: Accept transaction to existing ledger by all dealers in Microledger space.
 ***************
 For existing ledger (transactions log) participants may progress business process issuing transactions. Format and rules to build transactions is result of agreement among participants.
 
