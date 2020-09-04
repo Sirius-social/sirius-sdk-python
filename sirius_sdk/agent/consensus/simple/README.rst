@@ -59,7 +59,7 @@ Before starting of serve business process in trust environment via immutable log
 
 
 Step-1. Transactions log initialization: actor notify all participants (Send propose)
-^^^^^^^^^^^^^^^^^^^^^
+***************
 
 .. code-block:: python
 
@@ -126,7 +126,7 @@ Every time actor needs to initialize new transaction log, it should initialize t
 
 
 Step-2. Participant accept new transaction log creation and build signature with self-verkey (pre-commit)
-^^^^^^^^^^^^^^^^^^^^^
+***************
 
 
 .. code-block:: python
@@ -180,7 +180,7 @@ Step-2. Participant accept new transaction log creation and build signature with
 
 
 Step-3. Actor check responses from all participants and check ledger consistency. (commit)
-^^^^^^^^^^^^^^^^^^^^^
+***************
 If there is no problems, actor sends `Ack message  <https://github.com/hyperledger/aries-rfcs/tree/master/features/0015-acks>`_ to all neighbors or `problem-report <https://github.com/hyperledger/aries-rfcs/tree/master/features/0035-report-problem>`_.
 
 
@@ -193,7 +193,7 @@ For existing ledger (transactions log) participants may progress business proces
    :alt: Merkle-Proofs
 
 Stage-1. Propose transactions block [stage-propose]
-^^^^^^^^^^^^^^^^^^^^^
+***************
 .. code-block:: python
 
   {
