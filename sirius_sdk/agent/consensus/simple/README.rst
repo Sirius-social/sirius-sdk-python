@@ -33,7 +33,14 @@ There are two roles in this protocol: **Actor** and **Participant(s)**. Actor is
 
 Threading
 ^^^^^^^^^^^^^^^^^^^^^
-Consensus procedure implemented via declaring `Edge-Chain protocol <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols>`_ concept. It is anticipated that all participants at microledger space use state-machine to progress state, to map protocol message to machine instance it is used `Aries RFCs threading <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading>`_ concept.
+Consensus procedure implemented via declaration of `Edge-Chain protocol <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols>`_. It is anticipated that all participants at microledger space use state-machine to progress state, to map protocol message to machine instance it is used `Aries RFCs threading <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading>`_ concept.
+
+Protocol
+^^^^^^^^^^^^^^^^^^^^^
+**did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/**
+
+Reference
+^^^^^^^^^^^^^^^^^^^^^
 
 Simple Consensus procedure covers two use-cases:
 
@@ -46,11 +53,6 @@ Use-Case 1: Creating new Ledger.
 ***************
 
 Before starting of serve business process in trust environment via immutable logs in Microledger participants, we should define procedure of establishing new log instance by every dealer. In this step actor initialize transaction log by genesis and make sure all microledger participants received and accept genesis block.
-
-Reference
-^^^^^^^^^^^^^^^^^^^^^
-**Protocol**: did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/
-
 
 .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/create_new_ledger.png?raw=true
    :alt: Create new transactions log
