@@ -39,6 +39,28 @@ Protocol
 ^^^^^^^^^^^^^^^^^^^^^
 **did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/**
 
+Errors
+^^^^^^^^^^^^^^^^^^^^^
+  - request_not_accepted
+  - request_processing_error
+  - response_not_accepted
+  - response_processing_error
+
+Example:
+
+.. code-block:: python
+
+  {
+      "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/problem_report",
+      "@id": "1129fbc9-b9cf-4191-b5c1-ee9c68945f42",
+      "problem-code": "request_not_accepted",
+      "explain": "Transaction has not metadata",
+      "~thread": {
+        "thid": "simple-consensus-txn-98fd8d72-80f6-4419-abc2-c65ea39d0f38"
+      }
+  }
+
+
 Reference
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -236,5 +258,121 @@ Stage-1. Propose transactions block [stage-propose]
         "uncommitted_root_hash": "3r79w6pcm7zyX5TfY7eoUdcF7EBsTpBcHGpN7iJfpSmY"
       },
       "hash": "2ff01c13f2bf8f89d077f18c12ceb218",
-      "timeout_sec": 60
+      "timeout_sec": 60,
+      "~thread": {
+        "thid": "simple-consensus-txns-0127c0a220fb4389a7f153b91c83e04c",
+        "sender_order": 0
+      }
   }
+
+- **timeout_sec**: optiobnal field, set time to live for state machine
+- **transactions**: array of transactions that actor indends to commit. Notice **txnMetadata** is reserved field to keep ledger-specific metadata.
+- **state**: State of ledger on side of actor
+    - **state.name**: name of ledger that maps to transaction log
+    - **state.seq_no**: serial number of еру last stored transaction in the ledger
+    - **state.size**: size of the ledger
+    - **state.uncommitted_size**: total size of the ledger - size of stored transactions + size of non-commited transactions that are keeped in cache
+    - **state.root_hash**: root hash of Merkle-Tree for stored transactions
+    - **state.uncommitted_root_hash**: root hash of Merkle-Tree for both: stored and non-committed transactions
+- **participants**: list of dealers who serve transactions. It is assumed all participants established `pairwise <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_ with each other. It make available to map verkeys for signatures to participants `DIDs <https://www.w3.org/TR/did-core/#dfn-decentralized-identifiers>`_. List of pairwise define Microledger.
+- **hash**: hexdigest md5(state)
+
+Stage-2. Pre-Commit [stage-pre-commit]
+***************
+.. code-block:: python
+
+  {
+      "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/stage-pre-commit",
+      "@id": "39fe994a-e1a7-4ea9-9ddd-0a1db30df4c8",
+      "hash": "3c894a0753981852b444b4157a1b3583",
+      "hash~sig": {
+        "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+        "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1",
+        "sig_data": "AAAAAF9SfngiM2M4OTRhMDc1Mzk4MTg1MmI0NDRiNDE1N2ExYjM1ODMi",
+        "signature": "zkgyG90zXiihS26WgpZZcD-gatucp7JS1BRIJ5gL4dbLuYesRXlqhw5PxVWXALDKdtQ6afpLjCG0cU12nkQSAQ=="
+      },
+      "~thread": {
+        "thid": "simple-consensus-txns-0127c0a220fb4389a7f153b91c83e04c",
+        "sender_order": 0
+      }
+  }
+
+- **hash**: hexdigest md5(state) after participant apply transactions block to self instance of the ledger
+- **hash~sig**: signature of the hash to notify other participants about new state of the ledger
+
+Stage-3. Commit [stage-commit]
+***************
+
+.. code-block:: python
+
+  {
+      "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/stage-commit",
+      "@id": "815d6bad-d510-43f2-a8da-b2d9deda92fb",
+      "participants": [
+        "did:peer:Th7MpTaRZVRYnPiabds81Y",
+        "did:peer:LnXR1rPnncTPZvRdmJKhJQ",
+        "did:peer:T8MtAB98aCkgNLtNfQx6WG"
+      ],
+      "pre_commits": {
+        "did:peer:Th7MpTaRZVRYnPiabds81Y": {
+          "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+          "signer": "FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4",
+          "sig_data": "AAAAAF9Sf9YiODFiZjA2ZjRiYmIxMjkyZTVkNWMzYjg1ZGEzYjUzZmYi",
+          "signature": "YCDDHLAy7TrVnkrmNXSkN9d-uw80d8aptQ1rqY6R9_n73RCaLBwEdiVtt1y06syAQMIr12-vCYuMidVfBjSBCQ=="
+        },
+        "did:peer:LnXR1rPnncTPZvRdmJKhJQ": {
+          "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+          "signer": "BnSWTUQmdYCewSGFrRUhT6LmKdcCcSzRGqWXMPnEP168",
+          "sig_data": "AAAAAF9Sf9giODFiZjA2ZjRiYmIxMjkyZTVkNWMzYjg1ZGEzYjUzZmYi",
+          "signature": "A5d5_YCaQd6O-F12-m3P5G0MHjJpYt6JlMTGCQrRP2kdX_M7vn0c7h-w7E9GxtJ3BcwzQeTsyBlRl7RIMe05Aw=="
+        },
+        "did:peer:T8MtAB98aCkgNLtNfQx6WG": {
+          "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+          "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1",
+          "sig_data": "AAAAAF9Sf9giODFiZjA2ZjRiYmIxMjkyZTVkNWMzYjg1ZGEzYjUzZmYi",
+          "signature": "KIZyuowKtmJQ1zmPESRsO6Ol7n_nYJTcOTDgj6FHzH2INTjfdGS11prnq2gzGQACfDLcBVuJ_wtbUL4opL2mCg=="
+        }
+      },
+      "~thread": {
+        "thid": "simple-consensus-txns-0127c0a220fb4389a7f153b91c83e04c",
+        "sender_order": 0
+      }
+  }
+
+- **pre_commits**: Maps pre-commit signature to participant through DID
+
+Stage-4. Post-Commit [stage-post-commit]
+***************
+
+.. code-block:: python
+
+  {
+      "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/stage-post-commit",
+      "@id": "cce91f25-c615-416f-857a-8dc05fa2127f",
+      "commits": [
+        {
+          "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+          "signer": "FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4",
+          "sig_data": "AAAAAF9SgMh7IkB0eXBlIjogImRpZDpzb3Y6QnpDYnNOWWhNcmpIaXFaRFRVQVNIZztzcGVjL3NpbXBsZS1jb25zZW5zdXMvMS4wL3N0YWdlLWNvbW1pdCIsICJAaWQiOiAiYmFmYzIyNjEtZTI5MC00NTljLWE4MmYtMGY4MGQ2OTkzMjhkIiwgInBhcnRpY2lwYW50cyI6IFsiVGg3TXBUYVJaVlJZblBpYWJkczgxWSIsICJUOE10QUI5OGFDa2dOTHROZlF4NldHIiwgIkxuWFIxclBubmNUUFp2UmRtSktoSlEiXSwgInByZV9jb21taXRzIjogeyJUaDdNcFRhUlpWUlluUGlhYmRzODFZIjogeyJAdHlwZSI6ICJkaWQ6c292OkJ6Q2JzTlloTXJqSGlxWkRUVUFTSGc7c3BlYy9zaWduYXR1cmUvMS4wL2VkMjU1MTlTaGE1MTJfc2luZ2xlIiwgInNpZ25lciI6ICJGWW1vRnc1NUdlUUg3U1JGYTM3ZGt4MWQyZFozelVGOGNrZzd3bUw3b2ZONCIsICJzaWdfZGF0YSI6ICJBQUFBQUY5U2dNWWlPVGc0T1RNd1ptSTVNbVZpWkRoaU16Z3hZbVE0WmpRMll6SXlPVEUyWlRraSIsICJzaWduYXR1cmUiOiAiVFpDR0NfZXBVTUVERG5ETHNRUWJKZE5zNjc4MGplcExBb09YamU4anktbXpnYllZTDlHaU9LdzZ2ZHA5eTZ5a0ZQWGZqakdMMmJQcVZ4RDNvU2RzQUE9PSJ9LCAiVDhNdEFCOThhQ2tnTkx0TmZReDZXRyI6IHsiQHR5cGUiOiAiZGlkOnNvdjpCekNic05ZaE1yakhpcVpEVFVBU0hnO3NwZWMvc2lnbmF0dXJlLzEuMC9lZDI1NTE5U2hhNTEyX3NpbmdsZSIsICJzaWduZXIiOiAiRkV2WDNuc0o4VmpXNHFRdjREaDlFM05ERXgxYlVQRHRjOXZrYWFvS1Z5ejEiLCAic2lnX2RhdGEiOiAiQUFBQUFGOVNnTWNpT1RnNE9UTXdabUk1TW1WaVpEaGlNemd4WW1RNFpqUTJZekl5T1RFMlpUa2kiLCAic2lnbmF0dXJlIjogImpRbWtvY252RG4wMUszVmVLa1Vlek42T2Z1VGV0MDJKM2RINUtOZUVZVkt0SXFTUHlhbmtBcHlDelFHNERkb1ljMWQ1REh5MUtBZkJpTXJGaEEwSkR3PT0ifSwgIkxuWFIxclBubmNUUFp2UmRtSktoSlEiOiB7IkB0eXBlIjogImRpZDpzb3Y6QnpDYnNOWWhNcmpIaXFaRFRVQVNIZztzcGVjL3NpZ25hdHVyZS8xLjAvZWQyNTUxOVNoYTUxMl9zaW5nbGUiLCAic2lnbmVyIjogIkJuU1dUVVFtZFlDZXdTR0ZyUlVoVDZMbUtkY0NjU3pSR3FXWE1QbkVQMTY4IiwgInNpZ19kYXRhIjogIkFBQUFBRjlTZ01naU9UZzRPVE13Wm1JNU1tVmlaRGhpTXpneFltUTRaalEyWXpJeU9URTJaVGtpIiwgInNpZ25hdHVyZSI6ICI3MzJWSnBzRFFRbk1ZUXExTVVTcFlpVmlseTZtWXZxeEMyNDNNU3RwUHRGQ0dXbTFoQ1E5Z3QyWTRKeGJ6MF9RM1VsOUt3ZVpxUUJwcWhhVFdzOGdCZz09In19fQ==",
+          "signature": "6sh6vg-9xHqdjmutxUtSgDTp884jAcsJIl9oOwz-MX-qw1ej7Qqku_19yEv1YI5_FO9EM5PaWeJPthyrBgb3CQ=="
+        },
+        {
+          "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+          "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1",
+          "sig_data": "AAAAAF9SgMl7IkB0eXBlIjogImRpZDpzb3Y6QnpDYnNOWWhNcmpIaXFaRFRVQVNIZztzcGVjL3NpbXBsZS1jb25zZW5zdXMvMS4wL3N0YWdlLWNvbW1pdCIsICJAaWQiOiAiYmFmYzIyNjEtZTI5MC00NTljLWE4MmYtMGY4MGQ2OTkzMjhkIiwgInByZV9jb21taXRzIjogeyJUaDdNcFRhUlpWUlluUGlhYmRzODFZIjogeyJAdHlwZSI6ICJkaWQ6c292OkJ6Q2JzTlloTXJqSGlxWkRUVUFTSGc7c3BlYy9zaWduYXR1cmUvMS4wL2VkMjU1MTlTaGE1MTJfc2luZ2xlIiwgInNpZ25lciI6ICJGWW1vRnc1NUdlUUg3U1JGYTM3ZGt4MWQyZFozelVGOGNrZzd3bUw3b2ZONCIsICJzaWdfZGF0YSI6ICJBQUFBQUY5U2dNWWlPVGc0T1RNd1ptSTVNbVZpWkRoaU16Z3hZbVE0WmpRMll6SXlPVEUyWlRraSIsICJzaWduYXR1cmUiOiAiVFpDR0NfZXBVTUVERG5ETHNRUWJKZE5zNjc4MGplcExBb09YamU4anktbXpnYllZTDlHaU9LdzZ2ZHA5eTZ5a0ZQWGZqakdMMmJQcVZ4RDNvU2RzQUE9PSJ9LCAiVDhNdEFCOThhQ2tnTkx0TmZReDZXRyI6IHsiQHR5cGUiOiAiZGlkOnNvdjpCekNic05ZaE1yakhpcVpEVFVBU0hnO3NwZWMvc2lnbmF0dXJlLzEuMC9lZDI1NTE5U2hhNTEyX3NpbmdsZSIsICJzaWduZXIiOiAiRkV2WDNuc0o4VmpXNHFRdjREaDlFM05ERXgxYlVQRHRjOXZrYWFvS1Z5ejEiLCAic2lnX2RhdGEiOiAiQUFBQUFGOVNnTWNpT1RnNE9UTXdabUk1TW1WaVpEaGlNemd4WW1RNFpqUTJZekl5T1RFMlpUa2kiLCAic2lnbmF0dXJlIjogImpRbWtvY252RG4wMUszVmVLa1Vlek42T2Z1VGV0MDJKM2RINUtOZUVZVkt0SXFTUHlhbmtBcHlDelFHNERkb1ljMWQ1REh5MUtBZkJpTXJGaEEwSkR3PT0ifSwgIkxuWFIxclBubmNUUFp2UmRtSktoSlEiOiB7IkB0eXBlIjogImRpZDpzb3Y6QnpDYnNOWWhNcmpIaXFaRFRVQVNIZztzcGVjL3NpZ25hdHVyZS8xLjAvZWQyNTUxOVNoYTUxMl9zaW5nbGUiLCAic2lnbmVyIjogIkJuU1dUVVFtZFlDZXdTR0ZyUlVoVDZMbUtkY0NjU3pSR3FXWE1QbkVQMTY4IiwgInNpZ19kYXRhIjogIkFBQUFBRjlTZ01naU9UZzRPVE13Wm1JNU1tVmlaRGhpTXpneFltUTRaalEyWXpJeU9URTJaVGtpIiwgInNpZ25hdHVyZSI6ICI3MzJWSnBzRFFRbk1ZUXExTVVTcFlpVmlseTZtWXZxeEMyNDNNU3RwUHRGQ0dXbTFoQ1E5Z3QyWTRKeGJ6MF9RM1VsOUt3ZVpxUUJwcWhhVFdzOGdCZz09In19LCAifnRocmVhZCI6IHsidGhpZCI6ICJzaW1wbGUtY29uc2Vuc3VzLXR4bnMtNzAwNGNjMmFkOTUwNGFhY2FmODc3MThmYmNlMTRlZTYiLCAic2VuZGVyX29yZGVyIjogMX0sICJwYXJ0aWNpcGFudHMiOiBbIlRoN01wVGFSWlZSWW5QaWFiZHM4MVkiLCAiVDhNdEFCOThhQ2tnTkx0TmZReDZXRyIsICJMblhSMXJQbm5jVFBadlJkbUpLaEpRIl19",
+          "signature": "28wjYmrT6aK37-9dcgL0uMyvZ_vfHhkrxiOTWRwZAC7VXdkDGAnpyu77k2Df18wsWWKfCUda0ipD8reSdNVpCw=="
+        },
+        {
+          "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+          "signer": "BnSWTUQmdYCewSGFrRUhT6LmKdcCcSzRGqWXMPnEP168",
+          "sig_data": "AAAAAF9SgMh7IkB0eXBlIjogImRpZDpzb3Y6QnpDYnNOWWhNcmpIaXFaRFRVQVNIZztzcGVjL3NpbXBsZS1jb25zZW5zdXMvMS4wL3N0YWdlLWNvbW1pdCIsICJAaWQiOiAiYmFmYzIyNjEtZTI5MC00NTljLWE4MmYtMGY4MGQ2OTkzMjhkIiwgInByZV9jb21taXRzIjogeyJUaDdNcFRhUlpWUlluUGlhYmRzODFZIjogeyJAdHlwZSI6ICJkaWQ6c292OkJ6Q2JzTlloTXJqSGlxWkRUVUFTSGc7c3BlYy9zaWduYXR1cmUvMS4wL2VkMjU1MTlTaGE1MTJfc2luZ2xlIiwgInNpZ25lciI6ICJGWW1vRnc1NUdlUUg3U1JGYTM3ZGt4MWQyZFozelVGOGNrZzd3bUw3b2ZONCIsICJzaWdfZGF0YSI6ICJBQUFBQUY5U2dNWWlPVGc0T1RNd1ptSTVNbVZpWkRoaU16Z3hZbVE0WmpRMll6SXlPVEUyWlRraSIsICJzaWduYXR1cmUiOiAiVFpDR0NfZXBVTUVERG5ETHNRUWJKZE5zNjc4MGplcExBb09YamU4anktbXpnYllZTDlHaU9LdzZ2ZHA5eTZ5a0ZQWGZqakdMMmJQcVZ4RDNvU2RzQUE9PSJ9LCAiVDhNdEFCOThhQ2tnTkx0TmZReDZXRyI6IHsiQHR5cGUiOiAiZGlkOnNvdjpCekNic05ZaE1yakhpcVpEVFVBU0hnO3NwZWMvc2lnbmF0dXJlLzEuMC9lZDI1NTE5U2hhNTEyX3NpbmdsZSIsICJzaWduZXIiOiAiRkV2WDNuc0o4VmpXNHFRdjREaDlFM05ERXgxYlVQRHRjOXZrYWFvS1Z5ejEiLCAic2lnX2RhdGEiOiAiQUFBQUFGOVNnTWNpT1RnNE9UTXdabUk1TW1WaVpEaGlNemd4WW1RNFpqUTJZekl5T1RFMlpUa2kiLCAic2lnbmF0dXJlIjogImpRbWtvY252RG4wMUszVmVLa1Vlek42T2Z1VGV0MDJKM2RINUtOZUVZVkt0SXFTUHlhbmtBcHlDelFHNERkb1ljMWQ1REh5MUtBZkJpTXJGaEEwSkR3PT0ifSwgIkxuWFIxclBubmNUUFp2UmRtSktoSlEiOiB7IkB0eXBlIjogImRpZDpzb3Y6QnpDYnNOWWhNcmpIaXFaRFRVQVNIZztzcGVjL3NpZ25hdHVyZS8xLjAvZWQyNTUxOVNoYTUxMl9zaW5nbGUiLCAic2lnbmVyIjogIkJuU1dUVVFtZFlDZXdTR0ZyUlVoVDZMbUtkY0NjU3pSR3FXWE1QbkVQMTY4IiwgInNpZ19kYXRhIjogIkFBQUFBRjlTZ01naU9UZzRPVE13Wm1JNU1tVmlaRGhpTXpneFltUTRaalEyWXpJeU9URTJaVGtpIiwgInNpZ25hdHVyZSI6ICI3MzJWSnBzRFFRbk1ZUXExTVVTcFlpVmlseTZtWXZxeEMyNDNNU3RwUHRGQ0dXbTFoQ1E5Z3QyWTRKeGJ6MF9RM1VsOUt3ZVpxUUJwcWhhVFdzOGdCZz09In19LCAifnRocmVhZCI6IHsidGhpZCI6ICJzaW1wbGUtY29uc2Vuc3VzLXR4bnMtNzAwNGNjMmFkOTUwNGFhY2FmODc3MThmYmNlMTRlZTYiLCAic2VuZGVyX29yZGVyIjogMX0sICJwYXJ0aWNpcGFudHMiOiBbIlRoN01wVGFSWlZSWW5QaWFiZHM4MVkiLCAiVDhNdEFCOThhQ2tnTkx0TmZReDZXRyIsICJMblhSMXJQbm5jVFBadlJkbUpLaEpRIl19",
+          "signature": "2r92LYmJBB2h2vSl514g-omslk63nqnvXBVCFLsRKz0MzOXDfiRsxaWNQNl66nZT0WUG7AEK28zra9DXlkA7DQ=="
+        }
+      ],
+      "~thread": {
+        "thid": "simple-consensus-txns-0127c0a220fb4389a7f153b91c83e04c",
+        "sender_order": 0
+      }
+  }
+
+- **commits**: array of pre-commits of all participants
