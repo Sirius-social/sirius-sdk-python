@@ -29,7 +29,7 @@ Tutorial
 
 Roles
 ^^^^^^^^^^^^^^^^^^^^^
-There are two roles in this protocol: **Actor** and **Participant(s)**. Actor is participant who initialize process. It is anticipated that all participants has established `pairwise <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_ connections previously, so they all established `Microledger <https://github.com/hyperledger/aries-rfcs/blob/master/concepts/0051-dkms/dkms-v4.md#43-microledgers>`_.
+There are two roles in this protocol: **Actor** and **Participant(s)**. Actor is participant who initialize process. It is anticipated that all participants has established `pairwise <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_ connections previously, so they all establish `Microledger <https://github.com/hyperledger/aries-rfcs/blob/master/concepts/0051-dkms/dkms-v4.md#43-microledgers>`_.
 
 Threading
 ^^^^^^^^^^^^^^^^^^^^^
@@ -269,7 +269,7 @@ Stage-1. Propose transactions block [stage-propose]
 - **transactions**: array of transactions that actor indends to commit. Notice **txnMetadata** is reserved field to keep ledger-specific metadata.
 - **state**: State of ledger on side of actor
     - **state.name**: name of ledger that maps to transaction log
-    - **state.seq_no**: serial number of еру last stored transaction in the ledger
+    - **state.seq_no**: serial number of the last stored transaction in the ledger
     - **state.size**: size of the ledger
     - **state.uncommitted_size**: total size of the ledger - size of stored transactions + size of non-commited transactions that are keeped in cache
     - **state.root_hash**: root hash of Merkle-Tree for stored transactions
