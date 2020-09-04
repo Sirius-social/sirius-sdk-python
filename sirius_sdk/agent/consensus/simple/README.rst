@@ -13,9 +13,9 @@ kind of production ready approaches: **Tendermint**, **Plenum**, overlap some en
 
 Motivation
 ===============
-Consensus procedure usually is part of IT infrastructure that builds trust environment and available for developers via special framework (Hyperledger Sawtooth SDK, Ethereum SDK for exampe). Often consensus is pluggable for enterprise solutions, but when you made choice of consensus procedure, you are forced to agree to selected consensus algorithm logic and outputs.
+Consensus procedure usually is part of IT infrastructure that builds trust environment and available for developers via special framework (Hyperledger Sawtooth SDK, Ethereum SDK for exampe). Often consensus is pluggable for enterprise solutions, but when you made choice of consensus procedure, you are forced to agree to selected consensus algorithm logic and outputs in any point of your project.
 
-`Microledger  <https://decentralized-id.com/hyperledger/hgf-2018/Microledgers-Edgechains-Hardman-HGF/>`_ concept make developer free to select The most convenient BFT algorithm for every business process, served in Microledger context, independently.
+`Microledger  <https://decentralized-id.com/hyperledger/hgf-2018/Microledgers-Edgechains-Hardman-HGF/>`_ concept make developer free to select The most convenient `BFT <https://www-inst.eecs.berkeley.edu//~cs162/fa12/hand-outs/Original_Byzantine.pdf>`_ algorithm for every business process, served in Microledger context, independently.
 
 Solving problem in same manner we have usefull outcomes:
 
@@ -190,4 +190,51 @@ Use-Case 2: Accept transaction to existing ledger by all dealers in Microledger 
 For existing ledger (transactions log) participants may progress business process issuing transactions. Format and rules to build transactions is result of agreement among participants.
 
 .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/merkle_proof.png?raw=true
-   :alt: Transaction block accepting through Merkle-Proofs
+   :alt: Merkle-Proofs
+
+Stage-1. Propose transactions block [stage-propose]
+^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: python
+
+  {
+      "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/simple-consensus/1.0/stage-propose",
+      "@id": "33a6fd13-0c45-4642-a27d-4315c7455216",
+      "participants": [
+        "did:peer:T8MtAB98aCkgNLtNfQx6WG",
+        "did:peer:LnXR1rPnncTPZvRdmJKhJQ",
+        "did:peer:Th7MpTaRZVRYnPiabds81Y"
+      ],
+      "transactions": [
+        {
+          ...
+          "txnMetadata": {
+            "txnTime": "2020-09-04 17:31:18.355738",
+            "seqNo": 3
+          }
+        },
+        {
+          ...
+          "txnMetadata": {
+            "txnTime": "2020-09-04 17:31:18.355738",
+            "seqNo": 4
+          }
+        },
+        {
+          ...
+          "txnMetadata": {
+            "txnTime": "2020-09-04 17:31:18.355738",
+            "seqNo": 5
+          }
+        }
+      ],
+      "state": {
+        "name": "Ledger-1389425dd0304e898880550d1376cbf8",
+        "seq_no": 2,
+        "size": 2,
+        "uncommitted_size": 5,
+        "root_hash": "3sgNJmsXpmin7P5C6jpHiqYfeWwej5L6uYdYoXTMc1XQ",
+        "uncommitted_root_hash": "3r79w6pcm7zyX5TfY7eoUdcF7EBsTpBcHGpN7iJfpSmY"
+      },
+      "hash": "2ff01c13f2bf8f89d077f18c12ceb218",
+      "timeout_sec": 60
+  }
