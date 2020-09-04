@@ -1,15 +1,15 @@
 ==================================
 Simple consensus procedure
 ==================================
-******************
 
-- Authors: `Pavel Minenkov <https://github.com/Purik>`_
+- Authors: `Pavel Minenkov <https://github.com/Purik>`_, `Talgat Umarbaev <https://github.com/umarbaev>`_, `Igor Fedorov <https://github.com/igorexax3mal>`_
 - Since: 2020/08/01
 
 Summary
 ===============
-Simple Consensus procedure demonstrate how **Sirius SDK** helps to define algorithm to solve BFT problem aside participants (deal contragents)
-
+Simple Consensus procedure demonstrate how **Sirius SDK** helps to define algorithm to solve BFT problem aside participants (deal contragents).
+Notice it is algorithm for demo purpose actually and in practice you should use some
+kind of production ready approaches: **Tendermint**, **Plenum**, overlap some enterprise framework like **Hyperledger** family.
 
 Motivation
 ===============
@@ -26,6 +26,7 @@ Solving problem in same manner we have usefull outcomes:
 
 Tutorial
 ===============
+
 Simple Consensus procedure consists of two blocks:
 
   - block 1: creating new transactions ledger
@@ -35,9 +36,14 @@ Simple Consensus procedure consists of two blocks:
 ***************
 Block 1: Creating new Ledger.
 ***************
+
 Before starting of serve business process in trust environment via immutable logs in Microledger participants, we should define procedure of establishing new log instance by every dealer. In this step actor initialize transaction log by genesis and make sure all microledger participants received and accept genesis block.
 
-1. Transactions log initialization: actor notify all participants
+.. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/create_new_ledger.png?raw=true
+   :alt: Create new transactions log
+
+
+Step-1. Transactions log initialization: actor notify all participants (Send propose)
 ^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: python
@@ -86,16 +92,22 @@ Before starting of serve business process in trust environment via immutable log
     ]
   }
  
+
 Every time actor needs to initialize new transaction log, it should initialize transactions ledger by genesis block, calc merkle tree root, then notify all dealers in **Microledger** context and make sure all of them initialized self copy of transactions log.
 
 - **timeout_sec**: optiobnal field, set time to live for state machine
-- **ledger**: contains genesis transactions block, name and root_hash (merkle-proofs)
-- **ledger~hash**: hash of ledger 
-- **participants**: list of dealers who serve transactions
-- **signatures**: `signatures  <https://github.com/hyperledger/aries-rfcs/tree/master/features/0234-signature-decorator>`_ of ledger~hash for participants
+- **ledger**: contains genesis block and merkle-proof data
+    - **ledger.genesis**: array of transactions that initialize new ledger - genesis block. Notice that **txnMetadata** is reserved attribute that contains ledger-specific data
+    - **ledger.name**: unique name of ledger that addresses it univocally.
+    - **ledger.root_hash**: root hash of the Merkle-Tree that maps to this ledger
+- **ledger~hash**: hash of the ledger
+    - **ledger~hash.base58**: base58 presentation of hash bytes for **ledger** field
+    - **ledger~hash.func**: hash func that used to calculate hash bytes array
+- **participants**: list of dealers who serve transactions. It is assumed all participants established `pairwise <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_ with each other. It make available to map verkeys for signatures to participants `DIDs <https://www.w3.org/TR/did-core/#dfn-decentralized-identifiers>`_. List of pairwise define Microledger.
+- **signatures**: `signatures  <https://github.com/hyperledger/aries-rfcs/tree/master/features/0234-signature-decorator>`_ of ledger~hash for participants. Any microledger participant may check ledger consistency with neighbours.
 
 
-2. Participant accept new transaction log creation
+Step-2. Participant accept new transaction log creation and build signature with self-verkey (pre-commit)
 ^^^^^^^^^^^^^^^^^^^^^
 
 
@@ -143,3 +155,9 @@ Every time actor needs to initialize new transaction log, it should initialize t
         }
     ]
   }
+
+
+
+Step-3. Actor check responses from all participants and check ledger consistency. (commit)
+^^^^^^^^^^^^^^^^^^^^^
+If there is no problems, actor sends `Ack message  <https://github.com/hyperledger/aries-rfcs/tree/master/features/0015-acks>`_ to all neighbors or `problem-report <https://github.com/hyperledger/aries-rfcs/tree/master/features/0035-report-problem>`_.
