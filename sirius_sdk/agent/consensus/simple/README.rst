@@ -375,4 +375,4 @@ Stage-4. Post-Commit [stage-post-commit]
       }
   }
 
-- **commits**: array of pre-commits of all participants
+- **commits**: array of pre-commits from all participants
