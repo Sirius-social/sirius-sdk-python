@@ -187,3 +187,7 @@ If there is no problems, actor sends `Ack message  <https://github.com/hyperledg
 ***************
 Use-Case 2: Accept transaction to existing ledger by all dealers in Microledger environment.
 ***************
+For existing ledger (transactions log) participants may progress business process issuing transactions. Format and rules to build transactions is result of agreement among participants.
+
+.. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/merkle_proof.png?raw=true
+   :alt: Transaction block accepting through Merkle-Proofs
