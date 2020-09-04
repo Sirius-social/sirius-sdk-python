@@ -1,0 +1,22 @@
+@startuml
+title Microledger
+
+== Step-1: Propose [initialize-request] ==
+Actor -[#red]> Paticipant_1: Propose
+Actor -[#red]> Paticipant_2: Propose
+Actor -[#red]> Paticipant_N: Propose
+hnote over Actor : Idle: Wait for all responses at given timeout
+
+
+== Step-2: Pre-Commit [initialize-response] ==
+Paticipant_1 -[#blue]> Actor: accept creation and verify with self-signature
+Paticipant_2 -[#blue]> Actor: accept creation and verify with self-signature
+Paticipant_N -[#blue]> Actor: accept creation and verify with self-signature
+hnote over Actor : Check responses: validate signatures and ledger state consistancy
+
+== Step-3: Commit [ack] ==
+Actor -[#green]> Paticipant_1: consistency among all participants is OK
+Actor -[#green]> Paticipant_2: consistency among all participants is OK
+Actor -[#green]> Paticipant_N: consistency among all participants is OK
+hnote over Actor : All participants has Ledger with same Merkle-Tree root hash
+@enduml
