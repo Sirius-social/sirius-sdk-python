@@ -7,7 +7,7 @@ Simple consensus procedure
 
 Summary
 ===============
-Simple Consensus procedure demonstrate how **Sirius SDK** helps to define algorithm to solve BFT problem aside participants (deal contragents).
+Simple Consensus procedure demonstrate how **Sirius SDK** helps to define algorithm to solve `BFT <https://www-inst.eecs.berkeley.edu//~cs162/fa12/hand-outs/Original_Byzantine.pdf>`_ problem aside participants (deal contragents).
 Notice it is algorithm for demo purpose actually and in practice you should use some
 kind of production ready approaches: **Tendermint**, **Plenum** **OR** you may overlap some enterprise framework like **Hyperledger** family through defining Edge-Chain protocol.
 
