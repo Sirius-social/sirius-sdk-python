@@ -1,0 +1,32 @@
+@startuml
+title Merkle-Proof at Microledger
+
+== Stage-1: Propose transactions block [stage-propose] ==
+Actor -[#red]> Paticipant_1: Propose
+Actor -[#red]> Paticipant_2: Propose
+Actor -[#red]> Paticipant_N: Propose
+hnote over Actor : Idle: Wait for all responses at given timeout
+
+
+== Stage-2: Pre-Commit [stage-pre-commit] ==
+Paticipant_1 -[#blue]> Actor: verify Merkle-Proof: response pre-commit with signed state through self-verkey or problem-report
+Paticipant_2 -[#blue]> Actor: verify Merkle-Proof: response pre-commit with signed state through self-verkey or problem-report
+Paticipant_N -[#blue]> Actor: verify Merkle-Proof: response pre-commit with signed state through self-verkey or problem-report
+hnote over Actor : Actor accumulate pre-commits and check consistency, participants keep transactions in cache (don't flush to ledger)
+
+== Stage-3: Commit [stage-commit] ==
+Actor -[#red]> Paticipant_1: send commit message, incapsulate all pre-commits from all participants
+Actor -[#red]> Paticipant_2: send commit message, incapsulate all pre-commits from all participants
+Actor -[#red]> Paticipant_N: send commit message, incapsulate all pre-commits from all participants
+hnote over Actor : Idle: wait for all participants response ok or error
+Paticipant_1 -[#blue]> Actor: extract pre-commits from all participants and check Merkle-Proofs, response with post-commit if OK else error
+Paticipant_2 -[#blue]> Actor: extract pre-commits from all participants and check Merkle-Proofs, response with post-commit if OK else error
+Paticipant_N -[#blue]> Actor: extract pre-commits from all participants and check Merkle-Proofs, response with post-commit if OK else error
+hnote over Actor : Accumulate post-commits from all participants if all they are OK or send problem-report: Transaction declined
+
+== Stage-4: Post-Commit [stage-post-commit] ==
+Actor -[#green]> Paticipant_1: send post-commit, incapsulate all pre-commits
+Actor -[#green]> Paticipant_2: send post-commit, incapsulate all pre-commits
+Actor -[#green]> Paticipant_N: send post-commit, incapsulate all pre-commits
+hnote over Actor : All participants flush transaction block to Ledger storage locally.
+@enduml

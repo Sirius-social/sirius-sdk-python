@@ -9,11 +9,11 @@ Summary
 ===============
 Simple Consensus procedure demonstrate how **Sirius SDK** helps to define algorithm to solve BFT problem aside participants (deal contragents).
 Notice it is algorithm for demo purpose actually and in practice you should use some
-kind of production ready approaches: **Tendermint**, **Plenum**, overlap some enterprise framework like **Hyperledger** family.
+kind of production ready approaches: **Tendermint**, **Plenum**, overlap some enterprise framework like **Hyperledger** family through defining Edge-Chain protocol.
 
 Motivation
 ===============
-Consensus procedure usually is part of IT infrastructure that builds trust environment and available for developers via special framework (Hyperledger Fabric SDK, Ethereum SDK for exampe). Often consensus is pluggable for enterprise solutions, but when you made choice of consensus procedure, you are forced to agree to selected consensus algorithm logic and outputs. 
+Consensus procedure usually is part of IT infrastructure that builds trust environment and available for developers via special framework (Hyperledger Sawtooth SDK, Ethereum SDK for exampe). Often consensus is pluggable for enterprise solutions, but when you made choice of consensus procedure, you are forced to agree to selected consensus algorithm logic and outputs.
 
 `Microledger  <https://decentralized-id.com/hyperledger/hgf-2018/Microledgers-Edgechains-Hardman-HGF/>`_ concept make developer free to select The most convenient BFT algorithm for every business process, served in Microledger context, independently.
 
@@ -104,7 +104,10 @@ Step-1. Transactions log initialization: actor notify all participants (Send pro
             "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1"
           }
         }
-    ]
+    ],
+    "~thread": {
+        "thid": "simple-consensus-machine-98fd8d72-80f6-4419-abc2-c65ea39d0f38",
+    }
   }
  
 
@@ -168,7 +171,10 @@ Step-2. Participant accept new transaction log creation and build signature with
             "signer": "FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1"
           }
         }
-    ]
+    ],
+    "~thread": {
+        "thid": "simple-consensus-machine-98fd8d72-80f6-4419-abc2-c65ea39d0f38",
+    }
   }
 
 
@@ -176,3 +182,8 @@ Step-2. Participant accept new transaction log creation and build signature with
 Step-3. Actor check responses from all participants and check ledger consistency. (commit)
 ^^^^^^^^^^^^^^^^^^^^^
 If there is no problems, actor sends `Ack message  <https://github.com/hyperledger/aries-rfcs/tree/master/features/0015-acks>`_ to all neighbors or `problem-report <https://github.com/hyperledger/aries-rfcs/tree/master/features/0035-report-problem>`_.
+
+
+***************
+Use-Case 2: Accept transaction to existing ledger by all dealers in Microledger environment.
+***************
