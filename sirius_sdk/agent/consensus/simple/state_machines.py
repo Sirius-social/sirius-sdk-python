@@ -64,14 +64,26 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         participants = list(set(participants + [self.me.did]))
         await self._setup('simple-consensus-' + uuid.uuid4().hex, self.time_to_live)
         try:
+            await self.log(progress=0, message=f'Create ledger [{ledger_name}]')
             ledger, genesis = await self.microledgers.create(ledger_name, genesis)
+            await self.log(message=f'Ledger creation terminated successfully')
             try:
                 await self._init_microledger_internal(ledger, participants, genesis)
+                await self.log(progress=100, message='All participants accepted ledger creation')
             except Exception as e:
                 await self.microledgers.reset(ledger_name)
+                await self.log(message=f'Reset ledger')
                 if isinstance(e, StateMachineTerminatedWithError):
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=e.problem_code, explain=e.explain
+                    )
                     return False, None
                 else:
+                    await self.log(
+                        progress=100, message=f'Terminated with exception',
+                        exception=str(e)
+                    )
                     raise
             else:
                 return True, ledger
@@ -85,13 +97,13 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         await self._setup(propose.thread_id, time_to_live)
         try:
             ledger_name = propose.ledger.get('name', None)
-            if not ledger_name:
-                await self._terminate_with_problem_report(
-                    problem_code=REQUEST_PROCESSING_ERROR,
-                    explain='Ledger name is Empty!',
-                    their_did=actor.their.did,
-                )
             try:
+                if not ledger_name:
+                    await self._terminate_with_problem_report(
+                        problem_code=REQUEST_PROCESSING_ERROR,
+                        explain='Ledger name is Empty!',
+                        their_did=actor.their.did,
+                    )
                 for their_did in propose.participants:
                     if their_did != self.me.did:
                         pw = await self.get_p2p(their_did, raise_exception=False)
@@ -101,12 +113,23 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                                 explain=f'Pairwise for DID: "their_did" does not exists!' % their_did,
                                 their_did=actor.their.did
                             )
+                await self.log(progress=0, message=f'Start ledger [{ledger_name}] creation process')
                 ledger = await self._accept_microledger_internal(actor, propose, time_to_live)
+                await self.log(progress=100, message='Ledger creation terminated successfully')
             except Exception as e:
                 await self.microledgers.reset(ledger_name)
+                await self.log(message=f'Reset ledger')
                 if isinstance(e, StateMachineTerminatedWithError):
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=e.problem_code, explain=e.explain
+                    )
                     return False, None
                 else:
+                    await self.log(
+                        progress=100, message=f'Terminated with exception',
+                        exception=str(e)
+                    )
                     raise
             else:
                 return True, ledger
@@ -119,13 +142,24 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         await self._setup('simple-consensus-txns-' + uuid.uuid4().hex, self.time_to_live)
         try:
             try:
+                await self.log(progress=0, message=f'Start committing {len(transactions)} transactions')
                 txns = await self._commit_internal(ledger, transactions, participants)
+                await self.log(progress=100, message='Commit operation was accepted by all participants')
                 return True, txns
             except Exception as e:
                 await ledger.reset_uncommitted()
+                await self.log(message='Reset uncommitted')
                 if isinstance(e, StateMachineTerminatedWithError):
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=e.problem_code, explain=e.explain
+                    )
                     return False, None
                 else:
+                    await self.log(
+                        progress=100, message=f'Terminated with exception',
+                        exception=str(e)
+                    )
                     raise
         finally:
             await self._clean()
@@ -136,13 +170,24 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         try:
             ledger = None
             try:
+                await self.log(progress=0, message=f'Start acception {len(propose.transactions)} transactions')
                 ledger = await self._load_ledger(actor, propose)
                 await self._accept_commit_internal(ledger, actor, propose)
+                await self.log(progress=100, message='Acception terminated successfully')
                 return True
             except Exception as e:
                 if ledger:
                     await ledger.reset_uncommitted()
+                    await self.log(message='Reset uncommitted')
                 if isinstance(e, StateMachineTerminatedWithError):
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=e.problem_code, explain=e.explain
+                    )
+                    await self.log(
+                        progress=100, message=f'Terminated with exception',
+                        exception=str(e)
+                    )
                     return False
                 else:
                     raise
@@ -255,7 +300,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         request_commit.assign_from(propose)
         neighbours = [did for did in participants if did != self.me.did]
 
+        await self.log(progress=20, message='Send propose', payload=dict(propose))
         results = await self._switch_multiple(neighbours, propose)
+        await self.log(progress=30, message='Received responses from all participants')
         neighbours_responses = {did: msg for (ok, msg), did in zip(results, neighbours) if ok is True}
         if len(neighbours) != len(neighbours):
             error_neighbours = [did for (ok, _), did in zip(results, neighbours) if not ok]
@@ -265,6 +312,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 their_did=neighbours
             )
 
+        await self.log(progress=40, message='Validate responses')
         for their_did, response in neighbours_responses.items():
             if isinstance(response, InitResponseLedgerMessage):
                 response.validate()
@@ -277,9 +325,12 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 raise StateMachineTerminatedWithError(response.problem_code, response.explain)
 
         # ============= STAGE 2: COMMIT ============
+        await self.log(progress=60, message='Send commit request', payload=dict(request_commit))
         results = await self._switch_multiple(neighbours, request_commit)
+        await self.log(progress=70, message='Received commit responses')
         neighbours_responses = {did: msg for (ok, msg), did in zip(results, neighbours) if ok is True}
 
+        await self.log(progress=80, message='Validate commit responses from neighbours')
         acks = []
         for their_did, response in neighbours_responses.items():
             if isinstance(response, SimpleConsensusProblemReport):
@@ -290,6 +341,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         # ============== STAGE 3: POST-COMMIT ============
         if set(acks) == set(neighbours):
             ack = Ack(thread_id=self.__thread_id, status=Status.OK)
+            await self.log(progress=90, message='All checks OK. Send Ack to neighbors')
             await self._send(neighbours, ack)
         else:
             acks_str = ','.join(acks)
@@ -312,7 +364,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         except SiriusValidationError as e:
             await self._terminate_with_problem_report(REQUEST_NOT_ACCEPTED, e.message, actor.their.did)
         genesis = [Transaction(txn) for txn in propose.ledger['genesis']]
+        await self.log(progress=10, message='Initialize ledger')
         ledger, txns = await self.microledgers.create(propose.ledger['name'], genesis)
+        await self.log(progress=20, message='Ledger initialized successfully')
         if propose.ledger['root_hash'] != ledger.root_hash:
             await self.microledgers.reset(ledger.name)
             await self._terminate_with_problem_report(
@@ -323,8 +377,10 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         commit_ledger_hash = response.ledger_hash
         await response.add_signature(self.crypto, self.me)
         # =============== STAGE 2: COMMIT ===============
+        await self.log(progress=30, message='Send propose response', payload=dict(response))
         ok, request_commit = await self._switch(actor.their.did, response)
         if ok:
+            await self.log(progress=50, message='Validate request commit')
             if isinstance(request_commit, InitResponseLedgerMessage):
                 try:
                     request_commit.validate()
@@ -351,10 +407,12 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     )
                 else:
                     # Accept commit
+                    await self.log(progress=70, message='Send Ack')
                     ack = Ack(thread_id=self.__thread_id, status=Status.OK)
                     ok, resp = await self._switch(actor.their.did, ack)
                     # =========== STAGE-3: POST-COMMIT ===============
                     if ok:
+                        await self.log(progress=90, message='Response to Ack received')
                         if isinstance(resp, Ack):
                             return ledger
                         elif isinstance(resp, SimpleConsensusProblemReport):
@@ -410,7 +468,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             pre_commit=self_pre_commit
         )
         awaited_list = []
+        await self.log(progress=20, message='Send Propose to participants', payload=dict(propose))
         results = await self._switch_multiple(neighbours, propose)
+        await self.log(progress=30, message='Received Propose from participants')
         neighbours_responses = {did: msg for (ok, msg), did in zip(results, neighbours) if ok is True}
         if len(neighbours) != len(neighbours):
             error_neighbours = [did for (ok, _), did in zip(results, neighbours) if not ok]
@@ -419,6 +479,8 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 explain='Stage-1: Participants [%s] unreachable' % ','.join(error_neighbours),
                 their_did=neighbours
             )
+
+        await self.log(progress=50, message='Validate responses')
         for their_did, pre_commit in neighbours_responses.items():
             if isinstance(pre_commit, PreCommitTransactionsMessage):
                 try:
@@ -452,7 +514,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         # ===== STAGE-2: Accumulate pre-commits and send commit propose to all participants
         post_commit_all = PostCommitTransactionsMessage()
         await post_commit_all.add_commit_sign(self.crypto, commit, self.me)
+        await self.log(progress=60, message='Send Commit to participants', payload=dict(commit))
         results = await self._switch_multiple(neighbours, commit)
+        await self.log(progress=70, message='Received Commit response from participants')
         neighbours_responses = {did: msg for (ok, msg), did in zip(results, neighbours) if ok is True}
         if len(neighbours) != len(neighbours):
             error_neighbours = [did for (ok, _), did in zip(results, neighbours) if not ok]
@@ -461,6 +525,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 explain='Stage-1: Participants [%s] unreachable' % ','.join(error_neighbours),
                 their_did=neighbours
             )
+        await self.log(progress=80, message='Validate responses')
         for their_did, post_commit in neighbours_responses.items():
             if isinstance(post_commit, PostCommitTransactionsMessage):
                 try:
@@ -482,6 +547,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 )
 
         # ===== STAGE-3: Notify all participants with post-commits and finalize process
+        await self.log(progress=90, message='Send Post-Commit', payload=dict(post_commit_all))
         await self._send(neighbours, post_commit_all)
         uncommitted_size = ledger.uncommitted_size - ledger.size
         await ledger.commit(uncommitted_size)
@@ -518,11 +584,14 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         ledger_state = MicroLedgerState.from_ledger(ledger)
         pre_commit = PreCommitTransactionsMessage(state=MicroLedgerState.from_ledger(ledger))
         await pre_commit.sign_state(self.crypto, self.me)
+        await self.log(progress=10, message='Send Pre-Commit', payload=dict(pre_commit))
         ok, commit = await self._switch(actor.their.did, pre_commit)
         if ok:
+            await self.log(progress=20, message='Received Pre-Commit response', payload=dict(commit))
             if isinstance(commit, CommitTransactionsMessage):
                 # ===== STAGE-2: Process Commit request, check neighbours signatures
                 try:
+                    await self.log(progress=30, message='Validate Commit')
                     if set(commit.participants) != set(propose.participants):
                         raise SiriusValidationError('Non-consistent participants')
                     commit.validate()
@@ -538,10 +607,13 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     post_commit = PostCommitTransactionsMessage()
                     await post_commit.add_commit_sign(self.crypto, commit, self.me)
 
+                    await self.log(progress=50, message='Send Post-Commit', payload=dict(post_commit))
                     ok, post_commit_all = await self._switch(actor.their.did, post_commit)
                     if ok:
+                        await self.log(progress=60, message='Received Post-Commit response', payload=dict(post_commit_all))
                         if isinstance(post_commit_all, PostCommitTransactionsMessage):
                             try:
+                                await self.log(progress=80, message='Validate response')
                                 post_commit_all.validate()
                                 verkeys = [(await self.get_p2p(did)).their.verkey for did in neighbours]
                                 await post_commit_all.verify_commits(self.crypto, commit, verkeys)
@@ -553,6 +625,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                                 )
                             else:
                                 uncommitted_size = ledger_state.uncommitted_size - ledger_state.size
+                                await self.log(progress=90, message='Flush transactions to Ledger storage')
                                 await ledger.commit(uncommitted_size)
                         elif isinstance(post_commit_all, SimpleConsensusProblemReport):
                             explain = f'Stage-3: Problem report from actor {actor.their.did}: "{post_commit_all.explain}"'
