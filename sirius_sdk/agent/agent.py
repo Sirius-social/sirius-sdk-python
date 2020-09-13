@@ -197,7 +197,7 @@ class Agent(TransportLayers):
                 name=network, api=self.__wallet.ledger,
                 issuer=self.__wallet.anoncreds, cache=self.__wallet.cache, storage=self.__storage
             )
-        self.__pairwise_list = WalletPairwiseList(api=self.__wallet.pairwise)
+        self.__pairwise_list = WalletPairwiseList(api=(self.__wallet.pairwise, self.__wallet.did))
         self.__microledgers = MicroledgerList(api=self.__rpc)
 
     async def subscribe(self) -> Listener:

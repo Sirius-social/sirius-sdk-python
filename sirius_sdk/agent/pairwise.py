@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
 
+from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.pairwise import AbstractPairwise
 
 
@@ -93,11 +94,13 @@ class AbstractPairwiseList(ABC):
 
 class WalletPairwiseList(AbstractPairwiseList):
 
-    def __init__(self, api: AbstractPairwise):
-        self._api = api
+    def __init__(self, api: (AbstractPairwise, AbstractDID)):
+        self._api_pairwise = api[0]
+        self._api_did = api[1]
 
     async def create(self, pairwise: Pairwise):
-        await self._api.create_pairwise(
+        await self._api_did.store_their_did(did=pairwise.their.did, verkey=pairwise.their.verkey)
+        await self._api_pairwise.create_pairwise(
             their_did=pairwise.their.did,
             my_did=pairwise.me.did,
             metadata=pairwise.metadata,
@@ -105,14 +108,14 @@ class WalletPairwiseList(AbstractPairwiseList):
         )
 
     async def update(self, pairwise: Pairwise):
-        await self._api.set_pairwise_metadata(
+        await self._api_pairwise.set_pairwise_metadata(
             their_did=pairwise.their.did,
             metadata=pairwise.metadata,
             tags=self._build_tags(pairwise)
         )
 
     async def is_exists(self, their_did: str) -> bool:
-        return await self._api.is_pairwise_exists(their_did=their_did)
+        return await self._api_pairwise.is_pairwise_exists(their_did=their_did)
 
     async def ensure_exists(self, pairwise: Pairwise):
         if await self.is_exists(their_did=pairwise.their.did):
@@ -122,7 +125,7 @@ class WalletPairwiseList(AbstractPairwiseList):
 
     async def load_for_did(self, their_did: str) -> Optional[Pairwise]:
         if await self.is_exists(their_did):
-            raw = await self._api.get_pairwise(their_did)
+            raw = await self._api_pairwise.get_pairwise(their_did)
             metadata = raw['metadata']
             pairwise = self._restore_pairwise(metadata)
             return pairwise
@@ -130,7 +133,7 @@ class WalletPairwiseList(AbstractPairwiseList):
             return None
 
     async def load_for_verkey(self, their_verkey: str) -> Optional[Pairwise]:
-        collection, count = await self._api.search(tags={'their_verkey': their_verkey}, limit=1)
+        collection, count = await self._api_pairwise.search(tags={'their_verkey': their_verkey}, limit=1)
         if collection:
             metadata = collection[0]['metadata']
             pairwise = self._restore_pairwise(metadata)
