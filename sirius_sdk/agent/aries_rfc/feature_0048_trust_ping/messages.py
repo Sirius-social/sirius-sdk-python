@@ -27,6 +27,13 @@ class Ping(AriesProtocolMessage, metaclass=RegisterMessage):
     def response_requested(self) -> Optional[bool]:
         return self.get('response_requested', None)
 
+    @response_requested.setter
+    def response_requested(self, value: bool):
+        if value is True:
+            self['response_requested'] = True
+        else:
+            self['response_requested'] = False
+
 
 class Pong(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Pong part for trust_ping protocol
