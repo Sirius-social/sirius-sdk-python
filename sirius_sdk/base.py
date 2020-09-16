@@ -91,7 +91,7 @@ class WebSocketConnector(BaseConnector):
 
     @property
     def is_open(self):
-        return self._ws is not None
+        return self._ws is not None and not self._ws.closed
 
     async def open(self):
         if not self.is_open:
