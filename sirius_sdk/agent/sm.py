@@ -16,8 +16,10 @@ class AbstractStateMachine(ABC):
         self.__transports = transports
         self.__time_to_live = time_to_live
         if logger is not None:
-            if not iscoroutinefunction(logger):
-                raise RuntimeError('Expect logger is iscoroutine function')
+            if iscoroutinefunction(logger) or callable(logger):
+                pass
+            else:
+                raise RuntimeError('Expect logger is iscoroutine function or callable object')
         self.__logger = logger
 
     @property
