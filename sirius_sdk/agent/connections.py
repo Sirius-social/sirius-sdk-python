@@ -135,7 +135,7 @@ class AgentRPC(BaseAgentConnection):
         self.__networks = []
         self.__websockets = {}
         self.__prefer_agent_side = True
-        self.__connector = aiohttp.TCPConnector(verify_ssl=False, keepalive_timeout=60)
+        self.__connector = aiohttp.TCPConnector(verify_ssl=False)
 
     @property
     def endpoints(self) -> List[Endpoint]:
