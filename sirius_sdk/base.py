@@ -89,6 +89,9 @@ class WebSocketConnector(BaseConnector):
         self._url = urljoin(server_address, path)
         self._ws = None
 
+    def __del__(self):
+        asyncio.ensure_future(self.__session.close())
+
     @property
     def is_open(self):
         return self._ws is not None and not self._ws.closed
