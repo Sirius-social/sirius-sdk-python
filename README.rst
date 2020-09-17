@@ -12,7 +12,7 @@ Sirius Smart-Contract is `distributed state-machine <https://github.com/dhh1128/
 Key Features
 ============
 
-- Develop state-machines over `Aries protocols <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#aries-rfc-0003-protocols>`_ in blocking develoment style avoiding **Callback Hell**.
+- Develop state-machines over `protocols <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#aries-rfc-0003-protocols>`_ in blocking develoment style avoiding **Callback Hell**.
 - Supports `Aries concepts <https://github.com/hyperledger/aries-rfcs/tree/master/concepts>`_ and `features <https://github.com/hyperledger/aries-rfcs/tree/master/features>`_.
 - Make it easy to solve identity problem, tune complex identity task for your demand:
 
