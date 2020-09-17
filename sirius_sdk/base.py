@@ -102,6 +102,10 @@ class WebSocketConnector(BaseConnector):
             await self._ws.close()
             self._ws = None
 
+    async def reopen(self):
+        await self.close()
+        await self.open()
+
     async def read(self, timeout: int=None) -> bytes:
         try:
             msg = await self._ws.receive(timeout=timeout)

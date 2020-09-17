@@ -135,7 +135,7 @@ class AgentRPC(BaseAgentConnection):
         self.__networks = []
         self.__websockets = {}
         self.__prefer_agent_side = True
-        self.__connector = aiohttp.TCPConnector(verify_ssl=False, keepalive_timeout=60)
+        self.__tcp_connector = aiohttp.TCPConnector(verify_ssl=False, keepalive_timeout=60)
 
     @property
     def endpoints(self) -> List[Endpoint]:
@@ -145,48 +145,58 @@ class AgentRPC(BaseAgentConnection):
     def networks(self) -> List[str]:
         return self.__networks
 
-    async def remote_call(self, msg_type: str, params: dict=None, wait_response: bool=True) -> Any:
+    async def remote_call(
+            self, msg_type: str, params: dict = None, wait_response: bool = True, reconnect_on_error: bool = True
+    ) -> Any:
         """Call Agent services
 
         :param msg_type:
         :param params:
         :param wait_response: wait for response
+        :param reconnect_on_error: try reconnect if server was closed recources
         :return:
         """
-        if not self._connector.is_open:
-            raise SiriusConnectionClosed('Open agent connection at first')
-        if self._timeout:
-            expiration_time = datetime.datetime.now() + datetime.timedelta(seconds=self._timeout)
-        else:
-            expiration_time = None
-        future = Future(
-            tunnel=self.__tunnel_rpc,
-            expiration_time=expiration_time
-        )
-        request = build_request(
-            msg_type=msg_type,
-            future=future,
-            params=params or {}
-        )
-        msg_typ = MessageType.from_str(msg_type)
-        encrypt = msg_typ.protocol not in ['admin', 'microledgers']
-        if not await self.__tunnel_rpc.post(message=request, encrypt=encrypt):
-            raise SiriusRPCError()
-        if wait_response:
-            success = await future.wait(timeout=self._timeout)
-            if success:
-                if future.has_exception():
-                    future.raise_exception()
-                else:
-                    return future.get_value()
+        try:
+            if not self._connector.is_open:
+                raise SiriusConnectionClosed('Open agent connection at first')
+            if self._timeout:
+                expiration_time = datetime.datetime.now() + datetime.timedelta(seconds=self._timeout)
             else:
-                raise SiriusTimeoutRPC()
+                expiration_time = None
+            future = Future(
+                tunnel=self.__tunnel_rpc,
+                expiration_time=expiration_time
+            )
+            request = build_request(
+                msg_type=msg_type,
+                future=future,
+                params=params or {}
+            )
+            msg_typ = MessageType.from_str(msg_type)
+            encrypt = msg_typ.protocol not in ['admin', 'microledgers']
+            if not await self.__tunnel_rpc.post(message=request, encrypt=encrypt):
+                raise SiriusRPCError()
+            if wait_response:
+                success = await future.wait(timeout=self._timeout)
+                if success:
+                    if future.has_exception():
+                        future.raise_exception()
+                    else:
+                        return future.get_value()
+                else:
+                    raise SiriusTimeoutRPC()
+        except SiriusConnectionClosed:
+            if reconnect_on_error:
+                await self._reopen()
+                return await self.remote_call(msg_type, params, wait_response, reconnect_on_error=False)
+            else:
+                raise
         
     async def send_message(
             self, message: Message,
             their_vk: Union[List[str], str], endpoint: str,
             my_vk: Optional[str], routing_keys: Optional[List[str]],
-            coprotocol: bool=False
+            coprotocol: bool = False
     ) -> Optional[Message]:
         """Send Message to other Indy compatible agent
         
@@ -230,7 +240,7 @@ class AgentRPC(BaseAgentConnection):
                 await ws.send_bytes(wired)
                 ok, body = True, b''
             else:
-                ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__connector)
+                ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__tcp_connector)
             body = body.decode()
         if not ok:
             raise SiriusRPCError(body)
@@ -372,6 +382,12 @@ class AgentRPC(BaseAgentConnection):
         self.__endpoints = endpoint_collection
         # Extract Networks
         self.__networks = context.get('~networks', [])
+
+    async def _reopen(self):
+        await self._connector.reopen()
+        payload = await self._connector.read(timeout=1)
+        context = Message.deserialize(payload.decode())
+        await self._setup(context)
 
     async def close(self):
         await super().close()
