@@ -1,7 +1,7 @@
 ==================================================
 SDK to develop Smart-Contracts in Indy environment
 ==================================================
-Sirius Smart-Contract is `dictributed state-machine <https://github.com/dhh1128/distributed-state-machine/blob/master/README.md>`_ that acts over `Edge-Chain protocol <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols>`_ that approved besides participants.
+Sirius Smart-Contract is `distributed state-machine <https://github.com/dhh1128/distributed-state-machine/blob/master/README.md>`_ that acts over `Edge-Chain protocol <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols>`_ that approved by participants. Sirius SDK is entry point to develop distributed machines that acts as whole smart-contract.
 
 .. image:: https://raw.githubusercontent.com/Sirius-social/sirius-sdk-python/master/docs/_static/sirius_logo.png
    :height: 64px
