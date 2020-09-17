@@ -98,7 +98,7 @@ class WebSocketConnector(BaseConnector):
             self._ws = await self.__session.ws_connect(url=self._url)
 
     async def close(self):
-        if not self.is_open:
+        if self.is_open:
             await self._ws.close()
             self._ws = None
 
