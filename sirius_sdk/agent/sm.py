@@ -8,7 +8,7 @@ from sirius_sdk.agent.agent import TransportLayers
 
 class AbstractStateMachine(ABC):
 
-    def __init__(self, transports: TransportLayers, time_to_live: int = 60, logger=None):
+    def __init__(self, transports: TransportLayers, time_to_live: int = 60, logger=None, *args, **kwargs):
         """
         :param transports: aries-rfc transports factory
         :param time_to_live: state machine time to live to finish progress
