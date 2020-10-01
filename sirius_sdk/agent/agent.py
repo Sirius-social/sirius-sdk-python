@@ -1,6 +1,8 @@
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from typing import List, Union, Optional
+from urllib.parse import urlparse
 
 from multipledispatch import dispatch
 
@@ -71,6 +73,9 @@ class Agent(TransportLayers):
           routing keys maintenance ant etc.
         :param p2p: encrypted connection to establish tunnel to Agent that is running on server-side
         """
+        parsed = urlparse(server_address)
+        if parsed.scheme not in ['https']:
+            logging.warning('Endpoints has non secure scheme, you will have issues for Android/iOS devices')
         self.__server_address = server_address
         self.__credentials = credentials
         self.__p2p = p2p
