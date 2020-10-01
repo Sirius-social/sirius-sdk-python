@@ -15,6 +15,7 @@ class AbstractStateMachine(ABC):
         """
         self.__transports = transports
         self.__time_to_live = time_to_live
+        self.__is_aborted = False
         if logger is not None:
             if iscoroutinefunction(logger) or callable(logger):
                 pass
@@ -31,9 +32,17 @@ class AbstractStateMachine(ABC):
         return self.__time_to_live
 
     @property
+    def is_aborted(self) -> bool:
+        return self.__is_aborted
+
+    @property
     @abstractmethod
     def protocols(self) -> List[str]:
         raise NotImplemented('Need to be implemented in descendant')
+
+    async def abort(self):
+        """Abort state-machine"""
+        self.__is_aborted = True
 
     async def log(self, **kwargs) -> bool:
         if self.__logger:
@@ -51,3 +60,7 @@ class StateMachineTerminatedWithError(BaseSiriusException):
         self.problem_code = problem_code
         self.explain = explain
         self.notify = notify
+
+
+class StateMachineAborted(BaseSiriusException):
+    pass
