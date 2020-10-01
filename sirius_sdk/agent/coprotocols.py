@@ -51,6 +51,7 @@ class AbstractCoProtocolTransport(ABC):
         self.__is_setup = False
         self.__protocols = []
         self.__please_ack_ids = []
+        self.__is_started = False
 
     @property
     def protocols(self) -> List[str]:
@@ -59,6 +60,10 @@ class AbstractCoProtocolTransport(ABC):
     @property
     def time_to_live(self) -> int:
         return self.__time_to_live
+
+    @property
+    def is_started(self) -> bool:
+        return self.__is_started
 
     def _setup(self, their_verkey: str, endpoint: str, my_verkey: str=None, routing_keys: List[str]=None):
         """Should be called in Descendant"""
@@ -94,9 +99,11 @@ class AbstractCoProtocolTransport(ABC):
             self.__die_timestamp = datetime.now() + timedelta(seconds=self.__time_to_live)
         else:
             self.__die_timestamp = None
+        self.__is_started = True
 
     async def stop(self):
         self.__die_timestamp = None
+        self.__is_started = False
         await self.__cleanup_context()
 
     async def switch(self, message: Message) -> (bool, Message):
