@@ -1,26 +1,30 @@
 from sirius_sdk.agent.coprotocols import *
 
-ARIES_DOC_URI = 'https://didcomm.org/'
+
+VALID_DOC_URI = ['https://didcomm.org/', 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/']
+ARIES_DOC_URI = VALID_DOC_URI[1]
 THREAD_DECORATOR = '~thread'
 
 
 class AriesProtocolMessage(Message):
 
+    DOC_URI = ARIES_DOC_URI
     PROTOCOL = None
     NAME = None
 
-    def __init__(self, id_: str=None, version: str='1.0', *args, **kwargs):
+    def __init__(self, id_: str = None, version: str = '1.0', doc_uri: str = None, *args, **kwargs):
         if self.NAME and ('@type' not in dict(*args, **kwargs)):
             kwargs['@type'] = str(
                 Type(
-                    doc_uri=ARIES_DOC_URI, protocol=self.PROTOCOL,
+                    doc_uri=doc_uri or self.DOC_URI,
+                    protocol=self.PROTOCOL,
                     name=self.NAME, version=version
                 )
             )
         super().__init__(*args, **kwargs)
         if id_ is not None:
             self['@id'] = id_
-        if self.doc_uri != ARIES_DOC_URI:
+        if self.doc_uri not in VALID_DOC_URI:
             raise SiriusValidationError('Unexpected doc_uri "%s"' % self.doc_uri)
         if self.protocol != self.PROTOCOL:
             raise SiriusValidationError('Unexpected protocol "%s"' % self.protocol)

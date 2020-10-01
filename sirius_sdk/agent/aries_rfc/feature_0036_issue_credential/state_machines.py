@@ -129,7 +129,7 @@ class Issuer(AbstractStateMachine):
 class Holder(AbstractStateMachine):
 
     def __init__(
-            self, api: AbstractAnonCreds, issuer: Pairwise,
+            self, issuer: Pairwise,
             comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE,
             *args, **kwargs
     ):
@@ -141,6 +141,7 @@ class Holder(AbstractStateMachine):
         self.__locale = locale
 
     async def accept(self, offer: OfferCredentialMessage, master_secret_id: str) -> (bool, Optional[str]):
+        doc_uri = offer.doc_uri
         await self.__start()
         try:
             try:
@@ -160,7 +161,8 @@ class Holder(AbstractStateMachine):
                 request_msg = RequestCredentialMessage(
                     comment=self.__comment,
                     locale=self.__locale,
-                    cred_request=cred_request
+                    cred_request=cred_request,
+                    doc_uri=doc_uri
                 )
                 if offer_msg.please_ack:
                     request_msg.thread_id = offer_msg.id
@@ -176,10 +178,14 @@ class Holder(AbstractStateMachine):
                 cred_id = await self._store_credential(
                     cred_metadata, issue_msg.cred, offer.cred_def, None, issue_msg.cred_id
                 )
-                ack = Ack(thread_id=issue_msg.id, status=Status.OK)
+                ack = Ack(thread_id=issue_msg.id, status=Status.OK, doc_uri=doc_uri)
                 await self.__send(ack)
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = IssueProblemReport(e.problem_code, e.explain)
+                self.__problem_report = IssueProblemReport(
+                    problem_code=e.problem_code,
+                    explain=e.explain,
+                    doc_uri=doc_uri
+                )
                 if e.notify:
                     await self.__send(self.__problem_report)
                 return False, None

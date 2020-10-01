@@ -129,6 +129,7 @@ class Invitee(AbstractStateMachine):
     ) -> (bool, Pairwise):
         # Validate invitation
         invitation.validate()
+        doc_uri = invitation.doc_uri
         self.__problem_report = None
         # Extract Inviter connection_key
         connection_key = invitation.recipient_keys[0]
@@ -145,7 +146,8 @@ class Invitee(AbstractStateMachine):
                 label=my_label,
                 did=me.did,
                 verkey=me.verkey,
-                endpoint=my_endpoint.address
+                endpoint=my_endpoint.address,
+                doc_uri=doc_uri
             )
             request.please_ack = True
             ok, response = await transport.switch(request)
