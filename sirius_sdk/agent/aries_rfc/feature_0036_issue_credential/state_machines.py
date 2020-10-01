@@ -21,12 +21,9 @@ RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
 
 class Issuer(AbstractStateMachine):
     
-    def __init__(
-            self, api: AbstractAnonCreds, holder: Pairwise,
-            *args, **kwargs
-    ):
+    def __init__(self, holder: Pairwise, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__api = api
+        self.__api = None
         self.__holder = holder
         self.__transport = None
         self.__problem_report = None
@@ -101,11 +98,13 @@ class Issuer(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__holder)
         await self.__transport.start(self.protocols, self.time_to_live)
+        self.__api = self.__transport.wallet.anoncreds
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
+            self.__api = None
 
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
@@ -135,7 +134,7 @@ class Holder(AbstractStateMachine):
             *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
-        self.__api = api
+        self.__api = None
         self.__issuer = issuer
         self.__problem_report = None
         self.__comment = comment
@@ -219,11 +218,13 @@ class Holder(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__issuer)
         await self.__transport.start(self.protocols, self.time_to_live)
+        self.__api = self.__transport.wallet.anoncreds
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
+            self.__api = None
 
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
