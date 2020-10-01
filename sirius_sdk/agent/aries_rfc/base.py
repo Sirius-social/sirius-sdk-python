@@ -1,6 +1,6 @@
 from sirius_sdk.agent.coprotocols import *
 
-ARIES_DOC_URI = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/'
+ARIES_DOC_URI = 'https://didcomm.org/'
 THREAD_DECORATOR = '~thread'
 
 
