@@ -21,14 +21,13 @@ RESPONSE_PROCESSING_ERROR = 'response_processing_error'
 class MicroLedgerSimpleConsensus(AbstractStateMachine):
 
     def __init__(
-            self, crypto: AbstractCrypto, me: Pairwise.Me,
-            pairwise_list: AbstractPairwiseList, microledgers: MicroledgerList, *args, **kwargs
+            self, me: Pairwise.Me, *args, **kwargs
     ):
         self.__me = me
         self.__problem_report = None
-        self.__microledgers = microledgers
-        self.__crypto = crypto
-        self.__pairwise_list = pairwise_list
+        self.__microledgers = None
+        self.__crypto = None
+        self.__pairwise_list = None
         self.__transport = None
         self.__thread_id = None
         self.__cached_p2p = {}
@@ -255,11 +254,17 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         self.__thread_id = thread_id
         self.__transport = await self.transports.spawn(thread_id)
         await self.__transport.start(time_to_live=time_to_live)
+        self.__microledgers = self.__transport.microledgers
+        self.__crypto = self.__transport.wallet.crypto
+        self.__pairwise_list = self.__transport.pairwise_list
 
     async def _clean(self):
         if self.__transport:
             await self.__transport.stop()
         self.__transport = None
+        self.__microledgers = None
+        self.__crypto = None
+        self.__pairwise_list = None
 
     async def get_p2p(self, their_did: str, raise_exception: bool = True) -> Pairwise:
         if their_did not in self.__cached_p2p.keys():

@@ -22,6 +22,25 @@ def test_register_protocol_message_success():
     assert isinstance(msg, Test1Message)
 
 
+def test_agnostic_doc_uri():
+    register_message_class(Test1Message, protocol='test-protocol')
+    ok, msg = restore_message_instance(
+        {
+            '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/test-protocol/1.0/name'
+        }
+    )
+    assert ok is True
+    assert isinstance(msg, Test1Message)
+
+    ok, msg = restore_message_instance(
+        {
+            '@type': 'https://didcomm.org/test-protocol/1.0/name'
+        }
+    )
+    assert ok is True
+    assert isinstance(msg, Test1Message)
+
+
 def test_register_protocol_message_fail():
     register_message_class(Test1Message, protocol='test-protocol')
     ok, msg = restore_message_instance(
