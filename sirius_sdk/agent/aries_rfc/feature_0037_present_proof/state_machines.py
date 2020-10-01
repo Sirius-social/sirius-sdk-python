@@ -22,13 +22,13 @@ VERIFY_ERROR = 'verify_error'
 class Verifier(AbstractStateMachine):
 
     def __init__(
-            self, api: AbstractAnonCreds, cache: AbstractCache, prover: Pairwise, pool_name: str, *args, **kwargs
+            self, prover: Pairwise, pool_name: str, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
-        self.__api = api
+        self.__api = None
         self.__prover = prover
         self.__transport = None
-        self.__cache = cache
+        self.__cache = None
         self.__problem_report = None
         self.__pool_name = pool_name
 
@@ -106,11 +106,15 @@ class Verifier(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__prover)
         await self.__transport.start(self.protocols, self.time_to_live)
+        self.__api = self.__transport.wallet.anoncreds
+        self.__cache = self.__transport.wallet.cache
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
+            self.__api = None
+            self.__cache = None
 
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
@@ -135,13 +139,13 @@ class Verifier(AbstractStateMachine):
 class Prover(AbstractStateMachine):
 
     def __init__(
-            self, api: AbstractAnonCreds, cache: AbstractCache, verifier: Pairwise, pool_name: str, *args, **kwargs
+            self, verifier: Pairwise, pool_name: str, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
-        self.__api = api
+        self.__api = None
         self.__verifier = verifier
         self.__transport = None
-        self.__cache = cache
+        self.__cache = None
         self.__problem_report = None
         self.__pool_name = pool_name
 
@@ -244,11 +248,15 @@ class Prover(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__verifier)
         await self.__transport.start(self.protocols, self.time_to_live)
+        self.__api = self.__transport.wallet.anoncreds
+        self.__cache = self.__transport.wallet.cache
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
+            self.__api = None
+            self.__cache = None
 
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
