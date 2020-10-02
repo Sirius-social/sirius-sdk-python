@@ -43,6 +43,7 @@ class Verifier(AbstractStateMachine):
         self.__api = api
         self.__api_internal = api is None
         self.__prover = prover
+        self.__thread_id = None
         self.__transport = None
         self.__cache = cache
         self.__cache_internal = cache is None
@@ -99,7 +100,10 @@ class Verifier(AbstractStateMachine):
                     rev_regs=rev_regs
                 )
                 if success:
-                    ack = Ack(thread_id=presentation.id, status=Status.OK)
+                    ack = Ack(
+                        thread_id=presentation.ack_message_id if presentation.please_ack else presentation.id,
+                        status=Status.OK
+                    )
                     await self.__send(ack)
                     return True
                 else:
@@ -119,6 +123,16 @@ class Verifier(AbstractStateMachine):
     @property
     def protocols(self) -> List[str]:
         return [BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL]
+
+    async def abort(self):
+        await super().abort()
+        if self.__transport and self.__transport.is_started:
+            self.__problem_report = PresentProofProblemReport(
+                problem_code=REQUEST_PROCESSING_ERROR,
+                explain='Operation is aborted by owner',
+                thread_id=self.__thread_id
+            )
+            await self.__transport.send(self.__problem_report)
 
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__prover)
@@ -140,6 +154,10 @@ class Verifier(AbstractStateMachine):
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
         if ok:
+            self.__thread_id = None
+            if isinstance(resp, BasePresentProofMessage):
+                if resp.please_ack:
+                    self.__thread_id = resp.ack_message_id
             if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
                 try:
                     resp.validate()
@@ -182,6 +200,7 @@ class Prover(AbstractStateMachine):
         self.__api = api
         self.__api_internal = api is None
         self.__verifier = verifier
+        self.__thread_id = None
         self.__transport = None
         self.__cache = cache
         self.__cache_internal = cache is None
@@ -213,6 +232,8 @@ class Prover(AbstractStateMachine):
                     # Step-3: Send proof and wait Ack to check success from Verifier side
                     presentation_msg = PresentationMessage(proof)
                     presentation_msg.please_ack = True
+                    if request.please_ack:
+                        presentation_msg.thread_id = request.ack_message_id
                     # Step-3: Walt ACK
                     ack = await self.__switch(presentation_msg)
                     if isinstance(ack, Ack):
@@ -240,6 +261,16 @@ class Prover(AbstractStateMachine):
     @property
     def protocols(self) -> List[str]:
         return [BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL]
+
+    async def abort(self):
+        await super().abort()
+        if self.__transport and self.__transport.is_started:
+            self.__problem_report = PresentProofProblemReport(
+                problem_code=RESPONSE_PROCESSING_ERROR,
+                explain='Operation is aborted by owner',
+                thread_id=self.__thread_id
+            )
+            await self.__transport.send(self.__problem_report)
 
     async def _extract_credentials_info(self, proof_request, pool_name: str) -> (dict, dict, dict, dict):
         # Extract credentials from wallet that satisfy to request
@@ -304,6 +335,10 @@ class Prover(AbstractStateMachine):
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
         if ok:
+            self.__thread_id = None
+            if isinstance(resp, BasePresentProofMessage):
+                if resp.please_ack:
+                    self.__thread_id = resp.ack_message_id
             if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
                 try:
                     resp.validate()
