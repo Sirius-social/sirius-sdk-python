@@ -67,11 +67,15 @@ class Verifier(AbstractStateMachine):
                     expires_time=utc_to_str(expires_time)
                 )
                 request_msg.please_ack = True
+                await self.log(progress=30, message='Send request', payload=dict(request_msg))
+
                 presentation = await self.__switch(request_msg)
                 if not isinstance(presentation, PresentationMessage):
                     raise StateMachineTerminatedWithError(
                         RESPONSE_NOT_ACCEPTED, 'Unexpected @type: %s' % str(presentation.type)
                     )
+                await self.log(progress=60, message='Presentation received')
+
                 # Step-2 Verify
                 identifiers = presentation.proof.get('identifiers', [])
                 schemas = {}
@@ -104,12 +108,18 @@ class Verifier(AbstractStateMachine):
                         thread_id=presentation.ack_message_id if presentation.please_ack else presentation.id,
                         status=Status.OK
                     )
+                    await self.log(progress=100, message='Verifying terminated successfully')
                     await self.__send(ack)
                     return True
                 else:
+                    await self.log(progress=100, message='Verifying terminated with ERROR')
                     raise StateMachineTerminatedWithError(VERIFY_ERROR, 'Verifying return false')
             except StateMachineTerminatedWithError as e:
                 self.__problem_report = PresentProofProblemReport(e.problem_code, e.explain)
+                await self.log(
+                    progress=100, message=f'Terminated with error',
+                    problem_code=e.problem_code, explain=e.explain
+                )
                 if e.notify:
                     await self.__send(self.__problem_report)
                 return False
@@ -215,6 +225,7 @@ class Prover(AbstractStateMachine):
         try:
             try:
                 # Step-1: Process proof-request
+                await self.log(progress=10, message='Received proof request', payload=dict(request))
                 try:
                     request.validate()
                 except SiriusValidationError as e:
@@ -237,10 +248,16 @@ class Prover(AbstractStateMachine):
                     presentation_msg.please_ack = True
                     if request.please_ack:
                         presentation_msg.thread_id = request.ack_message_id
-                    # Step-3: Walt ACK
+
+                    # Step-3: Wait ACK
+                    await self.log(progress=50, message='Send presentation')
                     ack = await self.__switch(presentation_msg)
                     if isinstance(ack, Ack):
+                        await self.log(progress=100, message='Verify OK!')
                         return True
+                    elif isinstance(ack, PresentProofProblemReport):
+                        await self.log(progress=100, message='Verify ERROR!')
+                        return False
                     else:
                         raise StateMachineTerminatedWithError(
                             RESPONSE_FOR_UNKNOWN_REQUEST, 'Unexpected response @type: %s' % str(ack.type)
@@ -251,6 +268,10 @@ class Prover(AbstractStateMachine):
                     )
             except StateMachineTerminatedWithError as e:
                 self.__problem_report = PresentProofProblemReport(e.problem_code, e.explain)
+                await self.log(
+                    progress=100, message=f'Terminated with error',
+                    problem_code=e.problem_code, explain=e.explain
+                )
                 if e.notify:
                     await self.__send(self.__problem_report)
                 return False
