@@ -21,13 +21,18 @@ RESPONSE_PROCESSING_ERROR = 'response_processing_error'
 class MicroLedgerSimpleConsensus(AbstractStateMachine):
 
     def __init__(
-            self, me: Pairwise.Me, *args, **kwargs
+            self, me: Pairwise.Me,
+            crypto: AbstractCrypto = None, pairwise_list: AbstractPairwiseList = None,
+            microledgers: MicroledgerList = None, *args, **kwargs
     ):
         self.__me = me
         self.__problem_report = None
-        self.__microledgers = None
-        self.__crypto = None
-        self.__pairwise_list = None
+        self.__microledgers = microledgers
+        self.__microledgers_internal = microledgers is None
+        self.__crypto = crypto
+        self.__crypto_internal = crypto is None
+        self.__pairwise_list = pairwise_list
+        self.__pairwise_list_internal = pairwise_list is None
         self.__transport = None
         self.__thread_id = None
         self.__cached_p2p = {}
@@ -254,17 +259,23 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         self.__thread_id = thread_id
         self.__transport = await self.transports.spawn(thread_id)
         await self.__transport.start(time_to_live=time_to_live)
-        self.__microledgers = self.__transport.microledgers
-        self.__crypto = self.__transport.wallet.crypto
-        self.__pairwise_list = self.__transport.pairwise_list
+        if self.__microledgers_internal:
+            self.__microledgers = self.__transport.microledgers
+        if self.__crypto_internal:
+            self.__crypto = self.__transport.wallet.crypto
+        if self.__pairwise_list_internal:
+            self.__pairwise_list = self.__transport.pairwise_list
 
     async def _clean(self):
         if self.__transport:
             await self.__transport.stop()
         self.__transport = None
-        self.__microledgers = None
-        self.__crypto = None
-        self.__pairwise_list = None
+        if self.__microledgers_internal:
+            self.__microledgers = None
+        if self.__crypto_internal:
+            self.__crypto = None
+        if self.__pairwise_list_internal:
+            self.__pairwise_list = None
 
     async def get_p2p(self, their_did: str, raise_exception: bool = True) -> Pairwise:
         if their_did not in self.__cached_p2p.keys():
