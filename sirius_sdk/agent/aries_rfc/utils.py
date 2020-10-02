@@ -33,7 +33,7 @@ def str_to_utc(s: str, raise_exceptions: bool = True) -> Optional[datetime]:
             return None
 
 
-async def sign(crypto: AbstractCrypto, value: Any, verkey: str) -> dict:
+async def sign(crypto: AbstractCrypto, value: Any, verkey: str, exclude_sig_data: bool = False) -> dict:
     timestamp_bytes = struct.pack(">Q", int(time.time()))
 
     sig_data_bytes = timestamp_bytes + json.dumps(value).encode('ascii')
@@ -44,12 +44,15 @@ async def sign(crypto: AbstractCrypto, value: Any, verkey: str) -> dict:
         signature_bytes
     ).decode('ascii')
 
-    return {
+    data = {
         "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
         "signer": verkey,
-        "sig_data": sig_data,
         "signature": signature
     }
+    if not exclude_sig_data:
+        data['sig_data'] = sig_data
+
+    return data
 
 
 async def verify_signed(crypto: AbstractCrypto, signed: dict) -> (Any, bool):
