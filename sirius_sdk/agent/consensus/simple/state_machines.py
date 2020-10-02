@@ -36,6 +36,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         self.__transport = None
         self.__thread_id = None
         self.__cached_p2p = {}
+        self.__neighbours = []
         super().__init__(*args, **kwargs)
 
     @property
@@ -68,6 +69,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         participants = list(set(participants + [self.me.did]))
         await self._setup('simple-consensus-' + uuid.uuid4().hex, self.time_to_live)
         try:
+            self.__neighbours = [did for did in participants if did != self.me.did]
             await self.log(progress=0, message=f'Create ledger [{ledger_name}]')
             ledger, genesis = await self.microledgers.create(ledger_name, genesis)
             await self.log(message=f'Ledger creation terminated successfully')
@@ -100,6 +102,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         time_to_live = propose.timeout_sec or self.time_to_live
         await self._setup(propose.thread_id, time_to_live)
         try:
+            self.__neighbours = [did for did in propose.participants if did != self.me.did]
             ledger_name = propose.ledger.get('name', None)
             try:
                 if not ledger_name:
@@ -145,6 +148,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
     ) -> (bool, Optional[List[Transaction]]):
         await self._setup('simple-consensus-txns-' + uuid.uuid4().hex, self.time_to_live)
         try:
+            self.__neighbours = [did for did in participants if did != self.me.did]
             try:
                 await self.log(progress=0, message=f'Start committing {len(transactions)} transactions')
                 txns = await self._commit_internal(ledger, transactions, participants)
@@ -173,6 +177,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         await self._setup(propose.thread_id, time_to_live)
         try:
             ledger = None
+            self.__neighbours = [did for did in propose.participants if did != self.me.did]
             try:
                 await self.log(progress=0, message=f'Start acception {len(propose.transactions)} transactions')
                 ledger = await self._load_ledger(actor, propose)
@@ -197,6 +202,15 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     raise
         finally:
             await self._clean()
+
+    async def abort(self):
+        await super().abort()
+        if self.__transport and self.__transport.is_started:
+            await self._terminate_with_problem_report(
+                problem_code=REQUEST_PROCESSING_ERROR,
+                explain='Operation is aborted by owner',
+                their_did=self.__neighbours
+            )
 
     async def _switch(
             self, their_did: str, req: Union[SimpleConsensusMessage, SimpleConsensusProblemReport, Ack]
