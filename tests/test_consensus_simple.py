@@ -15,7 +15,7 @@ from .helpers import run_coroutines
 async def routine_of_ledger_creator(
         creator: Agent, me: Pairwise.Me, participants: List[str], ledger_name: str, genesis: List[dict]
 ):
-    machine = MicroLedgerSimpleConsensus(me, creator)
+    machine = MicroLedgerSimpleConsensus(me, transports=creator)
     genesis = [Transaction.create(txn) for txn in genesis]
     success, ledger = await machine.init_microledger(ledger_name, participants, genesis)
     return success, ledger
@@ -27,7 +27,7 @@ async def routine_of_ledger_creation_acceptor(acceptor: Agent):
     assert event.pairwise is not None
     propose = event.message
     assert isinstance(propose, InitRequestLedgerMessage)
-    machine = MicroLedgerSimpleConsensus(event.pairwise.me, acceptor)
+    machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor)
     success, ledger = await machine.accept_microledger(event.pairwise, propose)
     return success, ledger
 
@@ -35,7 +35,7 @@ async def routine_of_ledger_creation_acceptor(acceptor: Agent):
 async def routine_of_txn_committer(
         creator: Agent, me: Pairwise.Me, participants: List[str], ledger: Microledger, txns: List[dict]
 ):
-    machine = MicroLedgerSimpleConsensus(me, creator)
+    machine = MicroLedgerSimpleConsensus(me, transports=creator)
     txns = [Transaction.create(txn) for txn in txns]
     success, txns = await machine.commit(ledger, participants, txns)
     return success, txns
@@ -50,7 +50,7 @@ async def routine_of_txn_acceptor(acceptor: Agent, txns: List[Transaction] = Non
         if isinstance(propose, ProposeTransactionsMessage):
             if txns:
                 propose['transactions'] = txns
-            machine = MicroLedgerSimpleConsensus(event.pairwise.me, acceptor)
+            machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor)
             success = await machine.accept_commit(event.pairwise, propose)
             return success
 
