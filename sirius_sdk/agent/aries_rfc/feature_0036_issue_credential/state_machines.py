@@ -7,7 +7,7 @@ from sirius_sdk.agent.aries_rfc.utils import utc_to_str
 from sirius_sdk.agent.ledger import Schema, CredentialDefinition
 from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
-from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
+from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError, StateMachineAborted
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import *
 
@@ -37,6 +37,7 @@ class Issuer(AbstractStateMachine):
         self.__api = api
         self.__api_internal = api is None
         self.__holder = holder
+        self.__thread_id = None
         self.__transport = None
         self.__problem_report = None
 
@@ -85,6 +86,8 @@ class Issuer(AbstractStateMachine):
                     cred=cred,
                     cred_id=cred_id
                 )
+                if resp.please_ack:
+                    issue_msg.thread_id = resp.ack_message_id
                 issue_msg.please_ack = True
                 ack = await self.__switch(issue_msg)
                 if not isinstance(ack, Ack):
@@ -102,6 +105,16 @@ class Issuer(AbstractStateMachine):
     @property
     def problem_report(self) -> IssueProblemReport:
         return self.__problem_report
+
+    async def abort(self):
+        await super().abort()
+        if self.__transport and self.__transport.is_started:
+            self.__problem_report = IssueProblemReport(
+                problem_code=ISSUE_PROCESSING_ERROR,
+                explain='Operation is aborted by owner',
+                thread_id=self.__thread_id
+            )
+            await self.__transport.send(self.__problem_report)
 
     @property
     def protocols(self) -> List[str]:
@@ -122,7 +135,14 @@ class Issuer(AbstractStateMachine):
 
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
+        if self.is_aborted:
+            await self.log(progress=100, message='Aborted')
+            raise StateMachineAborted
         if ok:
+            self.__thread_id = None
+            if isinstance(resp, BaseIssueCredentialMessage):
+                if resp.please_ack:
+                    self.__thread_id = resp.ack_message_id
             if isinstance(resp, BaseIssueCredentialMessage) or isinstance(resp, Ack):
                 try:
                     resp.validate()
@@ -163,6 +183,7 @@ class Holder(AbstractStateMachine):
         self.__api = api
         self.__api_internal = api is None
         self.__issuer = issuer
+        self.__thread_id = None
         self.__problem_report = None
         self.__comment = comment
         self.__locale = locale
@@ -205,7 +226,11 @@ class Holder(AbstractStateMachine):
                 cred_id = await self._store_credential(
                     cred_metadata, issue_msg.cred, offer.cred_def, None, issue_msg.cred_id
                 )
-                ack = Ack(thread_id=issue_msg.id, status=Status.OK, doc_uri=doc_uri)
+                ack = Ack(
+                    thread_id=issue_msg.ack_message_id if issue_msg.please_ack else issue_msg.id,
+                    status=Status.OK,
+                    doc_uri=doc_uri
+                )
                 await self.__send(ack)
             except StateMachineTerminatedWithError as e:
                 self.__problem_report = IssueProblemReport(
@@ -228,6 +253,16 @@ class Holder(AbstractStateMachine):
     @property
     def protocols(self) -> List[str]:
         return [BaseIssueCredentialMessage.PROTOCOL, Ack.PROTOCOL]
+
+    async def abort(self):
+        await super().abort()
+        if self.__transport and self.__transport.is_started:
+            self.__problem_report = IssueProblemReport(
+                problem_code=OFFER_PROCESSING_ERROR,
+                explain='Operation is aborted by owner',
+                thread_id=self.__thread_id
+            )
+            await self.__transport.send(self.__problem_report)
 
     async def _store_credential(
             self, cred_metadata: dict, cred: dict, cred_def: dict, rev_reg_def: Optional[dict], cred_id: Optional[str]
@@ -264,6 +299,10 @@ class Holder(AbstractStateMachine):
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
         if ok:
+            self.__thread_id = None
+            if isinstance(resp, BaseIssueCredentialMessage):
+                if resp.please_ack:
+                    self.__thread_id = resp.ack_message_id
             if isinstance(resp, BaseIssueCredentialMessage) or isinstance(resp, Ack):
                 try:
                     resp.validate()
