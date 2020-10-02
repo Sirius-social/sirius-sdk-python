@@ -20,11 +20,25 @@ VERIFY_ERROR = 'verify_error'
 
 
 class Verifier(AbstractStateMachine):
+    """Implementation of Verifier role for present-proof protocol
+
+    See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
+    """
 
     def __init__(
             self, prover: Pairwise, pool_name: str,
             api: AbstractAnonCreds = None, cache: AbstractCache = None, *args, **kwargs
     ):
+        """
+        :param prover: Prover described as pairwise instance.
+          (Assumed pairwise was established earlier: statically or via connection-protocol)
+        :param pool_name: network (DKMS) name that is used to verify credentials presented by prover
+        :param api: optionally passed anon-creds api that implemented outside wallet
+          (by default state-machine will use Indy SDK on Agent side)
+        :param cache: optionally passed caching api that implemented outside wallet
+          (by default state-machine will use Indy SDK on Agent side)
+        """
+
         super().__init__(*args, **kwargs)
         self.__api = api
         self.__api_internal = api is None
@@ -144,15 +158,33 @@ class Verifier(AbstractStateMachine):
 
 
 class Prover(AbstractStateMachine):
+    """Implementation of Prover role for present-proof protocol
+
+    See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
+    """
 
     def __init__(
-            self, verifier: Pairwise, pool_name: str, *args, **kwargs
+            self, verifier: Pairwise, pool_name: str,
+            api: AbstractAnonCreds = None, cache: AbstractCache = None,
+            *args, **kwargs
     ):
+        """
+        :param verifier: Verifier described as pairwise instance.
+          (Assumed pairwise was established earlier: statically or via connection-protocol)
+        :param pool_name: network (DKMS) name that is used to verify credentials presented by prover
+        :param api: optionally passed anon-creds api that implemented outside wallet
+          (by default state-machine will use Indy SDK on Agent side)
+        :param cache: optionally passed caching api that implemented outside wallet
+          (by default state-machine will use Indy SDK on Agent side)
+        """
+
         super().__init__(*args, **kwargs)
-        self.__api = None
+        self.__api = api
+        self.__api_internal = api is None
         self.__verifier = verifier
         self.__transport = None
-        self.__cache = None
+        self.__cache = cache
+        self.__cache_internal = cache is None
         self.__problem_report = None
         self.__pool_name = pool_name
 
@@ -255,15 +287,19 @@ class Prover(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__verifier)
         await self.__transport.start(self.protocols, self.time_to_live)
-        self.__api = self.__transport.wallet.anoncreds
-        self.__cache = self.__transport.wallet.cache
+        if self.__api_internal:
+            self.__api = self.__transport.wallet.anoncreds
+        if self.__cache_internal:
+            self.__cache = self.__transport.wallet.cache
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
-            self.__api = None
-            self.__cache = None
+            if self.__api_internal:
+                self.__api = None
+            if self.__cache_internal:
+                self.__cache = None
 
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)

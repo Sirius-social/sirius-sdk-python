@@ -20,8 +20,19 @@ RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
 
 
 class Issuer(AbstractStateMachine):
+    """Implementation of Issuer role for Credential-issuing protocol
+
+    See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0036-issue-credential
+    """
     
     def __init__(self, holder: Pairwise, api: AbstractAnonCreds = None, *args, **kwargs):
+        """
+        :param holder: Holder side described as pairwise instance.
+          (Assumed pairwise was established earlier: statically or via connection-protocol)
+        :param api: optionally passed anon-creds api that implemented outside wallet
+          (by default state-machine will use Indy SDK on Agent side)
+        """
+
         super().__init__(*args, **kwargs)
         self.__api = api
         self.__api_internal = api is None
@@ -130,12 +141,24 @@ class Issuer(AbstractStateMachine):
 
 
 class Holder(AbstractStateMachine):
+    """Implementation of Holder role for Credential-issuing protocol
+
+    See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0036-issue-credential
+    """
 
     def __init__(
             self, issuer: Pairwise,
             comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE,
             api: AbstractAnonCreds = None, *args, **kwargs
     ):
+        """
+        :param issuer: Issuer described as pairwise instance.
+          (Assumed pairwise was established earlier: statically or via connection-protocol)
+        :param comment: optional comment that describe human readable text filled by Holder for Issuer
+        :param locale: optional language code. Does matter if comment is set
+        :param api: optionally passed anon-creds api that implemented outside wallet
+          (by default state-machine will use Indy SDK on Agent side)
+        """
         super().__init__(*args, **kwargs)
         self.__api = api
         self.__api_internal = api is None

@@ -17,6 +17,10 @@ RESPONSE_PROCESSING_ERROR = 'response_processing_error'
 
 
 class Inviter(AbstractStateMachine):
+    """Implementation of Inviter role of the Aries connection protocol
+
+    See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
+    """
 
     def __init__(self, *args, **kwargs):
         self.__problem_report = None
@@ -147,6 +151,10 @@ class Inviter(AbstractStateMachine):
 
 
 class Invitee(AbstractStateMachine):
+    """Implementation of Invitee role of the Aries connection protocol
+
+    See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
+    """
 
     def __init__(self, *args, **kwargs):
         self.__problem_report = None
