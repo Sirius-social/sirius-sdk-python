@@ -44,6 +44,8 @@ async def test_agents_wallet(test_suite: ServerTestSuite):
         did, verkey = await agent.wallet.did.create_and_store_my_did()
         assert did
         assert verkey
+        # check reopen is OK
+        await agent.reopen()
     finally:
         await agent.close()
 
