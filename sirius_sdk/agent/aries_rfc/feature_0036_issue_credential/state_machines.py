@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.codec import encode
-from sirius_sdk.agent.aries_rfc.utils import utc_to_str, str_to_utc
+from sirius_sdk.agent.aries_rfc.utils import utc_to_str
 from sirius_sdk.agent.ledger import Schema, CredentialDefinition
 from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
@@ -21,9 +21,10 @@ RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
 
 class Issuer(AbstractStateMachine):
     
-    def __init__(self, holder: Pairwise, *args, **kwargs):
+    def __init__(self, holder: Pairwise, api: AbstractAnonCreds = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__api = None
+        self.__api = api
+        self.__api_internal = api is None
         self.__holder = holder
         self.__transport = None
         self.__problem_report = None
@@ -98,13 +99,15 @@ class Issuer(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__holder)
         await self.__transport.start(self.protocols, self.time_to_live)
-        self.__api = self.__transport.wallet.anoncreds
+        if self.__api_internal:
+            self.__api = self.__transport.wallet.anoncreds
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
-            self.__api = None
+            if self.__api_internal:
+                self.__api = None
 
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
@@ -131,10 +134,11 @@ class Holder(AbstractStateMachine):
     def __init__(
             self, issuer: Pairwise,
             comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE,
-            *args, **kwargs
+            api: AbstractAnonCreds = None, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
-        self.__api = None
+        self.__api = api
+        self.__api_internal = api is None
         self.__issuer = issuer
         self.__problem_report = None
         self.__comment = comment
@@ -224,13 +228,15 @@ class Holder(AbstractStateMachine):
     async def __start(self):
         self.__transport = await self.transports.spawn(self.__issuer)
         await self.__transport.start(self.protocols, self.time_to_live)
-        self.__api = self.__transport.wallet.anoncreds
+        if self.__api_internal:
+            self.__api = self.__transport.wallet.anoncreds
 
     async def __stop(self):
         if self.__transport:
             await self.__transport.stop()
             self.__transport = None
-            self.__api = None
+            if self.__api_internal:
+                self.__api = None
 
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
