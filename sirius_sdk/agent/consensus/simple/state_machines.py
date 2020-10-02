@@ -7,7 +7,7 @@ from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.microledgers import Transaction, Microledger, MicroledgerList
-from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
+from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError, StateMachineAborted
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.consensus.simple.messages import *
 
@@ -219,6 +219,9 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             pw = await self.get_p2p(their_did)
             self.__transport.pairwise = pw
             ok, resp = await self.__transport.switch(req)
+            if self.is_aborted:
+                await self.log(progress=100, message='Aborted')
+                raise StateMachineAborted
             if isinstance(resp, SimpleConsensusMessage) or isinstance(resp, SimpleConsensusProblemReport) or isinstance(resp, Ack):
                 return ok, resp
             else:

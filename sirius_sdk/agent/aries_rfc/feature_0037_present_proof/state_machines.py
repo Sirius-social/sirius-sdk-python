@@ -5,7 +5,7 @@ from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.aries_rfc.utils import utc_to_str
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache, CacheOptions
-from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError
+from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError, StateMachineAborted
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.messages import *
 
@@ -153,6 +153,9 @@ class Verifier(AbstractStateMachine):
 
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
+        if self.is_aborted:
+            await self.log(progress=100, message='Aborted')
+            raise StateMachineAborted
         if ok:
             self.__thread_id = None
             if isinstance(resp, BasePresentProofMessage):
@@ -334,6 +337,9 @@ class Prover(AbstractStateMachine):
 
     async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
+        if self.is_aborted:
+            await self.log(progress=100, message='Aborted')
+            raise StateMachineAborted
         if ok:
             self.__thread_id = None
             if isinstance(resp, BasePresentProofMessage):

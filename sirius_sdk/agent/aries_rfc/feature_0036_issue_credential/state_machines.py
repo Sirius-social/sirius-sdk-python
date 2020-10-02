@@ -63,14 +63,20 @@ class Issuer(AbstractStateMachine):
                     expires_time=utc_to_str(expires_time)
                 )
                 offer_msg.please_ack = True
+                await self.log(progress=20, message='Send offer', payload=dict(offer_msg))
+
                 resp = await self.__switch(offer_msg)
                 if not isinstance(resp, RequestCredentialMessage):
                     raise StateMachineTerminatedWithError(OFFER_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type))
                 # Step-2: Create credential
                 request_msg = resp
+                await self.log(progress=40, message='Received credential request', payload=dict(request_msg))
+
                 encoded_cred_values = dict()
                 for key, value in values.items():
                     encoded_cred_values[key] = dict(raw=str(value), encoded=encode(value))
+                await self.log(progress=70, message='Build credential with values', payload=encoded_cred_values)
+
                 ret = await self.__api.issuer_create_credential(
                     cred_offer=offer,
                     cred_req=request_msg.cred_request,
@@ -89,11 +95,19 @@ class Issuer(AbstractStateMachine):
                 if resp.please_ack:
                     issue_msg.thread_id = resp.ack_message_id
                 issue_msg.please_ack = True
+                await self.log(progress=90, message='Send Issue message', payload=dict(issue_msg))
+
                 ack = await self.__switch(issue_msg)
                 if not isinstance(ack, Ack):
                     raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type))
+                await self.log(progress=100, message='Issuing was terminated successfully')
+
             except StateMachineTerminatedWithError as e:
                 self.__problem_report = IssueProblemReport(e.problem_code, e.explain)
+                await self.log(
+                    progress=100, message=f'Terminated with error',
+                    problem_code=e.problem_code, explain=e.explain
+                )
                 if e.notify:
                     await self.__send(self.__problem_report)
                 return False
@@ -238,6 +252,10 @@ class Holder(AbstractStateMachine):
                     explain=e.explain,
                     doc_uri=doc_uri
                 )
+                await self.log(
+                    progress=100, message=f'Terminated with error',
+                    problem_code=e.problem_code, explain=e.explain
+                )
                 if e.notify:
                     await self.__send(self.__problem_report)
                 return False, None
@@ -298,6 +316,9 @@ class Holder(AbstractStateMachine):
 
     async def __switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
         ok, resp = await self.__transport.switch(request)
+        if self.is_aborted:
+            await self.log(progress=100, message='Aborted')
+            raise StateMachineAborted
         if ok:
             self.__thread_id = None
             if isinstance(resp, BaseIssueCredentialMessage):
