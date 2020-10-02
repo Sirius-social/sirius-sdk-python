@@ -19,9 +19,7 @@ async def run_issuer(
         agent: Agent, holder: Pairwise, values: dict, schema: Schema, cred_def: CredentialDefinition,
         preview: List[ProposedAttrib] = None, translation: List[AttribTranslation] = None, cred_id: str = None
 ):
-    machine = Issuer(
-        api=agent.wallet.anoncreds, holder=holder, transports=agent
-    )
+    machine = Issuer(holder=holder, transports=agent)
     success = await machine.issue(
         values=values,
         schema=schema,
@@ -46,9 +44,7 @@ async def run_holder(agent: Agent, issuer: Pairwise, master_secret_id: str):
         delta = expire - datetime.utcnow()
         if delta.seconds > 0:
             ttl = delta.seconds
-    machine = Holder(
-        api=agent.wallet.anoncreds, issuer=issuer, comment='Hello, Iam holder', transports=agent, time_to_live=ttl
-    )
+    machine = Holder(issuer=issuer, comment='Hello, Iam holder', transports=agent, time_to_live=ttl)
     success, cred_id = await machine.accept(offer, master_secret_id)
     return success, cred_id
 
