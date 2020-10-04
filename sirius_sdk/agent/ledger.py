@@ -334,7 +334,7 @@ class Ledger:
             data=schema.body
         )
         if success and txn_response.get('op') == 'REPLY':
-            body = schema.body
+            body = copy.copy(schema.body)
             body['seqNo'] = txn_response['result']['txnMetadata']['seqNo']
             schema_in_ledger = Schema(**body)
             await self.__ensure_exists_in_storage(schema_in_ledger, submitter_did)
