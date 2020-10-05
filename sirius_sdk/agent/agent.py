@@ -279,10 +279,13 @@ class Agent(TransportLayers):
         )
         return resp['url']
 
-    async def reopen(self):
+    async def reopen(self, kill_tasks: bool = False):
         self.__check_is_open()
         await self.__rpc.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/reopen'
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/reopen',
+            params={
+                'kill_tasks': kill_tasks
+            }
         )
 
     def __check_is_open(self):

@@ -115,7 +115,9 @@ class Verifier(AbstractStateMachine):
                     await self.log(progress=100, message='Verifying terminated with ERROR')
                     raise StateMachineTerminatedWithError(VERIFY_ERROR, 'Verifying return false')
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = PresentProofProblemReport(e.problem_code, e.explain)
+                self.__problem_report = PresentProofProblemReport(
+                    e.problem_code, e.explain, thread_id=self.__thread_id
+                )
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain
@@ -267,7 +269,9 @@ class Prover(AbstractStateMachine):
                         REQUEST_PROCESSING_ERROR, 'No proof correspondent to proof-request'
                     )
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = PresentProofProblemReport(e.problem_code, e.explain)
+                self.__problem_report = PresentProofProblemReport(
+                    e.problem_code, e.explain, thread_id=self.__thread_id
+                )
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain

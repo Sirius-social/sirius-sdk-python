@@ -103,7 +103,9 @@ class Issuer(AbstractStateMachine):
                 await self.log(progress=100, message='Issuing was terminated successfully')
 
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = IssueProblemReport(e.problem_code, e.explain)
+                self.__problem_report = IssueProblemReport(
+                    e.problem_code, e.explain, thread_id=self.__thread_id
+                )
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain
@@ -250,7 +252,8 @@ class Holder(AbstractStateMachine):
                 self.__problem_report = IssueProblemReport(
                     problem_code=e.problem_code,
                     explain=e.explain,
-                    doc_uri=doc_uri
+                    doc_uri=doc_uri,
+                    thread_id=self.__thread_id
                 )
                 await self.log(
                     progress=100, message=f'Terminated with error',

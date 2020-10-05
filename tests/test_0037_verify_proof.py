@@ -10,6 +10,7 @@ from sirius_sdk.agent.aries_rfc.utils import str_to_utc
 from sirius_sdk.agent.ledger import CredentialDefinition
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof import Verifier, Prover, AttribTranslation, \
     RequestPresentationMessage
+from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 
 from .conftest import get_pairwise
 from .helpers import run_coroutines, IndyAgent
@@ -80,8 +81,13 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
         assert ok is True
 
         print('Prepare Prover')
-        master_secret_name = 'secret-' + uuid.uuid4().hex
-        prover_secret_id = await prover.wallet.anoncreds.prover_create_master_secret(master_secret_name)
+        master_secret_name = 'prover_master_secret_name'
+        try:
+            await prover.wallet.anoncreds.prover_create_master_secret(master_secret_name)
+        except AnoncredsMasterSecretDuplicateNameError:
+            pass
+
+        prover_secret_id = master_secret_name
         cred_values = {'attr1': 'Value-1', 'attr2': 456, 'attr3': 5.87}
         cred_id = 'cred-id-' + uuid.uuid4().hex
 
@@ -135,6 +141,7 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
                 }
             }
         }
+
         coro_verifier = run_verifier(
             agent=verifier,
             prover=v2p,
