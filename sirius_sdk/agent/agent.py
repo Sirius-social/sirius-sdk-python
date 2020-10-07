@@ -64,8 +64,8 @@ class Agent(TransportLayers):
 
     def __init__(
             self, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int=BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None,
-            storage: AbstractImmutableCollection=None, name: str=None
+            p2p: P2PConnection, timeout: int = BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop = None,
+            storage: AbstractImmutableCollection = None, name: str = None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -96,12 +96,16 @@ class Agent(TransportLayers):
         return self.__name
 
     @property
+    def is_open(self) -> bool:
+        return self.__rpc is not None and self.__rpc.is_open
+
+    @property
     def wallet(self) -> DynamicWallet:
         """Indy wallet keys/schemas/CredDefs maintenance"""
         self.__check_is_open()
         return self.__wallet
 
-    def ledger(self, name: str) -> Ledger:
+    def ledger(self, name: str) -> Optional[Ledger]:
         self.__check_is_open()
         return self.__ledgers.get(name, None)
 

@@ -10,7 +10,7 @@ with open(os.path.join(HERE, "README.rst")) as fid:
 
 setup(
     name="sirius-sdk",
-    version="1.0.12",
+    version="1.1.0",
     description="SDK for developing Smart-Contracts in Self-sovereign-identity world.",
     long_description=README,
     long_description_content_type="text/x-rst",
@@ -29,7 +29,6 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         'Intended Audience :: Developers',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Operating System :: POSIX',
@@ -37,7 +36,7 @@ setup(
         'Operating System :: Microsoft :: Windows',
     ],
     packages=find_packages(),
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     include_package_data=True,
     install_requires=[
         'aiohttp==3.6.2',

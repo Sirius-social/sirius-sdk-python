@@ -86,6 +86,10 @@ class SiriusContextError(BaseSiriusException):
     pass
 
 
+class SiriusInitializationError(BaseSiriusException):
+    pass
+
+
 class SiriusInvalidMessageClass(BaseSiriusException):
     pass
 

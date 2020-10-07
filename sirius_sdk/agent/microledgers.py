@@ -1,4 +1,5 @@
 import json
+from abc import ABC, abstractmethod
 from typing import List, Union, Dict
 
 from sirius_sdk.errors.exceptions import *
@@ -91,7 +92,129 @@ class AuditProof(MerkleInfo):
         return self.__ledger_size
 
 
-class Microledger:
+class AbstractMicroledger(ABC):
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        pass
+
+    @property
+    @abstractmethod
+    def size(self) -> int:
+        pass
+
+    @property
+    @abstractmethod
+    def uncommitted_size(self) -> int:
+        pass
+
+    @property
+    @abstractmethod
+    def root_hash(self) -> str:
+        pass
+
+    @property
+    @abstractmethod
+    def uncommitted_root_hash(self) -> str:
+        pass
+
+    @property
+    @abstractmethod
+    def seq_no(self) -> int:
+        pass
+
+    @abstractmethod
+    async def reload(self):
+        pass
+
+    @abstractmethod
+    async def rename(self, new_name: str):
+        pass
+
+    @abstractmethod
+    async def init(self, genesis: List[Transaction]) -> List[Transaction]:
+        pass
+
+    @abstractmethod
+    async def append(
+            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int] = None
+    ) -> (int, int, List[Transaction]):
+        pass
+
+    @abstractmethod
+    async def commit(self, count: int) -> (int, int, List[Transaction]):
+        pass
+
+    @abstractmethod
+    async def discard(self, count: int):
+        pass
+
+    @abstractmethod
+    async def merkle_info(self, seq_no: int) -> MerkleInfo:
+        pass
+
+    @abstractmethod
+    async def audit_proof(self, seq_no: int) -> AuditProof:
+        pass
+
+    @abstractmethod
+    async def reset_uncommitted(self):
+        pass
+
+    @abstractmethod
+    async def get_transaction(self, seq_no: int) -> Transaction:
+        pass
+
+    @abstractmethod
+    async def get_uncommitted_transaction(self, seq_no: int) -> Transaction:
+        pass
+
+    @abstractmethod
+    async def get_last_transaction(self) -> Transaction:
+        pass
+
+    @abstractmethod
+    async def get_last_committed_transaction(self) -> Transaction:
+        pass
+
+    @abstractmethod
+    async def get_all_transactions(self) -> List[Transaction]:
+        pass
+
+    @abstractmethod
+    async def get_uncommitted_transactions(self) -> List[Transaction]:
+        pass
+
+
+class AbstractMicroledgerList(ABC):
+
+    @abstractmethod
+    async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (AbstractMicroledger, List[Transaction]):
+        pass
+
+    @abstractmethod
+    async def ledger(self, name: str) -> AbstractMicroledger:
+        pass
+
+    @abstractmethod
+    async def reset(self, name: str):
+        pass
+
+    @abstractmethod
+    async def is_exists(self, name: str):
+        pass
+
+    @abstractmethod
+    async def leaf_hash(self, txn: Union[Transaction, bytes]) -> bytes:
+        pass
+
+    @abstractmethod
+    async def list(self) -> List[LedgerMeta]:
+        pass
+
+
+class Microledger(AbstractMicroledger):
 
     def __init__(self, name: str, api: AgentRPC):
         self.__name = name
@@ -313,13 +436,13 @@ class Microledger:
             raise SiriusContextError('Load state of Microledger at First!')
 
 
-class MicroledgerList:
+class MicroledgerList(AbstractMicroledgerList):
 
     def __init__(self, api: AgentRPC):
         self.__api = api
         self.instances = {}
 
-    async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (Microledger, List[Transaction]):
+    async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (AbstractMicroledger, List[Transaction]):
         genesis_txns = []
         for txn in genesis:
             if isinstance(txn, Transaction):
@@ -333,7 +456,7 @@ class MicroledgerList:
         self.instances[name] = instance
         return instance, txns
 
-    async def ledger(self, name: str) -> Microledger:
+    async def ledger(self, name: str) -> AbstractMicroledger:
         if name not in self.instances:
             await self.__check_is_exists(name)
             instance = Microledger(name, self.__api)
