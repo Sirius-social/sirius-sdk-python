@@ -145,8 +145,9 @@ class CoProtocolThreaded(AbstractCoProtocol):
         self.__is_start = False
         self.__thid = thid
         self.__pthid = pthid
-        self.__transport = None
         self.__to = to
+        self.__sender_order = 0
+        self.__received_orders = {}
 
     def __del__(self):
         if self.__is_start:
@@ -154,11 +155,25 @@ class CoProtocolThreaded(AbstractCoProtocol):
 
     async def send(self, message: Message) -> List[Any]:
         async with self.__get_transport_lazy() as transport:
+            self.__prepare_message(message)
             ret = await transport.send_many(message, self.__to)
         return ret
 
-    async def switch(self, message: Message) -> (bool, Message):
-        pass
+    async def switch(self, message: Message) -> (bool, List[Message]):
+        self.__prepare_message(message)
+
+    def __prepare_message(self, message: Message):
+        if THREAD_DECORATOR not in message:  # Don't rewrite existing ~thread decorator
+            thread_decorator = {
+                'thid': self.__thid,
+                'sender_order': self.__sender_order
+            }
+            if self.__pthid:
+                thread_decorator['pthid'] = self.__pthid
+            if self.__received_orders:
+                thread_decorator['received_orders'] = self.__received_orders
+            self.__sender_order += 1
+            message[THREAD_DECORATOR] = thread_decorator
 
     @asynccontextmanager
     async def __get_transport_lazy(self):

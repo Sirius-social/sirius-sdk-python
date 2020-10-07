@@ -22,8 +22,11 @@ class Inviter(sirius_sdk.AbstractStateMachine):
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
     """
 
-    def __init__(self, me: Pairwise.Me, connection_key: str, my_endpoint: Endpoint, time_to_live: int = 60):
-        super(Inviter, self).__init__(time_to_live)
+    def __init__(
+            self, me: Pairwise.Me, connection_key: str, my_endpoint: Endpoint,
+            time_to_live: int = 60, logger=None, *args, **kwargs
+    ):
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__me = me
         self.__connection_key = connection_key
         self.__my_endpoint = my_endpoint
@@ -63,7 +66,7 @@ class Inviter(sirius_sdk.AbstractStateMachine):
         co = sirius_sdk.CoProtocolAnon(
             my_verkey=self.me.verkey,
             endpoint=invitee_endpoint,
-            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL],
+            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
             time_to_live=self.time_to_live
         )
         try:
@@ -133,13 +136,14 @@ class Inviter(sirius_sdk.AbstractStateMachine):
             return False, None
 
 
-class Invitee:
+class Invitee(sirius_sdk.AbstractStateMachine):
     """Implementation of Invitee role of the Aries connection protocol
 
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
     """
 
-    def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60):
+    def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__problem_report = None
         self.__time_to_live = time_to_live
         self.__me = me
@@ -174,7 +178,7 @@ class Invitee:
         co = sirius_sdk.CoProtocolAnon(
             my_verkey=self.me.verkey,
             endpoint=inviter_endpoint,
-            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL],
+            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
             time_to_live=self.time_to_live
         )
 
