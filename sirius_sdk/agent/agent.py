@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from enum import IntEnum
 from abc import ABC, abstractmethod
 from typing import List, Union, Optional
 from urllib.parse import urlparse
@@ -53,6 +54,11 @@ class TransportLayers(ABC):
         raise NotImplemented
 
 
+class SpawnStrategy(IntEnum):
+    PARALLEL = 1
+    CONCURRENT = 2
+
+
 class Agent(TransportLayers):
     """
     Agent connection in the self-sovereign identity ecosystem.
@@ -64,8 +70,9 @@ class Agent(TransportLayers):
 
     def __init__(
             self, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int = BaseAgentConnection.IO_TIMEOUT, loop: asyncio.AbstractEventLoop = None,
-            storage: AbstractImmutableCollection = None, name: str = None
+            p2p: P2PConnection, timeout: int = BaseAgentConnection.IO_TIMEOUT,
+            loop: asyncio.AbstractEventLoop = None, storage: AbstractImmutableCollection = None,
+            name: str = None, spawn_strategy: SpawnStrategy = SpawnStrategy.PARALLEL
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -90,6 +97,7 @@ class Agent(TransportLayers):
         self.__pairwise_list = None
         self.__microledgers = None
         self.__name = name
+        self.__spawn_strategy = spawn_strategy
 
     @property
     def name(self) -> Optional[str]:
@@ -126,70 +134,88 @@ class Agent(TransportLayers):
 
     @dispatch(str, TheirEndpoint)
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
-        new_rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-        )
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            )
+        else:
+            rpc = self.__rpc
         return TheirEndpointCoProtocolTransport(
             my_verkey=my_verkey,
             endpoint=endpoint,
-            rpc=new_rpc
+            rpc=rpc
         )
 
     @dispatch(Pairwise)
     async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
-        new_rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-        )
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            )
+        else:
+            rpc = self.__rpc
         return PairwiseCoProtocolTransport(
             pairwise=pairwise,
-            rpc=new_rpc
+            rpc=rpc
         )
 
     @dispatch(str, Pairwise)
     async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
-        new_rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-        )
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            )
+        else:
+            rpc = self.__rpc
         return ThreadBasedCoProtocolTransport(
             thid=thid,
             pairwise=pairwise,
-            rpc=new_rpc
+            rpc=rpc
         )
 
     @dispatch(str)
     @abstractmethod
     async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
-        new_rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-        )
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            )
+        else:
+            rpc = self.__rpc
         return ThreadBasedCoProtocolTransport(
             thid=thid,
             pairwise=None,
-            rpc=new_rpc
+            rpc=rpc
         )
 
     @dispatch(str, Pairwise, str)
     async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
-        new_rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-        )
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            )
+        else:
+            rpc = self.__rpc
         return ThreadBasedCoProtocolTransport(
             thid=thid,
             pairwise=pairwise,
-            rpc=new_rpc,
+            rpc=rpc,
             pthid=pthid
         )
 
     @dispatch(str, str)
     @abstractmethod
     async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
-        new_rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-        )
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            )
+        else:
+            rpc = self.__rpc
         return ThreadBasedCoProtocolTransport(
             thid=thid,
             pairwise=None,
-            rpc=new_rpc,
+            rpc=rpc,
             pthid=pthid
         )
 

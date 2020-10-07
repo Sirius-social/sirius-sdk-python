@@ -3,7 +3,7 @@ from typing import Any
 
 class BaseSiriusException(Exception):
     
-    def __init__(self, message: str=None, *args, **kwargs):
+    def __init__(self, message: str = None, *args, **kwargs):
         super(BaseSiriusException, self).__init__(message, *args, **kwargs)
         self.message = message
 

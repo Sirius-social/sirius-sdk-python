@@ -18,7 +18,7 @@ from sirius_sdk.agent.connections import Endpoint
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList, LedgerMeta, Transaction, AbstractMicroledger
 from sirius_sdk.agent.coprotocols import TheirEndpointCoProtocolTransport, PairwiseCoProtocolTransport
-from sirius_sdk.agent.agent import Agent, BaseAgentConnection
+from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
 
 
 ROOT_HUB = None
@@ -48,6 +48,7 @@ class Hub:
             timeout=io_timeout or BaseAgentConnection.IO_TIMEOUT,
             loop=loop,
             storage=storage,
+            spawn_strategy=SpawnStrategy.CONCURRENT
         )
 
     def __del__(self):
@@ -384,7 +385,7 @@ class PairwiseProxy(AbstractPairwiseList):
 DID: AbstractDID = DIDProxy()
 Crypto: AbstractCrypto = CryptoProxy()
 Microledgers: AbstractMicroledgerList = MicroledgersProxy()
-Pairwise: AbstractPairwiseList = PairwiseProxy()
+PairwiseList: AbstractPairwiseList = PairwiseProxy()
 
 
 class AbstractCoProtocol(ABC):
