@@ -156,11 +156,6 @@ class AbstractStateMachine(ABC):
     def is_aborted(self) -> bool:
         return self.__is_aborted
 
-    @property
-    @abstractmethod
-    def protocols(self) -> List[str]:
-        raise NotImplemented('Need to be implemented in descendant')
-
     async def abort(self):
         """Abort state-machine"""
         self.__is_aborted = True

@@ -1,13 +1,11 @@
 import uuid
 import logging
 from datetime import datetime
-from typing import List, Union, Tuple
+from typing import Union, Tuple
 
-from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.microledgers import Transaction, Microledger, MicroledgerList
-from sirius_sdk.agent.sm import AbstractStateMachine, StateMachineTerminatedWithError, StateMachineAborted
+from sirius_sdk.agent.microledgers import MicroledgerList
+from sirius_sdk.agent.sm import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.consensus.simple.messages import *
 

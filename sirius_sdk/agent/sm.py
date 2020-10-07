@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from inspect import iscoroutinefunction
 from typing import List
 
-from sirius_sdk.errors.exceptions import BaseSiriusException
 from sirius_sdk.agent.agent import TransportLayers
 
 
@@ -51,16 +50,3 @@ class AbstractStateMachine(ABC):
             await self.__logger(**kwargs)
         else:
             return False
-
-
-class StateMachineTerminatedWithError(BaseSiriusException):
-
-    def __init__(self, problem_code: str, explain: str, notify: bool = True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.problem_code = problem_code
-        self.explain = explain
-        self.notify = notify
-
-
-class StateMachineAborted(BaseSiriusException):
-    pass
