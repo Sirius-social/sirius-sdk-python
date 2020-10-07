@@ -27,4 +27,3 @@ Installation
 
     pip install sirius-sdk
 
-
