@@ -384,7 +384,7 @@ class PairwiseProxy(AbstractPairwiseList):
 DID: AbstractDID = DIDProxy()
 Crypto: AbstractCrypto = CryptoProxy()
 Microledgers: AbstractMicroledgerList = MicroledgersProxy()
-Pairwise: AbstractPairwiseList = PairwiseProxy()
+PairwiseList: AbstractPairwiseList = PairwiseProxy()
 
 
 class AbstractCoProtocol(ABC):
