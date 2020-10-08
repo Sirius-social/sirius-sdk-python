@@ -54,7 +54,21 @@ class Inviter(sirius_sdk.AbstractStateMachine):
         return self.__problem_report
 
     async def create_connection(self, request: ConnRequest) -> (bool, Pairwise):
-        request.validate()
+        # Validate request
+        await self.log(progress=0, message='Validate request', payload=dict(request), connection_key=self.connection_key)
+        try:
+            request.validate()
+        except SiriusValidationError as e:
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=REQUEST_NOT_ACCEPTED, explain=e.message
+            )
+            raise
+        else:
+            await self.log(progress=20, message='Request validation OK')
+
+        # Step 1: Extract their info from connection request
+        await self.log(progress=40, message='Step-1: Extract their info from connection request')
         doc_uri = request.doc_uri
         their_did, their_vk, their_endpoint_address, their_routing_keys = request.extract_their_info()
         invitee_endpoint = TheirEndpoint(
@@ -63,6 +77,7 @@ class Inviter(sirius_sdk.AbstractStateMachine):
             routing_keys=their_routing_keys
         )
 
+        # Allocate transport channel between self and theirs by verkeys factor
         co = sirius_sdk.CoProtocolAnon(
             my_verkey=self.me.verkey,
             endpoint=invitee_endpoint,
@@ -70,6 +85,7 @@ class Inviter(sirius_sdk.AbstractStateMachine):
             time_to_live=self.time_to_live
         )
         try:
+            # Step 2: build connection response
             response = ConnResponse(
                 did=self.me.did,
                 verkey=self.me.verkey,
@@ -81,10 +97,14 @@ class Inviter(sirius_sdk.AbstractStateMachine):
             my_did_doc = response.did_doc
             await response.sign_connection(sirius_sdk.Crypto, self.connection_key)
 
+            await self.log(progress=80, message='Step-2: Connection response', payload=dict(response))
             ok, ack = await co.switch(response)
             if ok:
                 if isinstance(ack, Ack) or isinstance(ack, Ping):
+                    # Step 3: store their did
+                    await self.log(progress=90, message='Step-3: Ack received, store their DID')
                     await sirius_sdk.DID.store_their_did(their_did, their_vk)
+                    # Step 4: create pairwise
                     their = Pairwise.Their(
                         did=their_did,
                         label=request.label,
@@ -110,10 +130,15 @@ class Inviter(sirius_sdk.AbstractStateMachine):
                         }
                     }
                     pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
+                    await self.log(progress=100, message='Pairwise established', payload=metadata)
                     return True, pairwise
                 elif isinstance(response, ConnProblemReport):
                     self.__problem_report = response
                     logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
+                    )
                     return False, None
                 else:
                     raise StateMachineTerminatedWithError(
@@ -133,6 +158,10 @@ class Inviter(sirius_sdk.AbstractStateMachine):
             )
             if e.notify:
                 await co.send(self.__problem_report)
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=e.problem_code, explain=e.explain
+            )
             return False, None
 
 
@@ -166,7 +195,20 @@ class Invitee(sirius_sdk.AbstractStateMachine):
         return self.__time_to_live
 
     async def create_connection(self, invitation: Invitation, my_label: str) -> (bool, Pairwise):
-        invitation.validate()
+        # Validate invitation
+        await self.log(progress=0, message='Invitation validate', payload=dict(invitation))
+        try:
+            invitation.validate()
+        except SiriusValidationError as e:
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=REQUEST_NOT_ACCEPTED, explain=e.message
+            )
+            raise
+        else:
+            await self.log(progress=20, message='Request validation OK')
+        await self.log(progress=20, message='Invitation validation OK')
+
         doc_uri = invitation.doc_uri
         # Extract Inviter connection_key
         connection_key = invitation.recipient_keys[0]
@@ -181,6 +223,7 @@ class Invitee(sirius_sdk.AbstractStateMachine):
             protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
             time_to_live=self.time_to_live
         )
+        await self.log(progress=40, message='Transport channel is allocated')
 
         try:
             request = ConnRequest(
@@ -191,10 +234,14 @@ class Invitee(sirius_sdk.AbstractStateMachine):
                 doc_uri=doc_uri
             )
 
+            await self.log(progress=50, message='Step-1: send connection request to Inviter', payload=dict(request))
             ok, response = await co.switch(request)
             if ok:
                 if isinstance(response, ConnResponse):
                     # Step 2: process connection response from Inviter
+                    await self.log(
+                        progress=40, message='Step-2: process connection response from Inviter', payload=dict(request)
+                    )
                     success = await response.verify_connection(sirius_sdk.Crypto)
                     try:
                         response.validate()
@@ -205,15 +252,19 @@ class Invitee(sirius_sdk.AbstractStateMachine):
                         )
                     if success and (response['connection~sig']['signer'] == connection_key):
                         # Step 3: extract Inviter info and store did
+                        await self.log(progress=70, message='Step-3: extract Inviter info and store DID')
                         their_did, their_vk, their_endpoint_address, their_routing_keys = response.extract_their_info()
                         await sirius_sdk.DID.store_their_did(their_did, their_vk)
+
                         # Step 4: Send ack to Inviter
                         if response.please_ack:
                             ack = Ack(thread_id=response.ack_message_id, status=Status.OK)
                             await co.send(ack)
+                            await self.log(progress=90, message='Step-4: Send ack to Inviter')
                         else:
                             ping = Ping(comment='Connection established', response_requested=False)
                             await co.send(ping)
+                            await self.log(progress=90, message='Step-4: Send ping to Inviter')
                         # Step 5: Make Pairwise instance
                         their = Pairwise.Their(
                             did=their_did,
@@ -240,6 +291,7 @@ class Invitee(sirius_sdk.AbstractStateMachine):
                             }
                         }
                         pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
+                        await self.log(progress=100, message='Pairwise established', payload=metadata)
                         return True, pairwise
                     else:
                         raise StateMachineTerminatedWithError(
@@ -249,6 +301,10 @@ class Invitee(sirius_sdk.AbstractStateMachine):
                 elif isinstance(response, ConnProblemReport):
                     self.__problem_report = response
                     logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
+                    )
                     return False, None
             else:
                 raise StateMachineTerminatedWithError(
@@ -264,4 +320,8 @@ class Invitee(sirius_sdk.AbstractStateMachine):
             )
             if e.notify:
                 await co.send(self.__problem_report)
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=e.problem_code, explain=e.explain
+            )
             return False, None
