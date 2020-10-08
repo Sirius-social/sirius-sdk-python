@@ -21,7 +21,6 @@ class AbstractCoProtocol(ABC):
         if not protocols:
             raise SiriusContextError('You must set protocols list. It is empty for now!')
         self.__protocols = protocols
-        self.__is_start = False
 
     @property
     def protocols(self) -> List[str]:
@@ -37,6 +36,10 @@ class AbstractCoProtocol(ABC):
 
     @abstractmethod
     async def switch(self, message: Message) -> (bool, Message):
+        pass
+
+    @abstractmethod
+    async def done(self):
         pass
 
 
@@ -69,6 +72,11 @@ class CoProtocolAnon(AbstractCoProtocol):
                 else:
                     self.__thread_id = None
         return success, response
+
+    async def done(self):
+        if self.__is_start:
+            await self.__transport.stop()
+            self.__is_start = False
 
     def __setup(self, message: Message, please_ack: bool = True):
         if please_ack:
@@ -118,6 +126,11 @@ class CoProtocolP2P(AbstractCoProtocol):
                 self.__thread_id = None
         return success, response
 
+    async def done(self):
+        if self.__is_start:
+            await self.__transport.stop()
+            self.__is_start = False
+
     def __setup(self, message: Message, please_ack: bool = True):
         if please_ack:
             if PLEASE_ACK_DECORATOR not in message:
@@ -148,6 +161,7 @@ class CoProtocolThreaded(AbstractCoProtocol):
         self.__to = to
         self.__sender_order = 0
         self.__received_orders = {}
+        self.__transport = None
 
     def __del__(self):
         if self.__is_start:
@@ -161,6 +175,11 @@ class CoProtocolThreaded(AbstractCoProtocol):
 
     async def switch(self, message: Message) -> (bool, List[Message]):
         self.__prepare_message(message)
+
+    async def done(self):
+        if self.__is_start:
+            await self.__transport.stop()
+            self.__is_start = False
 
     def __prepare_message(self, message: Message):
         if THREAD_DECORATOR not in message:  # Don't rewrite existing ~thread decorator
