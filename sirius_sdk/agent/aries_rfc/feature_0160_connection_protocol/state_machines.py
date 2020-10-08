@@ -30,7 +30,7 @@ class Inviter(AbstractStateMachine):
 
     @property
     def protocols(self) -> List[str]:
-        return [ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL]
+        return [ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL]
 
     @property
     def problem_report(self) -> ConnProblemReport:
