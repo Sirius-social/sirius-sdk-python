@@ -30,7 +30,7 @@ class Question(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
         if valid_responses is not None:
             self['valid_responses'] = [{'text': s} for s in valid_responses]
         if question_text is not None:
-            self[question_text] = question_text
+            self['question_text'] = question_text
         if question_detail is not None:
             self['question_detail'] = question_detail
         if nonce is not None:
