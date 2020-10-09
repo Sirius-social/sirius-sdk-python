@@ -126,7 +126,7 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
 
     @property
     def thread_id(self) -> Optional[str]:
-        return self.get('THREAD_DECORATOR', {}).get('thid', None)
+        return self.get(THREAD_DECORATOR, {}).get('thid', None)
 
     @thread_id.setter
     def thread_id(self, thid: str):
