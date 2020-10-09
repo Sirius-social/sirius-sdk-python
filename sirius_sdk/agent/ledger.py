@@ -410,6 +410,7 @@ class Ledger:
             filters.version = version
         if submitter_did:
             filters.submitter_did = submitter_did
+        await self._storage.select_db(self.__db)
         fetched, total_count = await self._storage.fetch(filters.tags)
         return [Schema.deserialize(item) for item in fetched]
 
@@ -429,6 +430,7 @@ class Ledger:
         if seq_no:
             filters.seq_no = seq_no
         filters.extras = kwargs
+        await self._storage.select_db(self.__db)
         fetched, total_count = await self._storage.fetch(filters.tags)
         return [CredentialDefinition.deserialize(item) for item in fetched]
 
