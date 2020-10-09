@@ -19,7 +19,7 @@ setup(
     author_email="support@socialsirius.com",
     project_urls={
         'Chat: Telegram': 'https://t.me/sirius_sdk',
-        'CI: Travis': 'https://github.com/Sirius-social/sirius-sdk-python/runs/1058851181',
+        'CI: Travis': 'https://travis-ci.com/github/Sirius-social/sirius-sdk-python/builds',
         'GitHub: issues': 'https://github.com/Sirius-social/sirius-sdk-python/issues',
         'GitHub: repo': 'https://github.com/Sirius-social/sirius-sdk-python',
     },
