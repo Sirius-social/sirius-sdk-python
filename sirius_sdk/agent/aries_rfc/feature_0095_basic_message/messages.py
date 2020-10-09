@@ -34,4 +34,4 @@ class Message(ThreadMixin, PleaseAckMixin, AriesProtocolMessage, metaclass=Regis
         return self.get('sent_time', None)
 
     def set_time(self):
-        self['sent_time'] = datetime.datetime.now().astimezone().replace(microsecond=0).isoformat().replace('T', ' ')
+        self['sent_time'] = datetime.datetime.now().astimezone().replace(microsecond=0).isoformat()
