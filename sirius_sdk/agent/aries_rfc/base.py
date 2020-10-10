@@ -11,14 +11,15 @@ class AriesProtocolMessage(Message):
     DOC_URI = ARIES_DOC_URI
     PROTOCOL = None
     NAME = None
+    DEF_VERSION = '1.0'
 
-    def __init__(self, id_: str = None, version: str = '1.0', doc_uri: str = None, *args, **kwargs):
+    def __init__(self, id_: str = None, version: str = None, doc_uri: str = None, *args, **kwargs):
         if self.NAME and ('@type' not in dict(*args, **kwargs)):
             kwargs['@type'] = str(
                 Type(
                     doc_uri=doc_uri or self.DOC_URI,
                     protocol=self.PROTOCOL,
-                    name=self.NAME, version=version
+                    name=self.NAME, version=version or self.DEF_VERSION
                 )
             )
         super().__init__(*args, **kwargs)

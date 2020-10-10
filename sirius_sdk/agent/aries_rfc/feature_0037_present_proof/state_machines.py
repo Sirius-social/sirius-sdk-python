@@ -49,6 +49,7 @@ class Verifier(AbstractStateMachine):
         self.__cache_internal = cache is None
         self.__problem_report = None
         self.__pool_name = pool_name
+        self.__requested_proof = None
 
     async def verify(
             self, proof_request: dict, translation: List[AttribTranslation] = None,
@@ -105,6 +106,7 @@ class Verifier(AbstractStateMachine):
                     rev_regs=rev_regs
                 )
                 if success:
+                    self.__requested_proof = presentation.proof['requested_proof']
                     ack = Ack(
                         thread_id=presentation.ack_message_id if presentation.please_ack else presentation.id,
                         status=Status.OK
@@ -136,6 +138,10 @@ class Verifier(AbstractStateMachine):
     @property
     def protocols(self) -> List[str]:
         return [BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL]
+
+    @property
+    def requested_proof(self) -> Optional[dict]:
+        return self.__requested_proof
 
     async def abort(self):
         await super().abort()
