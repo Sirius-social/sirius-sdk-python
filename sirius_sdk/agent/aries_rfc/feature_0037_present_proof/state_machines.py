@@ -52,7 +52,7 @@ class Verifier(AbstractStateMachine):
 
     async def verify(
             self, proof_request: dict, translation: List[AttribTranslation] = None,
-            comment: str = None, locale: str = BasePresentProofMessage.DEF_LOCALE
+            comment: str = None, locale: str = BasePresentProofMessage.DEF_LOCALE, proto_version: str = None
     ):
         await self.__start()
         try:
@@ -64,7 +64,8 @@ class Verifier(AbstractStateMachine):
                     translation=translation,
                     comment=comment,
                     locale=locale,
-                    expires_time=utc_to_str(expires_time)
+                    expires_time=utc_to_str(expires_time),
+                    version=proto_version
                 )
                 request_msg.please_ack = True
                 await self.log(progress=30, message='Send request', payload=dict(request_msg))
