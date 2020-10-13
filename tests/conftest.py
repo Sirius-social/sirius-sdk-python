@@ -95,6 +95,11 @@ def test_suite() -> ServerTestSuite:
 
 
 @pytest.fixture()
+def prover_master_secret_name() -> str:
+    return 'prover_master_secret_name'
+
+
+@pytest.fixture()
 def indy_agent() -> IndyAgent:
     return get_indy_agent_singleton()
 
