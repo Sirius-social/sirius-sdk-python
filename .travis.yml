@@ -31,6 +31,7 @@ script:
   - pytest tests/test_coprotocols.py
   - pytest tests/test_pairwise.py
   - pytest tests/test_consensus_simple.py
+  - pytest tests/test_0113_query_answer.py
   - pytest tests/test_0160_conn_protocol.py
   - pytest tests/test_0048_trust_ping.py
   - pytest tests/test_0036_issue_credential.py
