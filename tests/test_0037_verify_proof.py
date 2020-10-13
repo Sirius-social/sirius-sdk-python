@@ -49,7 +49,7 @@ async def run_prover(agent: Agent, verifier: Pairwise, master_secret_id: str):
 
 
 @pytest.mark.asyncio
-async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
+async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent, prover_master_secret_name: str):
     issuer = agent1
     prover = agent2
     verifier = agent3
@@ -81,13 +81,12 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
         assert ok is True
 
         print('Prepare Prover')
-        master_secret_name = 'prover_master_secret_name'
         try:
-            await prover.wallet.anoncreds.prover_create_master_secret(master_secret_name)
+            await prover.wallet.anoncreds.prover_create_master_secret(prover_master_secret_name)
         except AnoncredsMasterSecretDuplicateNameError:
             pass
 
-        prover_secret_id = master_secret_name
+        prover_secret_id = prover_master_secret_name
         cred_values = {'attr1': 'Value-1', 'attr2': 456, 'attr3': 5.87}
         cred_id = 'cred-id-' + uuid.uuid4().hex
 
@@ -163,6 +162,124 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent):
     finally:
         await issuer.close()
         await prover.close()
+        await verifier.close()
+
+
+@pytest.mark.asyncio
+async def test_multiple_provers(
+        agent1: Agent, agent2: Agent, agent3: Agent, agent4: Agent, prover_master_secret_name: str
+):
+    issuer = agent1
+    prover1 = agent2
+    verifier = agent3
+    prover2 = agent4
+    await issuer.open()
+    await prover1.open()
+    await prover2.open()
+    await verifier.open()
+    try:
+        print('Establish pairwises')
+        i_to_p1 = await get_pairwise(issuer, prover1)
+        i_to_p2 = await get_pairwise(issuer, prover2)
+        p1_to_i = await get_pairwise(prover1, issuer)
+        p2_to_i = await get_pairwise(prover2, issuer)
+        v_to_p1 = await get_pairwise(verifier, prover1)
+        v_to_p2 = await get_pairwise(verifier, prover2)
+        p1_to_v = await get_pairwise(prover1, verifier)
+        p2_to_v = await get_pairwise(prover2, verifier)
+
+        print('Register schema')
+        did_issuer, verkey_issuer = i_to_p1.me.did, i_to_p1.me.verkey
+        schema_name = 'schema_' + uuid.uuid4().hex
+        schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
+            did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
+        )
+        ledger = issuer.ledger('default')
+        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        assert ok is True
+
+        print('Register credential def')
+        ok, cred_def = await ledger.register_cred_def(
+            cred_def=CredentialDefinition(tag='TAG', schema=schema),
+            submitter_did=did_issuer
+        )
+        assert ok is True
+
+        print('Prepare Provers')
+        for prover in [prover1, prover2]:
+            try:
+                await prover.wallet.anoncreds.prover_create_master_secret(prover_master_secret_name)
+            except AnoncredsMasterSecretDuplicateNameError:
+                pass
+
+        cred_ids = {
+            0: 'cred-id-' + uuid.uuid4().hex,
+            1: 'cred-id-' + uuid.uuid4().hex
+        }
+        prover_did = {
+            0: p1_to_i.me.did,
+            1: p2_to_i.me.did
+        }
+        for i, prover in enumerate([prover1, prover2]):
+            prover_secret_id = prover_master_secret_name
+            cred_values = {'attr1': f'Value-{i}', 'attr2': 200 + i*10, 'attr3': i*1.5}
+            cred_id = cred_ids[0]
+
+            # Issue credential
+            offer = await issuer.wallet.anoncreds.issuer_create_credential_offer(cred_def_id=cred_def.id)
+            cred_request, cred_metadata = await prover.wallet.anoncreds.prover_create_credential_req(
+                prover_did=prover_did[i], cred_offer=offer, cred_def=cred_def.body, master_secret_id=prover_secret_id
+            )
+            encoded_cred_values = dict()
+            for key, value in cred_values.items():
+                encoded_cred_values[key] = dict(raw=str(value), encoded=encode(value))
+            ret = await issuer.wallet.anoncreds.issuer_create_credential(
+                cred_offer=offer,
+                cred_req=cred_request,
+                cred_values=encoded_cred_values,
+                rev_reg_id=None,
+                blob_storage_reader_handle=None
+            )
+            cred, cred_revoc_id, revoc_reg_delta = ret
+            await prover.wallet.anoncreds.prover_store_credential(
+                cred_req_metadata=cred_metadata,
+                cred=cred,
+                cred_def=cred_def.body,
+                rev_reg_def=None,
+                cred_id=cred_id
+            )
+
+        # FIRE !!!
+        attr_referent_id = 'attr1_referent'
+        pred_referent_id = 'predicate1_referent'
+        proof_request = {
+            "nonce": await verifier.wallet.anoncreds.generate_nonce(),
+            "name": "Test ProofRequest",
+            "version": "0.1",
+            "requested_attributes": {
+                attr_referent_id: {
+                    "name": "attr1",
+                    "restrictions": {
+                        "issuer_did": did_issuer
+                    }
+                }
+            },
+            "requested_predicates": {
+                pred_referent_id: {
+                    'name': 'attr2',
+                    'p_type': '>=',
+                    'p_value': 100,
+                    "restrictions": {
+                        "issuer_did": did_issuer
+                    }
+                }
+            }
+        }
+
+    finally:
+        await issuer.close()
+        await prover1.close()
+        await prover2.close()
         await verifier.close()
 
 

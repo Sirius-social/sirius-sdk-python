@@ -1,7 +1,8 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Union
+from typing import Any, Union, List
 from urllib.parse import urljoin
+from inspect import iscoroutinefunction
 
 import aiohttp
 
@@ -130,3 +131,39 @@ class WebSocketConnector(BaseConnector):
             payload = message
         await self._ws.send_bytes(payload)
         return True
+
+
+class AbstractStateMachine(ABC):
+
+    def __init__(self, time_to_live: int = 60, logger=None, *args, **kwargs):
+        """
+        :param time_to_live: state machine time to live to finish progress
+        """
+        self.__time_to_live = time_to_live
+        self.__is_aborted = False
+        if logger is not None:
+            if iscoroutinefunction(logger) or callable(logger):
+                pass
+            else:
+                raise RuntimeError('Expect logger is iscoroutine function or callable object')
+        self.__logger = logger
+
+    @property
+    def time_to_live(self) -> int:
+        return self.__time_to_live
+
+    @property
+    def is_aborted(self) -> bool:
+        return self.__is_aborted
+
+    async def abort(self):
+        """Abort state-machine"""
+        self.__is_aborted = True
+
+    async def log(self, **kwargs) -> bool:
+        if self.__logger:
+            kwargs = dict(**kwargs)
+            kwargs['state_machine_id'] = id(self)
+            await self.__logger(**kwargs)
+        else:
+            return False

@@ -3,7 +3,7 @@ from typing import Any
 
 class BaseSiriusException(Exception):
     
-    def __init__(self, message: str=None, *args, **kwargs):
+    def __init__(self, message: str = None, *args, **kwargs):
         super(BaseSiriusException, self).__init__(message, *args, **kwargs)
         self.message = message
 
@@ -131,3 +131,16 @@ class SiriusFieldValueError(BaseSiriusException, ValueError):
                 prefix
             ), *args
         )
+
+
+class StateMachineTerminatedWithError(BaseSiriusException):
+
+    def __init__(self, problem_code: str, explain: str, notify: bool = True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.problem_code = problem_code
+        self.explain = explain
+        self.notify = notify
+
+
+class StateMachineAborted(BaseSiriusException):
+    pass

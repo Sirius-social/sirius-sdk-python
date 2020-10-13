@@ -1,8 +1,9 @@
 import logging
 
+import sirius_sdk
+from sirius_sdk.errors.exceptions import SiriusValidationError, StateMachineAborted, StateMachineTerminatedWithError
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.agent import Endpoint
-from sirius_sdk.agent.sm import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping import Ping
 from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.messages import *
@@ -15,65 +16,94 @@ RESPONSE_NOT_ACCEPTED = "response_not_accepted"
 RESPONSE_PROCESSING_ERROR = 'response_processing_error'
 
 
-class Inviter(AbstractStateMachine):
+class Inviter(sirius_sdk.AbstractStateMachine):
     """Implementation of Inviter role of the Aries connection protocol
 
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+            self, me: Pairwise.Me, connection_key: str, my_endpoint: Endpoint,
+            time_to_live: int = 60, logger=None, *args, **kwargs
+    ):
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        self.__me = me
+        self.__connection_key = connection_key
+        self.__my_endpoint = my_endpoint
         self.__problem_report = None
-        self.__transport = None
-        self.__thread_id = None
-        super().__init__(*args, **kwargs)
+        self.__time_to_live = time_to_live
 
     @property
-    def protocols(self) -> List[str]:
-        return [ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL]
+    def me(self) -> Pairwise.Me:
+        return self.__me
+
+    @property
+    def connection_key(self) -> str:
+        return self.__connection_key
+
+    @property
+    def my_endpoint(self) -> Endpoint:
+        return self.__my_endpoint
+
+    @property
+    def time_to_live(self) -> Optional[int]:
+        return self.__time_to_live
 
     @property
     def problem_report(self) -> ConnProblemReport:
         return self.__problem_report
 
-    async def create_connection(
-            self, me: Pairwise.Me, connection_key: str, request: ConnRequest, my_endpoint: Endpoint
-    ) -> (bool, Pairwise):
+    async def create_connection(self, request: ConnRequest) -> (bool, Pairwise):
         # Validate request
-        await self.log(progress=0, message='Validate request', payload=dict(request), connection_key=connection_key)
-        request.validate()
-        await self.log(progress=20, message='Request validation OK')
-        self.__thread_id = request.ack_message_id
-        self.__problem_report = None
+        await self.log(progress=0, message='Validate request', payload=dict(request), connection_key=self.connection_key)
+        try:
+            request.validate()
+        except SiriusValidationError as e:
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=REQUEST_NOT_ACCEPTED, explain=e.message
+            )
+            raise
+        else:
+            await self.log(progress=20, message='Request validation OK')
+
         # Step 1: Extract their info from connection request
         await self.log(progress=40, message='Step-1: Extract their info from connection request')
+        doc_uri = request.doc_uri
         their_did, their_vk, their_endpoint_address, their_routing_keys = request.extract_their_info()
         invitee_endpoint = TheirEndpoint(
             endpoint=their_endpoint_address,
             verkey=their_vk,
             routing_keys=their_routing_keys
         )
+
         # Allocate transport channel between self and theirs by verkeys factor
-        self.__transport = await self.transports.spawn(me.verkey, invitee_endpoint)
-        await self.__transport.start(self.protocols, self.time_to_live)
-        await self.log(progress=60, message='Transport channel is allocated')
+        co = sirius_sdk.CoProtocolAnon(
+            my_verkey=self.me.verkey,
+            endpoint=invitee_endpoint,
+            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
+            time_to_live=self.time_to_live
+        )
         try:
             # Step 2: build connection response
-            response = ConnResponse(did=me.did, verkey=me.verkey, endpoint=my_endpoint.address)
+            response = ConnResponse(
+                did=self.me.did,
+                verkey=self.me.verkey,
+                endpoint=self.my_endpoint.address,
+                doc_uri=doc_uri
+            )
             if request.please_ack:
                 response.thread_id = request.ack_message_id
             my_did_doc = response.did_doc
-            await response.sign_connection(self.__transport.wallet.crypto, connection_key)
-            response.please_ack = True
+            await response.sign_connection(sirius_sdk.Crypto, self.connection_key)
+
             await self.log(progress=80, message='Step-2: Connection response', payload=dict(response))
-            ok, ack = await self.__transport.switch(response)
-            if self.is_aborted:
-                await self.log(progress=100, message='Aborted')
-                raise StateMachineAborted
+            ok, ack = await co.switch(response)
             if ok:
                 if isinstance(ack, Ack) or isinstance(ack, Ping):
                     # Step 3: store their did
                     await self.log(progress=90, message='Step-3: Ack received, store their DID')
-                    await self.__transport.wallet.did.store_their_did(their_did, their_vk)
+                    await sirius_sdk.DID.store_their_did(their_did, their_vk)
                     # Step 4: create pairwise
                     their = Pairwise.Their(
                         did=their_did,
@@ -84,8 +114,8 @@ class Inviter(AbstractStateMachine):
                     )
                     metadata = {
                         'me': {
-                            'did': me.did,
-                            'verkey': me.verkey,
+                            'did': self.me.did,
+                            'verkey': self.me.verkey,
                             'did_doc': dict(my_did_doc)
                         },
                         'their': {
@@ -99,7 +129,7 @@ class Inviter(AbstractStateMachine):
                             'did_doc': dict(request.did_doc)
                         }
                     }
-                    pairwise = Pairwise(me=me, their=their, metadata=metadata)
+                    pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
                     await self.log(progress=100, message='Pairwise established', payload=metadata)
                     return True, pairwise
                 elif isinstance(response, ConnProblemReport):
@@ -111,73 +141,75 @@ class Inviter(AbstractStateMachine):
                     )
                     return False, None
                 else:
-                    self.__problem_report = ConnProblemReport(
+                    raise StateMachineTerminatedWithError(
                         problem_code=REQUEST_PROCESSING_ERROR,
-                        explain='Expect for connection response ack. Unexpected message type "%s"' % str(response.type),
-                        thread_id=self.__thread_id
+                        explain='Expect for connection response ack. Unexpected message type "%s"' % str(response.type)
                     )
-                    await self.__transport.send(self.__problem_report)
-                    await self.log(
-                        progress=100, message=f'Terminated with error',
-                        problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
-                    )
-                    return False, None
             else:
-                self.__problem_report = ConnProblemReport(
+                raise StateMachineTerminatedWithError(
                     problem_code=REQUEST_PROCESSING_ERROR,
                     explain='Response ack awaiting was terminated by timeout',
-                    thread_id=self.__thread_id
+                    notify=False
                 )
-                await self.__transport.send(self.__problem_report)
-                await self.log(
-                    progress=100, message=f'Terminated with error',
-                    problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
-                )
-                return False, None
-        finally:
-            await self.__transport.stop()
-            self.__transport = None
-
-    async def abort(self):
-        await super().abort()
-        if self.__transport and self.__transport.is_started:
+        except StateMachineTerminatedWithError as e:
             self.__problem_report = ConnProblemReport(
-                problem_code=REQUEST_PROCESSING_ERROR,
-                explain='Operation is aborted by owner',
-                thread_id=self.__thread_id
+                problem_code=e.problem_code,
+                explain=e.explain,
             )
-            await self.__transport.send(self.__problem_report)
+            if e.notify:
+                await co.send(self.__problem_report)
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=e.problem_code, explain=e.explain
+            )
+            return False, None
 
 
-class Invitee(AbstractStateMachine):
+class Invitee(sirius_sdk.AbstractStateMachine):
     """Implementation of Invitee role of the Aries connection protocol
 
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__problem_report = None
-        self.__transport = None
-        self.__thread_id = None
-        super().__init__(*args, **kwargs)
+        self.__time_to_live = time_to_live
+        self.__me = me
+        self.__my_endpoint = my_endpoint
 
     @property
-    def protocols(self) -> List[str]:
-        return [ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL]
+    def me(self) -> Pairwise.Me:
+        return self.__me
+
+    @property
+    def my_endpoint(self) -> Endpoint:
+        return self.__my_endpoint
 
     @property
     def problem_report(self) -> ConnProblemReport:
         return self.__problem_report
 
-    async def create_connection(
-            self, me: Pairwise.Me, invitation: Invitation, my_label: str, my_endpoint: Endpoint
-    ) -> (bool, Pairwise):
+    @property
+    def time_to_live(self) -> Optional[int]:
+        return self.__time_to_live
+
+    async def create_connection(self, invitation: Invitation, my_label: str) -> (bool, Pairwise):
         # Validate invitation
         await self.log(progress=0, message='Invitation validate', payload=dict(invitation))
-        invitation.validate()
+        try:
+            invitation.validate()
+        except SiriusValidationError as e:
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=REQUEST_NOT_ACCEPTED, explain=e.message
+            )
+            raise
+        else:
+            await self.log(progress=20, message='Request validation OK')
         await self.log(progress=20, message='Invitation validation OK')
+
         doc_uri = invitation.doc_uri
-        self.__problem_report = None
         # Extract Inviter connection_key
         connection_key = invitation.recipient_keys[0]
         inviter_endpoint = TheirEndpoint(
@@ -185,52 +217,54 @@ class Invitee(AbstractStateMachine):
             verkey=connection_key
         )
         # Allocate transport channel between self and theirs by verkeys factor
-        self.__transport = await self.transports.spawn(me.verkey, inviter_endpoint)
-        await self.__transport.start(self.protocols, self.time_to_live)
+        co = sirius_sdk.CoProtocolAnon(
+            my_verkey=self.me.verkey,
+            endpoint=inviter_endpoint,
+            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
+            time_to_live=self.time_to_live
+        )
         await self.log(progress=40, message='Transport channel is allocated')
+
         try:
-            # Step 1: send connection request to Inviter
             request = ConnRequest(
                 label=my_label,
-                did=me.did,
-                verkey=me.verkey,
-                endpoint=my_endpoint.address,
+                did=self.me.did,
+                verkey=self.me.verkey,
+                endpoint=self.my_endpoint.address,
                 doc_uri=doc_uri
             )
-            request.please_ack = True
-            self.__thread_id = request.ack_message_id
+
             await self.log(progress=50, message='Step-1: send connection request to Inviter', payload=dict(request))
-            ok, response = await self.__transport.switch(request)
-            if self.is_aborted:
-                await self.log(progress=100, message='Aborted')
-                raise StateMachineAborted
+            ok, response = await co.switch(request)
             if ok:
                 if isinstance(response, ConnResponse):
                     # Step 2: process connection response from Inviter
                     await self.log(
-                        progress=40,
-                        message='Step-2: process connection response from Inviter',
-                        payload=dict(request)
+                        progress=40, message='Step-2: process connection response from Inviter', payload=dict(request)
                     )
-                    success = await response.verify_connection(self.__transport.wallet.crypto)
+                    success = await response.verify_connection(sirius_sdk.Crypto)
                     try:
                         response.validate()
-                    except SiriusValidationError:
-                        success = False
+                    except SiriusValidationError as e:
+                        raise StateMachineTerminatedWithError(
+                            problem_code=RESPONSE_NOT_ACCEPTED,
+                            explain=e.message
+                        )
                     if success and (response['connection~sig']['signer'] == connection_key):
                         # Step 3: extract Inviter info and store did
                         await self.log(progress=70, message='Step-3: extract Inviter info and store DID')
                         their_did, their_vk, their_endpoint_address, their_routing_keys = response.extract_their_info()
-                        await self.__transport.wallet.did.store_their_did(their_did, their_vk)
+                        await sirius_sdk.DID.store_their_did(their_did, their_vk)
+
                         # Step 4: Send ack to Inviter
                         if response.please_ack:
-                            ack = Ack(thread_id=response.id, status=Status.OK)
+                            ack = Ack(thread_id=response.ack_message_id, status=Status.OK)
+                            await co.send(ack)
                             await self.log(progress=90, message='Step-4: Send ack to Inviter')
-                            await self.__transport.send(ack)
                         else:
                             ping = Ping(comment='Connection established', response_requested=False)
+                            await co.send(ping)
                             await self.log(progress=90, message='Step-4: Send ping to Inviter')
-                            await self.__transport.send(ping)
                         # Step 5: Make Pairwise instance
                         their = Pairwise.Their(
                             did=their_did,
@@ -241,8 +275,8 @@ class Invitee(AbstractStateMachine):
                         )
                         metadata = {
                             'me': {
-                                'did': me.did,
-                                'verkey': me.verkey,
+                                'did': self.me.did,
+                                'verkey': self.me.verkey,
                                 'did_doc': dict(request.did_doc)
                             },
                             'their': {
@@ -256,21 +290,14 @@ class Invitee(AbstractStateMachine):
                                 'did_doc': dict(response.did_doc)
                             }
                         }
-                        pairwise = Pairwise(me=me, their=their, metadata=metadata)
+                        pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
                         await self.log(progress=100, message='Pairwise established', payload=metadata)
                         return True, pairwise
                     else:
-                        self.__problem_report = ConnProblemReport(
+                        raise StateMachineTerminatedWithError(
                             problem_code=RESPONSE_NOT_ACCEPTED,
                             explain='Invalid connection response signature for connection_key: "%s"' % connection_key,
-                            thread_id=response.id
                         )
-                        await self.__transport.send(self.__problem_report)
-                        await self.log(
-                            progress=100, message=f'Terminated with error',
-                            problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
-                        )
-                        return False, None
                 elif isinstance(response, ConnProblemReport):
                     self.__problem_report = response
                     logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
@@ -279,39 +306,22 @@ class Invitee(AbstractStateMachine):
                         problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
                     )
                     return False, None
-                else:
-                    self.__problem_report = ConnProblemReport(
-                        problem_code=RESPONSE_NOT_ACCEPTED,
-                        explain='Expect for connection response. Unexpected message type "%s"' % str(response.type),
-                        thread_id=response.id
-                    )
-                    await self.__transport.send(self.__problem_report)
-                    await self.log(
-                        progress=100, message=f'Terminated with error',
-                        problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
-                    )
-                    return False, None
             else:
-                self.__problem_report = ConnProblemReport(
+                raise StateMachineTerminatedWithError(
                     problem_code=RESPONSE_PROCESSING_ERROR,
                     explain='Response awaiting was terminated by timeout',
+                    notify=False
                 )
-                await self.__transport.send(self.__problem_report)
-                await self.log(
-                    progress=100, message=f'Terminated with error',
-                    problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
-                )
-                return False, None
-        finally:
-            await self.__transport.stop()
-            self.__transport = None
 
-    async def abort(self):
-        await super().abort()
-        if self.__transport and self.__transport.is_started:
+        except StateMachineTerminatedWithError as e:
             self.__problem_report = ConnProblemReport(
-                problem_code=REQUEST_PROCESSING_ERROR,
-                explain='Operation is aborted by owner',
-                thread_id=self.__thread_id
+                problem_code=e.problem_code,
+                explain=e.explain,
             )
-            await self.__transport.send(self.__problem_report)
+            if e.notify:
+                await co.send(self.__problem_report)
+            await self.log(
+                progress=100, message=f'Terminated with error',
+                problem_code=e.problem_code, explain=e.explain
+            )
+            return False, None
