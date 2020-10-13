@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Union
 from contextlib import asynccontextmanager
 
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
@@ -153,7 +153,7 @@ class CoProtocolP2P(AbstractCoProtocol):
 
 class CoProtocolThreaded(AbstractCoProtocol):
 
-    def __init__(self, thid: str, to: List[Pairwise], protocols: List[str], pthid: str = None, time_to_live: int = None):
+    def __init__(self, thid: str, to: Pairwise, protocols: List[str], pthid: str = None, time_to_live: int = None):
         super().__init__(protocols=protocols, time_to_live=time_to_live)
         self.__is_start = False
         self.__thid = thid
@@ -167,41 +167,40 @@ class CoProtocolThreaded(AbstractCoProtocol):
         if self.__is_start:
             asyncio.ensure_future(self.__transport.stop())
 
-    async def send(self, message: Message) -> List[Any]:
+    @property
+    def thid(self) -> str:
+        return self.__thid
+
+    @property
+    def pthid(self) -> Optional[str]:
+        return self.__pthid
+
+    async def send(self, message: Message):
         async with self.__get_transport_lazy() as transport:
             self.__prepare_message(message)
-            ret = await transport.send_many(message, self.__to)
-        return ret
+            await transport.send(message, self.__to)
 
-    async def switch(self, message: Message) -> (bool, List[Message]):
-        self.__prepare_message(message)
+    async def switch(self, message: Message) -> (bool, Message):
+        async with self.__get_transport_lazy() as transport:
+            if type(self.__to) is list:
+                raise NotImplemented
+            else:
+                success, response = await transport.switch(message)
+                return success, response
 
     async def done(self):
         if self.__is_start:
             await self.__transport.stop()
             self.__is_start = False
 
-    def __prepare_message(self, message: Message):
-        if THREAD_DECORATOR not in message:  # Don't rewrite existing ~thread decorator
-            thread_decorator = {
-                'thid': self.__thid,
-                'sender_order': self.__sender_order
-            }
-            if self.__pthid:
-                thread_decorator['pthid'] = self.__pthid
-            if self.__received_orders:
-                thread_decorator['received_orders'] = self.__received_orders
-            self.__sender_order += 1
-            message[THREAD_DECORATOR] = thread_decorator
-
     @asynccontextmanager
     async def __get_transport_lazy(self):
         if self.__transport is None:
             async with _current_hub().get_agent_connection_lazy() as agent:
                 if self.__pthid is None:
-                    self.__transport = await agent.spawn(self.__thid)
+                    self.__transport = await agent.spawn(self.__thid, self.__to)
                 else:
-                    self.__transport = await agent.spawn(self.__thid, self.__pthid)
+                    self.__transport = await agent.spawn(self.__thid, self.__to, self.__pthid)
                 await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
                 self.__is_start = True
         yield self.__transport
