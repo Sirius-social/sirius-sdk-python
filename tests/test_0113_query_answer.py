@@ -30,8 +30,9 @@ async def test_sane(agent1: sirius_sdk.Agent, agent2: sirius_sdk.Agent, test_sui
                 question_text='Test question',
                 question_detail='Question detail'
             )
-            answer = await ask_and_wait_answer(q, req2resp)
-            return answer.response == 'Yes'
+            q.set_ttl(30)
+            success, answer = await ask_and_wait_answer(q, req2resp)
+            return success and answer.response == 'Yes'
 
     async def responder(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, *args, **kwargs):
         async with sirius_sdk.context(server_address, credentials, p2p):
