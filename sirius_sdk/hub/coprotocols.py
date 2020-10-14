@@ -35,6 +35,13 @@ class AbstractCoProtocol(ABC):
         pass
 
     @abstractmethod
+    async def get_one(self) -> (Optional[Message], str, Optional[str]):
+        """
+        return message, sender_verkey, recipient_verkey
+        """
+        pass
+
+    @abstractmethod
     async def switch(self, message: Message) -> (bool, Message):
         pass
 
@@ -61,6 +68,14 @@ class CoProtocolAnon(AbstractCoProtocol):
         async with self.__get_transport_lazy() as transport:
             self.__setup(message, please_ack=False)
             await transport.send(message)
+
+    async def get_one(self) -> (Optional[Message], str, Optional[str]):
+        """
+        return message, sender_verkey, recipient_verkey
+        """
+        async with self.__get_transport_lazy() as transport:
+            message, sender_verkey, recipient_verkey = await transport.get_one()
+        return message, sender_verkey, recipient_verkey
 
     async def switch(self, message: Message) -> (bool, Message):
         async with self.__get_transport_lazy() as transport:
@@ -115,6 +130,14 @@ class CoProtocolP2P(AbstractCoProtocol):
         async with self.__get_transport_lazy() as transport:
             self.__setup(message, please_ack=False)
             await transport.send(message)
+
+    async def get_one(self) -> (Optional[Message], str, Optional[str]):
+        """
+        return message, sender_verkey, recipient_verkey
+        """
+        async with self.__get_transport_lazy() as transport:
+            message, sender_verkey, recipient_verkey = await transport.get_one()
+        return message, sender_verkey, recipient_verkey
 
     async def switch(self, message: Message) -> (bool, Message):
         async with self.__get_transport_lazy() as transport:
@@ -177,8 +200,15 @@ class CoProtocolThreaded(AbstractCoProtocol):
 
     async def send(self, message: Message):
         async with self.__get_transport_lazy() as transport:
-            self.__prepare_message(message)
-            await transport.send(message, self.__to)
+            await transport.send(message)
+
+    async def get_one(self) -> (Optional[Message], str, Optional[str]):
+        """
+        return message, sender_verkey, recipient_verkey
+        """
+        async with self.__get_transport_lazy() as transport:
+            message, sender_verkey, recipient_verkey = await transport.get_one()
+        return message, sender_verkey, recipient_verkey
 
     async def switch(self, message: Message) -> (bool, Message):
         async with self.__get_transport_lazy() as transport:

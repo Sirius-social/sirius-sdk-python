@@ -4,7 +4,9 @@ from typing import Optional
 import sirius_sdk
 from sirius_sdk.hub import CoProtocolThreaded
 from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 
+from ..feature_0015_acks import Ack
 from .messages import Question, Answer
 
 
@@ -24,19 +26,16 @@ async def ask_and_wait_answer(query: Question, to: Pairwise) -> (bool, Optional[
     co = CoProtocolThreaded(
         thid=query.id,
         to=to,
-        protocols=[Question.PROTOCOL],
+        protocols=[Question.PROTOCOL, Ack.PROTOCOL],
         time_to_live=ttl
     )
+    await co.send(query)
     try:
-        success, answer = await co.switch(query)
-    except Exception as e:
-        raise
-    if success:
-        if isinstance(answer, Answer):
-            return True, answer
-        else:
-            raise RuntimeError('Unexpected msg type')
-    else:
+        while True:
+            msg, sender_verkey, recipient_verkey = await co.get_one()
+            if (sender_verkey == to.their.verkey) and isinstance(msg, Answer):
+                return True, msg
+    except SiriusTimeoutIO:
         return False, None
 
 

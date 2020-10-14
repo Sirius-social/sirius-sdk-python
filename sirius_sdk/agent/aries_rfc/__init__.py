@@ -1,3 +1,8 @@
+r"""It is package that implements features and concepts of Aries RFCs
+
+see Aries RFC here: https://github.com/hyperledger/aries-rfcs
+"""
+
 from .feature_0015_acks import *
 from .feature_0036_issue_credential import *
 from .feature_0037_present_proof import *
