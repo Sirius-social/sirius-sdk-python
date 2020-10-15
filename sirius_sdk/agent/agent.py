@@ -318,6 +318,10 @@ class Agent(TransportLayers):
             }
         )
 
+    async def abort(self):
+        self.__check_is_open()
+        await self.__rpc._reopen()
+
     def __check_is_open(self):
         if self.__rpc and self.__rpc.is_open:
             return self.__endpoints

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.messaging import Message
-from sirius_sdk.errors.exceptions import SiriusContextError
+from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusConnectionClosed
 
 from .core import _current_hub
 
@@ -18,6 +18,12 @@ class AbstractCoProtocol(ABC):
 
     def __init__(self, time_to_live: int = None):
         self.__time_to_live = time_to_live
+        self.__is_aborted = False
+        self._agent = None
+
+    @property
+    def is_aborted(self) -> bool:
+        return self.__is_aborted
 
     @property
     def time_to_live(self) -> Optional[int]:
@@ -39,8 +45,12 @@ class AbstractCoProtocol(ABC):
         pass
 
     @abstractmethod
-    async def done(self):
-        pass
+    async def abort(self):
+        if not self.__is_aborted:
+            self.__is_aborted = True
+            if self._agent:
+                await self._agent.abort()
+                self._agent = None
 
 
 class CoProtocolAnon(AbstractCoProtocol):
@@ -88,10 +98,12 @@ class CoProtocolAnon(AbstractCoProtocol):
                     self.__thread_id = None
         return success, response
 
-    async def done(self):
+    async def abort(self):
         if self.__is_start:
             await self.__transport.stop()
             self.__is_start = False
+        self.__transport = None
+        await super().abort()
 
     def __setup(self, message: Message, please_ack: bool = True):
         if please_ack:
@@ -108,9 +120,16 @@ class CoProtocolAnon(AbstractCoProtocol):
         if self.__transport is None:
             async with _current_hub().get_agent_connection_lazy() as agent:
                 self.__transport = await agent.spawn(self.__my_verkey, self.__endpoint)
+                self._agent = agent
                 await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
                 self.__is_start = True
-        yield self.__transport
+        try:
+            yield self.__transport
+        except SiriusConnectionClosed:
+            if self.is_aborted:
+                raise OperationAbortedManually('User aborted operation')
+            else:
+                raise
 
 
 class CoProtocolP2P(AbstractCoProtocol):
@@ -156,10 +175,12 @@ class CoProtocolP2P(AbstractCoProtocol):
                 self.__thread_id = None
         return success, response
 
-    async def done(self):
+    async def abort(self):
         if self.__is_start:
             await self.__transport.stop()
             self.__is_start = False
+        self.__transport = None
+        await super().abort()
 
     def __setup(self, message: Message, please_ack: bool = True):
         if please_ack:
@@ -176,9 +197,16 @@ class CoProtocolP2P(AbstractCoProtocol):
         if self.__transport is None:
             async with _current_hub().get_agent_connection_lazy() as agent:
                 self.__transport = await agent.spawn(self.__pairwise)
+                self._agent = agent
                 await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
                 self.__is_start = True
-        yield self.__transport
+        try:
+            yield self.__transport
+        except SiriusConnectionClosed:
+            if self.is_aborted:
+                raise OperationAbortedManually('User aborted operation')
+            else:
+                raise
 
 
 class CoProtocolThreaded(AbstractCoProtocol):
@@ -194,7 +222,7 @@ class CoProtocolThreaded(AbstractCoProtocol):
         self.__transport = None
 
     def __del__(self):
-        if self.__is_start:
+        if self.__is_start and asyncio.get_event_loop().is_running():
             asyncio.ensure_future(self.__transport.stop())
 
     @property
@@ -225,19 +253,28 @@ class CoProtocolThreaded(AbstractCoProtocol):
                 success, response = await transport.switch(message)
                 return success, response
 
-    async def done(self):
+    async def abort(self):
         if self.__is_start:
             await self.__transport.stop()
             self.__is_start = False
+        self.__transport = None
+        await super().abort()
 
     @asynccontextmanager
     async def __get_transport_lazy(self):
         if self.__transport is None:
             async with _current_hub().get_agent_connection_lazy() as agent:
+                self._agent = agent
                 if self.__pthid is None:
                     self.__transport = await agent.spawn(self.__thid, self.__to)
                 else:
                     self.__transport = await agent.spawn(self.__thid, self.__to, self.__pthid)
                 await self.__transport.start(time_to_live=self.time_to_live)
                 self.__is_start = True
-        yield self.__transport
+        try:
+            yield self.__transport
+        except SiriusConnectionClosed:
+            if self.is_aborted:
+                raise OperationAbortedManually('User aborted operation')
+            else:
+                raise

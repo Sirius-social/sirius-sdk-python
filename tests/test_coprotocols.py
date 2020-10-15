@@ -6,6 +6,7 @@ import pytest
 import sirius_sdk
 from sirius_sdk import Agent
 from sirius_sdk.agent.coprotocols import *
+from .conftest import get_pairwise
 from .helpers import run_coroutines
 from .helpers import ServerTestSuite
 
@@ -601,3 +602,109 @@ async def test__protocols_intersections(test_suite: ServerTestSuite):
     finally:
         await agent1.close()
         await agent2.close()
+
+
+@pytest.mark.asyncio
+async def test_coprotocol_abort(test_suite: ServerTestSuite, agent1: Agent, agent2: Agent):
+    agent1_params = test_suite.get_agent_params('agent1')
+    await agent1.open()
+    await agent2.open()
+    try:
+        pw1 = await get_pairwise(agent1, agent2)
+    finally:
+        await agent1.close()
+        await agent2.close()
+
+    co = sirius_sdk.CoProtocolThreaded(thid=uuid.uuid4().hex, to=pw1)
+    exc = None
+
+    async def infinite_reader(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal co
+        nonlocal exc
+        try:
+            async with sirius_sdk.context(server_address, credentials, p2p):
+                while True:
+                    msg = await co.get_one()
+                    print(str(msg))
+        except OperationAbortedManually as e:
+            exc = e
+
+    async def delayed_aborter():
+        nonlocal co
+        await asyncio.sleep(3)
+        await co.abort()
+
+    await run_coroutines(
+        infinite_reader(**agent1_params),
+        delayed_aborter(),
+    )
+    assert exc is not None
+    assert isinstance(exc, OperationAbortedManually)
+
+
+@pytest.mark.asyncio
+async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSuite, agent1: Agent, agent2: Agent):
+    return 1, 'TODO'
+    agent1_params = test_suite.get_agent_params('agent1')
+    agent2_params = test_suite.get_agent_params('agent2')
+    await agent1.open()
+    await agent2.open()
+    try:
+        pw1 = await get_pairwise(agent1, agent2)
+        pw2 = await get_pairwise(agent2, agent1)
+    finally:
+        await agent1.close()
+        await agent2.close()
+
+    co = sirius_sdk.CoProtocolThreaded(thid=uuid.uuid4().hex, to=pw1)
+    new_thread_id = uuid.uuid4().hex
+    msg_log = []
+
+    async def coroutine1(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal co
+        nonlocal pw1
+        nonlocal msg_log
+        nonlocal new_thread_id
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            try:
+                while True:
+                    msg = await co.get_one()
+                    print(str(msg))
+            except OperationAbortedManually:
+                pass
+
+            try:
+                new_co_on_same_hub = sirius_sdk.CoProtocolThreaded(thid=new_thread_id, to=pw1)
+                print('!')
+                msg, _, _ = await new_co_on_same_hub.get_one()
+                print('!')
+                msg_log.append(msg)
+            except Exception as e:
+                raise
+
+    async def coroutine2(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal co
+        nonlocal pw1
+        nonlocal new_thread_id
+        await asyncio.sleep(3)
+
+        await co.abort()
+
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            try:
+                new_co_on_same_hub = sirius_sdk.CoProtocolThreaded(thid=new_thread_id, to=pw2)
+                await new_co_on_same_hub.send(
+                    sirius_sdk.aries_rfc.Ping(comment='Test Ping')
+                )
+            except Exception as e:
+                raise
+
+    await run_coroutines(
+        coroutine1(**agent1_params),
+        coroutine2(**agent2_params),
+        timeout=1000
+    )
+    assert len(msg_log) == 1
+    msg = msg_log[0]
+    assert isinstance(msg, sirius_sdk.aries_rfc.Ping)
+    assert msg.comment == 'Test Ping'

@@ -142,5 +142,9 @@ class StateMachineTerminatedWithError(BaseSiriusException):
         self.notify = notify
 
 
+class OperationAbortedManually(BaseSiriusException):
+    pass
+
+
 class StateMachineAborted(BaseSiriusException):
     pass
