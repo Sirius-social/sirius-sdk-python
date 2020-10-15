@@ -43,10 +43,11 @@ class Hub:
             storage=storage,
             spawn_strategy=SpawnStrategy.CONCURRENT
         )
+        self.__loop = loop or asyncio.get_event_loop()
 
     def __del__(self):
-        if self.__agent.is_open:
-            asyncio.ensure_future(self.__agent.close())
+        if self.__agent.is_open and self.__loop.is_running():
+            asyncio.ensure_future(self.__agent.close(), loop=self.__loop)
 
     def copy(self):
         inst = Hub(
