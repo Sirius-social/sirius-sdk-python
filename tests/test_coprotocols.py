@@ -492,8 +492,8 @@ async def test__threadbased_protocol_on_hub(test_suite: ServerTestSuite):
         await agent2.close()
 
     thread_id = uuid.uuid4().hex
-    co1 = sirius_sdk.CoProtocolThreaded(thread_id, pairwise1)
-    co2 = sirius_sdk.CoProtocolThreaded(thread_id, pairwise2)
+    co1 = sirius_sdk.CoProtocolThreadedP2P(thread_id, pairwise1)
+    co2 = sirius_sdk.CoProtocolThreadedP2P(thread_id, pairwise2)
     MSG_LOG.clear()
     await run_coroutines(
         routine1_on_hub(co1, **agent1_params),
@@ -615,7 +615,7 @@ async def test_coprotocol_abort(test_suite: ServerTestSuite, agent1: Agent, agen
         await agent1.close()
         await agent2.close()
 
-    co = sirius_sdk.CoProtocolThreaded(thid=uuid.uuid4().hex, to=pw1)
+    co = sirius_sdk.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=pw1)
     exc = None
 
     async def infinite_reader(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
@@ -656,7 +656,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
         await agent1.close()
         await agent2.close()
 
-    co = sirius_sdk.CoProtocolThreaded(thid=uuid.uuid4().hex, to=pw1)
+    co = sirius_sdk.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=pw1)
     new_thread_id = uuid.uuid4().hex
     msg_log = []
 
@@ -674,7 +674,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
                 pass
 
             try:
-                new_co_on_same_hub = sirius_sdk.CoProtocolThreaded(thid=new_thread_id, to=pw1)
+                new_co_on_same_hub = sirius_sdk.CoProtocolThreadedP2P(thid=new_thread_id, to=pw1)
                 print('!')
                 msg, _, _ = await new_co_on_same_hub.get_one()
                 print('!')
@@ -692,7 +692,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
 
         async with sirius_sdk.context(server_address, credentials, p2p):
             try:
-                new_co_on_same_hub = sirius_sdk.CoProtocolThreaded(thid=new_thread_id, to=pw2)
+                new_co_on_same_hub = sirius_sdk.CoProtocolThreadedP2P(thid=new_thread_id, to=pw2)
                 await new_co_on_same_hub.send(
                     sirius_sdk.aries_rfc.Ping(comment='Test Ping')
                 )

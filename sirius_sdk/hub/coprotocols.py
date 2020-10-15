@@ -209,7 +209,7 @@ class CoProtocolP2P(AbstractCoProtocol):
                 raise
 
 
-class CoProtocolThreaded(AbstractCoProtocol):
+class CoProtocolThreadedP2P(AbstractCoProtocol):
 
     def __init__(self, thid: str, to: Pairwise, pthid: str = None, time_to_live: int = None):
         super().__init__(time_to_live=time_to_live)
@@ -217,8 +217,6 @@ class CoProtocolThreaded(AbstractCoProtocol):
         self.__thid = thid
         self.__pthid = pthid
         self.__to = to
-        self.__sender_order = 0
-        self.__received_orders = {}
         self.__transport = None
 
     def __del__(self):
@@ -278,3 +276,18 @@ class CoProtocolThreaded(AbstractCoProtocol):
                 raise OperationAbortedManually('User aborted operation')
             else:
                 raise
+
+
+class CoProtocolThreaded2(AbstractCoProtocol):
+
+    def __init__(self, thid: str, to: Pairwise, pthid: str = None, time_to_live: int = None):
+        super().__init__(time_to_live=time_to_live)
+        self.__is_start = False
+        self.__thid = thid
+        self.__pthid = pthid
+        self.__to = to
+        self.__transport = None
+
+    def __del__(self):
+        if self.__is_start and asyncio.get_event_loop().is_running():
+            asyncio.ensure_future(self.__transport.stop())
