@@ -276,6 +276,25 @@ async def test_multiple_provers(
             }
         }
 
+        for prover, v2p, p2v in [(prover1, v_to_p1, p1_to_v), (prover2, v_to_p2, p2_to_v)]:
+            coro_verifier = run_verifier(
+                agent=verifier,
+                prover=v2p,
+                proof_request=proof_request
+            )
+            coro_prover = run_prover(
+                agent=prover,
+                verifier=p2v,
+                master_secret_id=prover_master_secret_name
+            )
+            print('Run state machines')
+            results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
+            print('Finish state machines')
+            print(str(results))
+            assert len(results) == 2
+            for res in results:
+                assert res is True
+
     finally:
         await issuer.close()
         await prover1.close()
