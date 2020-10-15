@@ -16,15 +16,8 @@ THREAD_DECORATOR = '~thread'
 
 class AbstractCoProtocol(ABC):
 
-    def __init__(self, protocols: List[str], time_to_live: int = None):
+    def __init__(self, time_to_live: int = None):
         self.__time_to_live = time_to_live
-        if not protocols:
-            raise SiriusContextError('You must set protocols list. It is empty for now!')
-        self.__protocols = protocols
-
-    @property
-    def protocols(self) -> List[str]:
-        return self.__protocols
 
     @property
     def time_to_live(self) -> Optional[int]:
@@ -53,16 +46,23 @@ class AbstractCoProtocol(ABC):
 class CoProtocolAnon(AbstractCoProtocol):
 
     def __init__(self, my_verkey: str, endpoint: TheirEndpoint, protocols: List[str], time_to_live: int = None):
-        super().__init__(protocols=protocols, time_to_live=time_to_live)
+        if not protocols:
+            raise SiriusContextError('You must set protocols list. It is empty for now!')
+        super().__init__(time_to_live=time_to_live)
         self.__is_start = False
         self.__transport = None
         self.__my_verkey = my_verkey
         self.__endpoint = endpoint
         self.__thread_id = None
+        self.__protocols = protocols
 
     def __del__(self):
-        if self.__is_start:
+        if self.__is_start and asyncio.get_event_loop().is_running():
             asyncio.ensure_future(self.__transport.stop())
+
+    @property
+    def protocols(self) -> List[str]:
+        return self.__protocols
 
     async def send(self, message: Message):
         async with self.__get_transport_lazy() as transport:
@@ -116,15 +116,22 @@ class CoProtocolAnon(AbstractCoProtocol):
 class CoProtocolP2P(AbstractCoProtocol):
 
     def __init__(self, pairwise: Pairwise, protocols: List[str], time_to_live: int = None):
-        super().__init__(protocols=protocols, time_to_live=time_to_live)
+        if not protocols:
+            raise SiriusContextError('You must set protocols list. It is empty for now!')
+        super().__init__(time_to_live=time_to_live)
         self.__is_start = False
         self.__transport = None
         self.__pairwise = pairwise
         self.__thread_id = None
+        self.__protocols = protocols
 
     def __del__(self):
-        if self.__is_start:
+        if self.__is_start and asyncio.get_event_loop().is_running():
             asyncio.ensure_future(self.__transport.stop())
+
+    @property
+    def protocols(self) -> List[str]:
+        return self.__protocols
 
     async def send(self, message: Message):
         async with self.__get_transport_lazy() as transport:
@@ -176,8 +183,8 @@ class CoProtocolP2P(AbstractCoProtocol):
 
 class CoProtocolThreaded(AbstractCoProtocol):
 
-    def __init__(self, thid: str, to: Pairwise, protocols: List[str], pthid: str = None, time_to_live: int = None):
-        super().__init__(protocols=protocols, time_to_live=time_to_live)
+    def __init__(self, thid: str, to: Pairwise, pthid: str = None, time_to_live: int = None):
+        super().__init__(time_to_live=time_to_live)
         self.__is_start = False
         self.__thid = thid
         self.__pthid = pthid
@@ -231,6 +238,6 @@ class CoProtocolThreaded(AbstractCoProtocol):
                     self.__transport = await agent.spawn(self.__thid, self.__to)
                 else:
                     self.__transport = await agent.spawn(self.__thid, self.__to, self.__pthid)
-                await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
+                await self.__transport.start(time_to_live=self.time_to_live)
                 self.__is_start = True
         yield self.__transport

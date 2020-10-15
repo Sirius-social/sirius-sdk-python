@@ -26,7 +26,6 @@ async def ask_and_wait_answer(query: Question, to: Pairwise) -> (bool, Optional[
     co = CoProtocolThreaded(
         thid=query.id,
         to=to,
-        protocols=[Question.PROTOCOL, Ack.PROTOCOL],
         time_to_live=ttl
     )
     await co.send(query)
