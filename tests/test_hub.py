@@ -3,7 +3,6 @@ import asyncio
 import pytest
 
 import sirius_sdk
-from sirius_sdk import Agent
 from sirius_sdk.hub import _current_hub
 
 from .helpers import ServerTestSuite
@@ -38,3 +37,27 @@ async def test_sane(test_suite: ServerTestSuite):
     assert ping2 is True
     assert set(endpoints1) != set(endpoints2)
     assert set(my_did_list1) != set(my_did_list2)
+
+
+@pytest.mark.asyncio
+async def test_aborting(test_suite: ServerTestSuite):
+    params = test_suite.get_agent_params('agent1')
+    agent1 = None
+    agent2 = None
+    async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
+        hub = _current_hub()
+        async with hub.get_agent_connection_lazy() as agent:
+            agent1 = agent
+            ok1 = await agent1.ping()
+            assert ok1 is True
+
+        await hub.abort()
+
+        async with hub.get_agent_connection_lazy() as agent:
+            agent2 = agent
+            ok2 = await agent2.ping()
+            assert ok2 is True
+
+    assert id(agent1) != id(agent2)
+    assert agent1 is not None
+    assert agent2 is not None
