@@ -54,14 +54,19 @@ class Hub:
         return inst
 
     async def abort(self):
-        if self.__loop == asyncio.get_event_loop():
-            if self.__loop.is_running():
+        if self.__loop.is_running():
+            if self.__loop == asyncio.get_event_loop():
                 old_agent = self.__agent
                 self.__create_agent_instance()
                 if old_agent.is_open:
                     await old_agent.close()
-        else:
-            asyncio.ensure_future(self.abort(), loop=self.__loop)
+            else:
+                asyncio.ensure_future(self.abort(), loop=self.__loop)
+
+    def run_soon(self, coro):
+        assert asyncio.iscoroutine(coro), 'Expected coroutine object'
+        if self.__loop.is_running():
+            asyncio.ensure_future(coro, loop=self.__loop)
 
     @asynccontextmanager
     async def get_agent_connection_lazy(self):

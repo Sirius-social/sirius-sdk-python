@@ -40,7 +40,7 @@ async def routine1(protocol: AbstractCoProtocolTransport):
 
 
 async def routine1_on_hub(
-        co: sirius_sdk.AbstractCoProtocol,
+        co: sirius_sdk.AbstractP2PCoProtocol,
         server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection,
         **kwargs
 ):
@@ -82,7 +82,7 @@ async def routine2(protocol: AbstractCoProtocolTransport):
 
 
 async def routine2_on_hub(
-        co: sirius_sdk.AbstractCoProtocol,
+        co: sirius_sdk.AbstractP2PCoProtocol,
         server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection,
         **kwargs
 ):
@@ -190,8 +190,8 @@ async def test__their_endpoint_protocol_on_hub(test_suite: ServerTestSuite):
     # FIRE!!!
     their1 = TheirEndpoint(agent2_endpoint, entity2['verkey'])
     their2 = TheirEndpoint(agent1_endpoint, entity1['verkey'])
-    co1 = sirius_sdk.CoProtocolAnon(entity1['verkey'], their1, ['test_protocol'])
-    co2 = sirius_sdk.CoProtocolAnon(entity2['verkey'], their2, ['test_protocol'])
+    co1 = sirius_sdk.CoProtocolP2PAnon(entity1['verkey'], their1, ['test_protocol'])
+    co2 = sirius_sdk.CoProtocolP2PAnon(entity2['verkey'], their2, ['test_protocol'])
     MSG_LOG.clear()
     await run_coroutines(
         routine1_on_hub(co1, **agent1_params),
@@ -700,8 +700,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
 
     await run_coroutines(
         coroutine1(**agent1_params),
-        coroutine2(**agent2_params),
-        timeout=1000
+        coroutine2(**agent2_params)
     )
     assert len(msg_log) == 1
     msg = msg_log[0]

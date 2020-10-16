@@ -12,7 +12,7 @@ from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 
 from .core import _current_hub, init, context
 from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy
-from .coprotocols import CoProtocolThreadedP2P, CoProtocolAnon, CoProtocolP2P, AbstractCoProtocol
+from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P, AbstractP2PCoProtocol
 
 
 DID: AbstractDID = DIDProxy()

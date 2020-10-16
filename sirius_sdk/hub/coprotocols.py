@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Any, Union, Tuple, Dict
 from contextlib import asynccontextmanager
 
 import sirius_sdk
@@ -22,14 +22,40 @@ class AbstractCoProtocol(ABC):
         self.__time_to_live = time_to_live
         self.__is_aborted = False
         self._hub = None
+        self._is_start = False
+        self._transport = None
+
+    def __del__(self):
+        if self._is_start and self._hub:
+            self._hub.run_soon(self._transport.stop())
+
+    @property
+    def time_to_live(self) -> Optional[int]:
+        return self.__time_to_live
 
     @property
     def is_aborted(self) -> bool:
         return self.__is_aborted
 
-    @property
-    def time_to_live(self) -> Optional[int]:
-        return self.__time_to_live
+    async def abort(self):
+        if self._hub:
+            self._hub.run_soon(self.__clean())
+            if not self.__is_aborted:
+                self.__is_aborted = True
+                await self._hub.abort()
+                self._hub = None
+
+    async def __clean(self):
+        if self._is_start:
+            await self._transport.stop()
+            self._is_start = False
+        self._transport = None
+
+
+class AbstractP2PCoProtocol(AbstractCoProtocol):
+
+    def __init__(self, time_to_live: int = None):
+        super().__init__(time_to_live)
 
     @abstractmethod
     async def send(self, message: Message):
@@ -37,8 +63,9 @@ class AbstractCoProtocol(ABC):
 
     @abstractmethod
     async def get_one(self) -> (Optional[Message], str, Optional[str]):
-        """
-        return message, sender_verkey, recipient_verkey
+        """Accumulate event from participant
+
+        return: message, sender_verkey, recipient_verkey
         """
         pass
 
@@ -46,31 +73,17 @@ class AbstractCoProtocol(ABC):
     async def switch(self, message: Message) -> (bool, Message):
         pass
 
-    @abstractmethod
-    async def abort(self):
-        if not self.__is_aborted:
-            self.__is_aborted = True
-            if self._hub:
-                await self._hub.abort()
-                self._hub = None
 
-
-class CoProtocolAnon(AbstractCoProtocol):
+class CoProtocolP2PAnon(AbstractP2PCoProtocol):
 
     def __init__(self, my_verkey: str, endpoint: TheirEndpoint, protocols: List[str], time_to_live: int = None):
         if not protocols:
             raise SiriusContextError('You must set protocols list. It is empty for now!')
         super().__init__(time_to_live=time_to_live)
-        self.__is_start = False
-        self.__transport = None
         self.__my_verkey = my_verkey
         self.__endpoint = endpoint
         self.__thread_id = None
         self.__protocols = protocols
-
-    def __del__(self):
-        if self.__is_start and asyncio.get_event_loop().is_running():
-            asyncio.ensure_future(self.__transport.stop())
 
     @property
     def protocols(self) -> List[str]:
@@ -100,13 +113,6 @@ class CoProtocolAnon(AbstractCoProtocol):
                     self.__thread_id = None
         return success, response
 
-    async def abort(self):
-        if self.__is_start:
-            await self.__transport.stop()
-            self.__is_start = False
-        self.__transport = None
-        await super().abort()
-
     def __setup(self, message: Message, please_ack: bool = True):
         if please_ack:
             if PLEASE_ACK_DECORATOR not in message:
@@ -119,14 +125,14 @@ class CoProtocolAnon(AbstractCoProtocol):
 
     @asynccontextmanager
     async def __get_transport_lazy(self):
-        if self.__transport is None:
+        if self._transport is None:
             self._hub = _current_hub()
             async with self._hub.get_agent_connection_lazy() as agent:
-                self.__transport = await agent.spawn(self.__my_verkey, self.__endpoint)
-                await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
-                self.__is_start = True
+                self._transport = await agent.spawn(self.__my_verkey, self.__endpoint)
+                await self._transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
+                self._is_start = True
         try:
-            yield self.__transport
+            yield self._transport
         except SiriusConnectionClosed:
             if self.is_aborted:
                 raise OperationAbortedManually('User aborted operation')
@@ -134,21 +140,15 @@ class CoProtocolAnon(AbstractCoProtocol):
                 raise
 
 
-class CoProtocolP2P(AbstractCoProtocol):
+class CoProtocolP2P(AbstractP2PCoProtocol):
 
     def __init__(self, pairwise: Pairwise, protocols: List[str], time_to_live: int = None):
         if not protocols:
             raise SiriusContextError('You must set protocols list. It is empty for now!')
         super().__init__(time_to_live=time_to_live)
-        self.__is_start = False
-        self.__transport = None
         self.__pairwise = pairwise
         self.__thread_id = None
         self.__protocols = protocols
-
-    def __del__(self):
-        if self.__is_start and asyncio.get_event_loop().is_running():
-            asyncio.ensure_future(self.__transport.stop())
 
     @property
     def protocols(self) -> List[str]:
@@ -177,13 +177,6 @@ class CoProtocolP2P(AbstractCoProtocol):
                 self.__thread_id = None
         return success, response
 
-    async def abort(self):
-        if self.__is_start:
-            await self.__transport.stop()
-            self.__is_start = False
-        self.__transport = None
-        await super().abort()
-
     def __setup(self, message: Message, please_ack: bool = True):
         if please_ack:
             if PLEASE_ACK_DECORATOR not in message:
@@ -196,14 +189,14 @@ class CoProtocolP2P(AbstractCoProtocol):
 
     @asynccontextmanager
     async def __get_transport_lazy(self):
-        if self.__transport is None:
+        if self._transport is None:
             self._hub = _current_hub()
             async with self._hub.get_agent_connection_lazy() as agent:
-                self.__transport = await agent.spawn(self.__pairwise)
-                await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
-                self.__is_start = True
+                self._transport = await agent.spawn(self.__pairwise)
+                await self._transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
+                self._is_start = True
         try:
-            yield self.__transport
+            yield self._transport
         except SiriusConnectionClosed:
             if self.is_aborted:
                 raise OperationAbortedManually('User aborted operation')
@@ -211,19 +204,13 @@ class CoProtocolP2P(AbstractCoProtocol):
                 raise
 
 
-class CoProtocolThreadedP2P(AbstractCoProtocol):
+class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
 
     def __init__(self, thid: str, to: Pairwise, pthid: str = None, time_to_live: int = None):
         super().__init__(time_to_live=time_to_live)
-        self.__is_start = False
         self.__thid = thid
         self.__pthid = pthid
         self.__to = to
-        self.__transport = None
-
-    def __del__(self):
-        if self.__is_start and asyncio.get_event_loop().is_running():
-            asyncio.ensure_future(self.__transport.stop())
 
     @property
     def thid(self) -> str:
@@ -247,32 +234,22 @@ class CoProtocolThreadedP2P(AbstractCoProtocol):
 
     async def switch(self, message: Message) -> (bool, Message):
         async with self.__get_transport_lazy() as transport:
-            if type(self.__to) is list:
-                raise NotImplemented
-            else:
-                success, response = await transport.switch(message)
-                return success, response
-
-    async def abort(self):
-        if self.__is_start:
-            await self.__transport.stop()
-            self.__is_start = False
-        self.__transport = None
-        await super().abort()
+            success, response = await transport.switch(message)
+            return success, response
 
     @asynccontextmanager
     async def __get_transport_lazy(self):
-        if self.__transport is None:
+        if self._transport is None:
             self._hub = _current_hub()
             async with self._hub.get_agent_connection_lazy() as agent:
                 if self.__pthid is None:
-                    self.__transport = await agent.spawn(self.__thid, self.__to)
+                    self._transport = await agent.spawn(self.__thid, self.__to)
                 else:
-                    self.__transport = await agent.spawn(self.__thid, self.__to, self.__pthid)
-                await self.__transport.start(time_to_live=self.time_to_live)
-                self.__is_start = True
+                    self._transport = await agent.spawn(self.__thid, self.__to, self.__pthid)
+                await self._transport.start(time_to_live=self.time_to_live)
+                self._is_start = True
         try:
-            yield self.__transport
+            yield self._transport
         except SiriusConnectionClosed:
             if self.is_aborted:
                 raise OperationAbortedManually('User aborted operation')
@@ -280,66 +257,86 @@ class CoProtocolThreadedP2P(AbstractCoProtocol):
                 raise
 
 
-class CoProtocolThreaded(AbstractCoProtocol):
+class CoProtocolThreadedTheirs(AbstractCoProtocol):
 
-    def __init__(self, thid: str, to: Union[List[Pairwise], List[str]], pthid: str = None, time_to_live: int = None):
-        if len(to) < 1:
-            raise SiriusContextError('to is Empty')
+    def __init__(self, thid: str, theirs: List[Pairwise], pthid: str = None, time_to_live: int = None):
+        if len(theirs) < 1:
+            raise SiriusContextError('theirs is empty')
         super().__init__(time_to_live=time_to_live)
-        self.__is_start = False
         self.__thid = thid
         self.__pthid = pthid
-        self.__to = to
-        self.__transport = None
-        self.__cached_p2p = {}
+        self.__theirs = theirs
+        self.__dids = [their.their.did for their in theirs]
 
-    def __del__(self):
-        if self.__is_start and asyncio.get_event_loop().is_running():
-            asyncio.ensure_future(self.__transport.stop())
+    @property
+    def theirs(self) -> List[Pairwise]:
+        return self.__theirs
 
-    async def send(self, message: Message):
+    async def send(self, message: Message) -> Dict[Pairwise, Tuple[bool, str]]:
+        """Send message to given participants
+
+        return: List[( str: participant-id, bool: message was successfully sent, str: endpoint response body )]
+        """
+        results = {}
         async with self.__get_transport_lazy() as transport:
-            to = await self.__get_pairwise_list()
-            res = await transport.send_many(message, to)
-            raise
+            responses = await transport.send_many(message, self.__theirs)
+        for p2p, response in zip(self.__theirs, responses):
+            success, body = response
+            results[p2p] = (success, body)
+        return results
 
-    async def abort(self):
-        if self.__is_start:
-            await self.__transport.stop()
-            self.__is_start = False
-        self.__transport = None
-        await super().abort()
+    async def get_one(self) -> Tuple[Pairwise, Message]:
+        """Read event from any of participants at given timeout
 
-    async def __get_pairwise_list(self) -> List[Pairwise]:
-        collection = []
-        for to in self.__to:
-            if isinstance(to, Pairwise):
-                collection.append(to)
-            elif isinstance(to, str):
-                try_get = self.__cached_p2p.get(to, None)
-                if try_get is None:
-                    p = await sirius_sdk.PairwiseList.load_for_did(to)
-                    if p is None:
-                        raise RuntimeError(f'Unknown pairwise their did: {to}')
-                    self.__cached_p2p[to] = p
-                    try_get = p
-                collection.append(try_get)
-            else:
-                raise RuntimeError('Unexpected type')
-        return collection
+        return: (Pairwise: participant-id, Message: message from given participant)
+        """
+        async with self.__get_transport_lazy() as transport:
+            message, sender_verkey, recipient_verkey = await transport.get_one()
+            p2p = self.__load_p2p_from_verkey(sender_verkey)
+        return p2p, message
+
+    async def switch(self, message: Message) -> Dict[Pairwise, Tuple[bool, Optional[Message]]]:
+        """Switch state while participants at given timeout give responses
+
+        return: {
+            Pairwise: participant,
+            (
+              bool: message was successfully sent to participant,
+              Message: response message from participant or Null if request message was not successfully sent
+            )
+        }
+        """
+        statuses = await self.send(message)
+        # fill errors to result just now
+        results = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
+        # then work with success participants only
+        success_theirs = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
+        accum = []
+        while len(accum) < len(success_theirs):
+            p2p, message = await self.get_one()
+            if p2p and p2p.their.did in self.__dids:
+                success_theirs[p2p] = (True, message)
+        results.update(success_theirs)
+        return results
+
+    def __load_p2p_from_verkey(self, verkey: str) -> Optional[Pairwise]:
+        for p2p in self.__theirs:
+            if p2p.their.verkey == verkey:
+                return p2p
+        return None
 
     @asynccontextmanager
     async def __get_transport_lazy(self):
-        if self.__transport is None:
+        if self._transport is None:
             async with _current_hub().get_agent_connection_lazy() as agent:
                 if self.__pthid is None:
-                    self.__transport = await agent.spawn(self.__thid, self.__to)
+                    self._transport = await agent.spawn(self.__thid)
                 else:
-                    self.__transport = await agent.spawn(self.__thid, self.__to, self.__pthid)
-                await self.__transport.start(time_to_live=self.time_to_live)
-                self.__is_start = True
+                    self._transport = await agent.spawn(self.__thid, self.__pthid)
+                await self._transport.start(time_to_live=self.time_to_live)
+                self._is_start = True
         try:
-            yield self.__transport
+            yield self._transport
         except SiriusConnectionClosed:
             if self.is_aborted:
                 raise OperationAbortedManually('User aborted operation')

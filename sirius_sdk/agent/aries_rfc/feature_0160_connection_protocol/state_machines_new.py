@@ -78,7 +78,7 @@ class Inviter(sirius_sdk.AbstractStateMachine):
         )
 
         # Allocate transport channel between self and theirs by verkeys factor
-        co = sirius_sdk.CoProtocolAnon(
+        co = sirius_sdk.CoProtocolP2PAnon(
             my_verkey=self.me.verkey,
             endpoint=invitee_endpoint,
             protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
@@ -217,7 +217,7 @@ class Invitee(sirius_sdk.AbstractStateMachine):
             verkey=connection_key
         )
         # Allocate transport channel between self and theirs by verkeys factor
-        co = sirius_sdk.CoProtocolAnon(
+        co = sirius_sdk.CoProtocolP2PAnon(
             my_verkey=self.me.verkey,
             endpoint=inviter_endpoint,
             protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
