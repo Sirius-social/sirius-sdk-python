@@ -123,7 +123,6 @@ class CoProtocolAnon(AbstractCoProtocol):
             self._hub = _current_hub()
             async with self._hub.get_agent_connection_lazy() as agent:
                 self.__transport = await agent.spawn(self.__my_verkey, self.__endpoint)
-                self._agent = agent
                 await self.__transport.start(protocols=self.protocols, time_to_live=self.time_to_live)
                 self.__is_start = True
         try:
@@ -266,7 +265,6 @@ class CoProtocolThreadedP2P(AbstractCoProtocol):
         if self.__transport is None:
             self._hub = _current_hub()
             async with self._hub.get_agent_connection_lazy() as agent:
-                self._agent = agent
                 if self.__pthid is None:
                     self.__transport = await agent.spawn(self.__thid, self.__to)
                 else:
@@ -334,7 +332,6 @@ class CoProtocolThreaded(AbstractCoProtocol):
     async def __get_transport_lazy(self):
         if self.__transport is None:
             async with _current_hub().get_agent_connection_lazy() as agent:
-                self._agent = agent
                 if self.__pthid is None:
                     self.__transport = await agent.spawn(self.__thid, self.__to)
                 else:

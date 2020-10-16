@@ -56,9 +56,10 @@ class Hub:
     async def abort(self):
         if self.__loop == asyncio.get_event_loop():
             if self.__loop.is_running():
-                if self.__agent.is_open:
-                    await self.__agent.close()
+                old_agent = self.__agent
                 self.__create_agent_instance()
+                if old_agent.is_open:
+                    await old_agent.close()
         else:
             asyncio.ensure_future(self.abort(), loop=self.__loop)
 

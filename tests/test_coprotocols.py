@@ -644,7 +644,6 @@ async def test_coprotocol_abort(test_suite: ServerTestSuite, agent1: Agent, agen
 
 @pytest.mark.asyncio
 async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSuite, agent1: Agent, agent2: Agent):
-    return 1, 'TODO'
     agent1_params = test_suite.get_agent_params('agent1')
     agent2_params = test_suite.get_agent_params('agent2')
     await agent1.open()
@@ -657,7 +656,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
         await agent2.close()
 
     co = sirius_sdk.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=pw1)
-    new_thread_id = uuid.uuid4().hex
+    new_thread_id = 'new-thread-id-' + uuid.uuid4().hex
     msg_log = []
 
     async def coroutine1(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
@@ -675,7 +674,6 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
 
             try:
                 new_co_on_same_hub = sirius_sdk.CoProtocolThreadedP2P(thid=new_thread_id, to=pw1)
-                print('!')
                 msg, _, _ = await new_co_on_same_hub.get_one()
                 print('!')
                 msg_log.append(msg)
@@ -690,6 +688,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
 
         await co.abort()
 
+        await asyncio.sleep(3)
         async with sirius_sdk.context(server_address, credentials, p2p):
             try:
                 new_co_on_same_hub = sirius_sdk.CoProtocolThreadedP2P(thid=new_thread_id, to=pw2)
