@@ -829,15 +829,17 @@ async def test_coprotocol_threaded_theirs_switch_timeout(
         await agent2.close()
         await agent3.close()
 
+    ttl = 10
     thread_id = 'thread-id-' + uuid.uuid4().hex
     statuses = None
 
     async def actor(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
         nonlocal thread_id
         nonlocal statuses
+        nonlocal ttl
         async with sirius_sdk.context(server_address, credentials, p2p):
             msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
-            co = sirius_sdk.CoProtocolThreadedTheirs(thread_id, [pw1, pw2], time_to_live=10)
+            co = sirius_sdk.CoProtocolThreadedTheirs(thread_id, [pw1, pw2], time_to_live=ttl)
             statuses = await co.switch(msg)
 
     async def responder(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
@@ -852,6 +854,7 @@ async def test_coprotocol_threaded_theirs_switch_timeout(
     await run_coroutines(
         actor(**agent1_params),
         responder(**agent2_params),
+        timeout=2*ttl
     )
 
     assert statuses is not None
