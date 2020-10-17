@@ -52,11 +52,13 @@ class BaseAgentConnection(ABC):
             timeout=timeout,
             loop=loop
         )
+        self.__loop = loop or asyncio.get_event_loop()
         self._p2p = p2p
         self._timeout = timeout
 
     def __del__(self):
-        asyncio.ensure_future(self.close())
+        if self.__loop and self.__loop.is_running():
+            asyncio.ensure_future(self.close())
 
     @property
     def timeout(self):

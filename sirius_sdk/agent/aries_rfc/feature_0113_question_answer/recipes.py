@@ -2,7 +2,7 @@ import datetime
 from typing import Optional
 
 import sirius_sdk
-from sirius_sdk.hub import CoProtocolThreaded
+from sirius_sdk.hub import CoProtocolThreadedP2P
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 
@@ -23,7 +23,7 @@ async def ask_and_wait_answer(query: Question, to: Pairwise) -> (bool, Optional[
     else:
         ttl = None
 
-    co = CoProtocolThreaded(
+    co = CoProtocolThreadedP2P(
         thid=query.id,
         to=to,
         time_to_live=ttl

@@ -34,16 +34,10 @@ class Hub:
         self.__server_uri = server_uri
         self.__credentials = credentials
         self.__p2p = p2p
-        self.__agent = Agent(
-            server_address=server_uri,
-            credentials=credentials,
-            p2p=p2p,
-            timeout=io_timeout or BaseAgentConnection.IO_TIMEOUT,
-            loop=loop,
-            storage=storage,
-            spawn_strategy=SpawnStrategy.CONCURRENT
-        )
+        self.__timeout = io_timeout or BaseAgentConnection.IO_TIMEOUT
+        self.__storage = storage
         self.__loop = loop or asyncio.get_event_loop()
+        self.__create_agent_instance()
 
     def __del__(self):
         if self.__agent.is_open and self.__loop.is_running():
@@ -57,8 +51,22 @@ class Hub:
         inst.__microledgers = self.__microledgers
         inst.__pairwise_storage = self.__pairwise_storage
         inst.__did = self.__did
-        inst.__agent = self.__agent
         return inst
+
+    async def abort(self):
+        if self.__loop.is_running():
+            if self.__loop == asyncio.get_event_loop():
+                old_agent = self.__agent
+                self.__create_agent_instance()
+                if old_agent.is_open:
+                    await old_agent.close()
+            else:
+                asyncio.ensure_future(self.abort(), loop=self.__loop)
+
+    def run_soon(self, coro):
+        assert asyncio.iscoroutine(coro), 'Expected coroutine object'
+        if self.__loop.is_running():
+            asyncio.ensure_future(coro, loop=self.__loop)
 
     @asynccontextmanager
     async def get_agent_connection_lazy(self):
@@ -89,6 +97,17 @@ class Hub:
     async def get_did(self) -> AbstractDID:
         async with self.get_agent_connection_lazy() as agent:
             return self.__did or agent.wallet.did
+
+    def __create_agent_instance(self):
+        self.__agent = Agent(
+            server_address=self.__server_uri,
+            credentials=self.__credentials,
+            p2p=self.__p2p,
+            timeout=self.__timeout,
+            loop=self.__loop,
+            storage=self.__storage,
+            spawn_strategy=SpawnStrategy.CONCURRENT
+        )
 
 
 def init(server_uri: str, credentials: bytes, p2p: P2PConnection, io_timeout: int = None,

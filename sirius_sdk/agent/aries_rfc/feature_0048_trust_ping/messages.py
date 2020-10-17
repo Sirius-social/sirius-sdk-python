@@ -47,7 +47,9 @@ class Pong(AriesProtocolMessage, metaclass=RegisterMessage):
     def __init__(self, ping_id: str=None, comment: Optional[str]=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if ping_id is not None:
-            self.get(THREAD_DECORATOR, {}).update({'thid': ping_id})
+            thread = self.get(THREAD_DECORATOR, {})
+            thread['thid'] = ping_id
+            self[THREAD_DECORATOR] = thread
         if comment is not None:
             self['comment'] = comment
 
