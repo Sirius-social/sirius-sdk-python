@@ -3,11 +3,10 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Any, Union, Tuple, Dict
 from contextlib import asynccontextmanager
 
-import sirius_sdk
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusConnectionClosed, \
-    SiriusRPCError
+    SiriusTimeoutIO
 
 from .core import _current_hub
 
@@ -285,15 +284,19 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
             results[p2p] = (success, body)
         return results
 
-    async def get_one(self) -> Tuple[Pairwise, Message]:
+    async def get_one(self) -> Tuple[Optional[Pairwise], Optional[Message]]:
         """Read event from any of participants at given timeout
 
         return: (Pairwise: participant-id, Message: message from given participant)
         """
         async with self.__get_transport_lazy() as transport:
-            message, sender_verkey, recipient_verkey = await transport.get_one()
-            p2p = self.__load_p2p_from_verkey(sender_verkey)
-        return p2p, message
+            try:
+                message, sender_verkey, recipient_verkey = await transport.get_one()
+            except SiriusTimeoutIO:
+                return None, None
+            else:
+                p2p = self.__load_p2p_from_verkey(sender_verkey)
+                return p2p, message
 
     async def switch(self, message: Message) -> Dict[Pairwise, Tuple[bool, Optional[Message]]]:
         """Switch state while participants at given timeout give responses
@@ -311,11 +314,14 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         results = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
         # then work with success participants only
         success_theirs = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
-        accum = []
-        while len(accum) < len(success_theirs):
+        accum = 0
+        while accum < len(success_theirs):
             p2p, message = await self.get_one()
+            if p2p is None:
+                break
             if p2p and p2p.their.did in self.__dids:
                 success_theirs[p2p] = (True, message)
+                accum += 1
         results.update(success_theirs)
         return results
 

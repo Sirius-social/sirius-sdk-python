@@ -706,3 +706,158 @@ async def test_coprotocol_abort_multiple_ops_single_hub(test_suite: ServerTestSu
     msg = msg_log[0]
     assert isinstance(msg, sirius_sdk.aries_rfc.Ping)
     assert msg.comment == 'Test Ping'
+
+
+@pytest.mark.asyncio
+async def test_coprotocol_threaded_theirs_send(
+        test_suite: ServerTestSuite, agent1: Agent, agent2: Agent, agent3: Agent
+):
+    agent1_params = test_suite.get_agent_params('agent1')
+    agent2_params = test_suite.get_agent_params('agent2')
+    agent3_params = test_suite.get_agent_params('agent3')
+    await agent1.open()
+    await agent2.open()
+    await agent3.open()
+    try:
+        pw1 = await get_pairwise(agent1, agent2)
+        pw2 = await get_pairwise(agent1, agent3)
+    finally:
+        await agent1.close()
+        await agent2.close()
+        await agent3.close()
+
+    thread_id = 'thread-id-' + uuid.uuid4().hex
+    rcv_messages = []
+
+    async def sender(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal thread_id
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
+            co = sirius_sdk.CoProtocolThreadedTheirs(thread_id, [pw1, pw2])
+            await co.send(msg)
+
+    async def reader(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal rcv_messages
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            listener = await sirius_sdk.subscribe()
+            async for event in listener:
+                rcv_messages.append(event.message)
+                return
+
+    await run_coroutines(
+        sender(**agent1_params),
+        reader(**agent2_params),
+        reader(**agent3_params)
+    )
+
+    assert len(rcv_messages) == 2
+    msg1 = rcv_messages[0]
+    msg2 = rcv_messages[1]
+    for msg in [msg1, msg2]:
+        assert isinstance(msg1, sirius_sdk.aries_rfc.Ping)
+        assert msg['~thread']['thid'] == thread_id
+        assert msg.comment == 'Test Ping'
+
+
+@pytest.mark.asyncio
+async def test_coprotocol_threaded_theirs_switch(
+        test_suite: ServerTestSuite, agent1: Agent, agent2: Agent, agent3: Agent
+):
+    agent1_params = test_suite.get_agent_params('agent1')
+    agent2_params = test_suite.get_agent_params('agent2')
+    agent3_params = test_suite.get_agent_params('agent3')
+    await agent1.open()
+    await agent2.open()
+    await agent3.open()
+    try:
+        pw1 = await get_pairwise(agent1, agent2)
+        pw2 = await get_pairwise(agent1, agent3)
+    finally:
+        await agent1.close()
+        await agent2.close()
+        await agent3.close()
+
+    thread_id = 'thread-id-' + uuid.uuid4().hex
+    statuses = None
+
+    async def actor(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal thread_id
+        nonlocal statuses
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
+            co = sirius_sdk.CoProtocolThreadedTheirs(thread_id, [pw1, pw2])
+            statuses = await co.switch(msg)
+
+    async def responder(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            listener = await sirius_sdk.subscribe()
+            async for event in listener:
+                thread_id_ = event.message['~thread']['thid']
+                pong = sirius_sdk.aries_rfc.Pong(ping_id=thread_id_, comment='PONG')
+                await sirius_sdk.send_to(pong, event.pairwise)
+                return
+
+    await run_coroutines(
+        actor(**agent1_params),
+        responder(**agent2_params),
+        responder(**agent3_params),
+    )
+
+    assert statuses is not None
+    assert pw1 in statuses.keys()
+    assert pw2 in statuses.keys()
+    for pw, stat in statuses.items():
+        success, message = stat
+        assert success is True
+        assert message['comment'] == 'PONG'
+
+
+@pytest.mark.asyncio
+async def test_coprotocol_threaded_theirs_switch_timeout(
+        test_suite: ServerTestSuite, agent1: Agent, agent2: Agent, agent3: Agent
+):
+    agent1_params = test_suite.get_agent_params('agent1')
+    agent2_params = test_suite.get_agent_params('agent2')
+    await agent1.open()
+    await agent2.open()
+    await agent3.open()
+    try:
+        pw1 = await get_pairwise(agent1, agent2)
+        pw2 = await get_pairwise(agent1, agent3)
+    finally:
+        await agent1.close()
+        await agent2.close()
+        await agent3.close()
+
+    thread_id = 'thread-id-' + uuid.uuid4().hex
+    statuses = None
+
+    async def actor(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        nonlocal thread_id
+        nonlocal statuses
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
+            co = sirius_sdk.CoProtocolThreadedTheirs(thread_id, [pw1, pw2], time_to_live=10)
+            statuses = await co.switch(msg)
+
+    async def responder(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, **kwargs):
+        async with sirius_sdk.context(server_address, credentials, p2p):
+            listener = await sirius_sdk.subscribe()
+            async for event in listener:
+                thread_id_ = event.message['~thread']['thid']
+                pong = sirius_sdk.aries_rfc.Pong(ping_id=thread_id_, comment='PONG')
+                await sirius_sdk.send_to(pong, event.pairwise)
+                return
+
+    await run_coroutines(
+        actor(**agent1_params),
+        responder(**agent2_params),
+    )
+
+    assert statuses is not None
+    stat1 = statuses[pw1]
+    assert stat1[0] is True
+    assert stat1[1]['comment'] == 'PONG'
+    stat1 = statuses[pw2]
+    assert stat1[0] is False
+    assert stat1[1] is None
