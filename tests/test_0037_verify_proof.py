@@ -300,17 +300,3 @@ async def test_multiple_provers(
         await prover1.close()
         await prover2.close()
         await verifier.close()
-
-
-@pytest.mark.asyncio
-async def test_back_compatibility(agent1: Agent, agent2: Agent, agent3: IndyAgent):
-    issuer = agent1
-    prover = agent3
-    verifier = agent2
-    await issuer.open()
-    await verifier.open()
-    try:
-        pass
-    finally:
-        await issuer.close()
-        await verifier.close()
