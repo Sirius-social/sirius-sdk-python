@@ -36,6 +36,13 @@ def test_sane():
 
 
 @pytest.mark.asyncio
+def test_create_keypair_from_seed():
+    verkey, sigkey = create_keypair(b'0000000000000000000000000000SEED')
+    assert bytes_to_b58(verkey) == 'GXhjv2jGf2oT1sqMyvJtgJxNYPMHmTsdZ3c2ZYQLJExj'
+    assert bytes_to_b58(sigkey) == 'xt19s1sp2UZCGhy9rNyb1FtxdKiDGZZPNFnc1KyoHNK9SDgzvPrapQPJVL9sh3e87ESLpJdwvFdxwHXagYjcaA7'
+
+
+@pytest.mark.asyncio
 def test_fixture():
     verkey, sigkey = create_keypair(b'000000000000000000000000000SEED1')
     verkey_recipient = bytes_to_b58(verkey)
