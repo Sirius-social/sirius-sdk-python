@@ -21,7 +21,9 @@ async def run_verifier(
 ) -> bool:
     try:
         machine = Verifier(prover=prover, pool_name='default', transports=agent)
-        success = await machine.verify(proof_request, translation=translation, comment='I am Verifier')
+        success = await machine.verify(
+            proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
+        )
         return success
     except Exception as e:
         print('==== Verifier routine Exception: ' + repr(e))
