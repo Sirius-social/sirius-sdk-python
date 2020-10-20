@@ -12,7 +12,7 @@ class Ping(AriesProtocolMessage, metaclass=RegisterMessage):
     PROTOCOL = 'trust_ping'
     NAME = 'ping'
 
-    def __init__(self, comment: Optional[str]=None, response_requested: Optional[bool]=None, *args, **kwargs):
+    def __init__(self, comment: Optional[str] = None, response_requested: Optional[bool] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if comment is not None:
             self['comment'] = comment
