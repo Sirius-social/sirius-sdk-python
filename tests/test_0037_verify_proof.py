@@ -1,4 +1,5 @@
 import uuid
+import json
 from typing import List
 from datetime import datetime
 
@@ -24,6 +25,11 @@ async def run_verifier(
         success = await machine.verify(
             proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
         )
+        if not success:
+            print('===================== Prover terminated with error ====================')
+            if machine.problem_report:
+                print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
+            print('=======================================================================')
         return success
     except Exception as e:
         print('==== Verifier routine Exception: ' + repr(e))
@@ -45,6 +51,11 @@ async def run_prover(agent: Agent, verifier: Pairwise, master_secret_id: str):
     try:
         machine = Prover(verifier=verifier, pool_name='default', transports=agent, time_to_live=ttl)
         success = await machine.prove(request, master_secret_id)
+        if not success:
+            print('===================== Prover terminated with error ====================')
+            if machine.problem_report:
+                print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
+            print('=======================================================================')
         return success
     except Exception as e:
         print('==== Prover routine Exception: ' + repr(e))
