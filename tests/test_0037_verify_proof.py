@@ -26,7 +26,7 @@ async def run_verifier(
             proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
         )
         if not success:
-            print('===================== Prover terminated with error ====================')
+            print('===================== Verifier terminated with error ====================')
             if machine.problem_report:
                 print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
             print('=======================================================================')
