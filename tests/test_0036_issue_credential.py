@@ -10,6 +10,7 @@ from sirius_sdk.agent.aries_rfc.utils import str_to_utc
 from sirius_sdk.agent.ledger import Schema, CredentialDefinition
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential import Issuer, Holder, AttribTranslation, \
     ProposedAttrib, OfferCredentialMessage
+from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 
 from .conftest import get_pairwise
 from .helpers import run_coroutines, IndyAgent
@@ -67,7 +68,7 @@ async def run_issuer_indy_agent(
 
 
 @pytest.mark.asyncio
-async def test_sane(agent1: Agent, agent2: Agent):
+async def test_sane(agent1: Agent, agent2: Agent, prover_master_secret_name: str):
     issuer = agent1
     holder = agent2
     await issuer.open()
@@ -90,8 +91,13 @@ async def test_sane(agent1: Agent, agent2: Agent):
             submitter_did=did_issuer
         )
         assert ok is True
-        master_secret_name = 'secret-' + uuid.uuid4().hex
-        holder_secret_id = await holder.wallet.anoncreds.prover_create_master_secret(master_secret_name)
+
+        print('Prepare Holder')
+        try:
+            await holder.wallet.anoncreds.prover_create_master_secret(prover_master_secret_name)
+        except AnoncredsMasterSecretDuplicateNameError:
+            pass
+        holder_secret_id = prover_master_secret_name
 
         cred_id = 'cred-id-' + uuid.uuid4().hex
         coro_issuer = run_issuer(
@@ -178,7 +184,7 @@ async def test_issuer_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
 
 
 @pytest.mark.asyncio
-async def test_holder_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
+async def test_holder_back_compatibility(indy_agent: IndyAgent, agent1: Agent, prover_master_secret_name: str):
     holder = agent1
     await holder.open()
     try:
@@ -208,8 +214,12 @@ async def test_holder_back_compatibility(indy_agent: IndyAgent, agent1: Agent):
         schema_id, schema = await indy_agent.register_schema(did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3'])
         cred_def_id, cred_def = await indy_agent.register_cred_def(did_issuer, schema_id, 'TAG')
 
-        master_secret_name = 'secret-' + uuid.uuid4().hex
-        holder_secret_id = await holder.wallet.anoncreds.prover_create_master_secret(master_secret_name)
+        print('Prepare Holder')
+        try:
+            await holder.wallet.anoncreds.prover_create_master_secret(prover_master_secret_name)
+        except AnoncredsMasterSecretDuplicateNameError:
+            pass
+        holder_secret_id = prover_master_secret_name
         cred_id = 'cred-id-' + uuid.uuid4().hex
 
         coro_issuer = run_issuer_indy_agent(

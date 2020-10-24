@@ -1,4 +1,5 @@
 import uuid
+import json
 from typing import List
 from datetime import datetime
 
@@ -21,7 +22,14 @@ async def run_verifier(
 ) -> bool:
     try:
         machine = Verifier(prover=prover, pool_name='default', transports=agent)
-        success = await machine.verify(proof_request, translation=translation, comment='I am Verifier')
+        success = await machine.verify(
+            proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
+        )
+        if not success:
+            print('===================== Verifier terminated with error ====================')
+            if machine.problem_report:
+                print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
+            print('=======================================================================')
         return success
     except Exception as e:
         print('==== Verifier routine Exception: ' + repr(e))
@@ -43,6 +51,11 @@ async def run_prover(agent: Agent, verifier: Pairwise, master_secret_id: str):
     try:
         machine = Prover(verifier=verifier, pool_name='default', transports=agent, time_to_live=ttl)
         success = await machine.prove(request, master_secret_id)
+        if not success:
+            print('===================== Prover terminated with error ====================')
+            if machine.problem_report:
+                print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
+            print('=======================================================================')
         return success
     except Exception as e:
         print('==== Prover routine Exception: ' + repr(e))
@@ -299,18 +312,4 @@ async def test_multiple_provers(
         await issuer.close()
         await prover1.close()
         await prover2.close()
-        await verifier.close()
-
-
-@pytest.mark.asyncio
-async def test_back_compatibility(agent1: Agent, agent2: Agent, agent3: IndyAgent):
-    issuer = agent1
-    prover = agent3
-    verifier = agent2
-    await issuer.open()
-    await verifier.open()
-    try:
-        pass
-    finally:
-        await issuer.close()
         await verifier.close()

@@ -1,4 +1,5 @@
-from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping.messages import Ping, Pong
+from .messages import Ping, Pong
+from .recipes import ping_their
 
 
-__all__ = ['Ping', 'Pong']
+__all__ = ['Ping', 'Pong', 'ping_their']

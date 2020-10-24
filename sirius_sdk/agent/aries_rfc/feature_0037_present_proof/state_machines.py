@@ -253,7 +253,7 @@ class Prover(AbstractStateMachine):
                         rev_states=rev_states
                     )
                     # Step-3: Send proof and wait Ack to check success from Verifier side
-                    presentation_msg = PresentationMessage(proof)
+                    presentation_msg = PresentationMessage(proof, version=request.version)
                     presentation_msg.please_ack = True
                     if request.please_ack:
                         presentation_msg.thread_id = request.ack_message_id
