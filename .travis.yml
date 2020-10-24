@@ -24,7 +24,6 @@ script:
   - pytest tests/test_encryption.py
   - pytest tests/test_future_promise.py
   - pytest tests/test_agent.py
-  - pytest tests/test_0037_verify_proof.py
   - pytest tests/test_storages.py
   - pytest tests/test_wallet.py
   - pytest tests/test_microledgers.py
@@ -36,4 +35,5 @@ script:
   - pytest tests/test_0160_conn_protocol.py
   - pytest tests/test_0048_trust_ping.py
   - pytest tests/test_0036_issue_credential.py
+  - pytest tests/test_0037_verify_proof.py
   - pytest tests/test_performance.py
