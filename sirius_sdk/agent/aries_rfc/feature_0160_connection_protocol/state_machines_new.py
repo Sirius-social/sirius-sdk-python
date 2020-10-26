@@ -16,6 +16,16 @@ RESPONSE_NOT_ACCEPTED = "response_not_accepted"
 RESPONSE_PROCESSING_ERROR = 'response_processing_error'
 
 
+class BaseConnectionStateMachine(sirius_sdk.AbstractStateMachine):
+
+    def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        self.__problem_report = None
+        self.__time_to_live = time_to_live
+        self.__me = me
+        self.__my_endpoint = my_endpoint
+
+
 class Inviter(sirius_sdk.AbstractStateMachine):
     """Implementation of Inviter role of the Aries connection protocol
 

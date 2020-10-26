@@ -181,3 +181,15 @@ class PairwiseProxy(AbstractPairwiseList):
     async def load_for_verkey(self, their_verkey: str) -> Optional[Pairwise]:
         service = await _current_hub().get_pairwise_list()
         return await service.load_for_verkey(their_verkey)
+
+    async def _start_loading(self):
+        service = await _current_hub().get_pairwise_list()
+        await service._start_loading()
+
+    async def _partial_load(self) -> (bool, List[Pairwise]):
+        service = await _current_hub().get_pairwise_list()
+        return await service._partial_load()
+
+    async def _stop_loading(self):
+        service = await _current_hub().get_pairwise_list()
+        await service._stop_loading()

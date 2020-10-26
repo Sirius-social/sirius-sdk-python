@@ -1,3 +1,4 @@
+import sys
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
@@ -91,12 +92,43 @@ class AbstractPairwiseList(ABC):
     async def load_for_verkey(self, their_verkey: str) -> Optional[Pairwise]:
         raise NotImplemented
 
+    async def enumerate(self):
+        cur = 0
+        await self._start_loading()
+        try:
+            while True:
+                success, collection = await self._partial_load()
+                if success:
+                    for p in collection:
+                        yield cur, p
+                        cur += 1
+                else:
+                    break
+        finally:
+            await self._stop_loading()
+
+    @abstractmethod
+    async def _start_loading(self):
+        raise NotImplemented
+
+    @abstractmethod
+    async def _partial_load(self) -> (bool, List[Pairwise]):
+        raise NotImplemented
+
+    @abstractmethod
+    async def _stop_loading(self):
+        raise NotImplemented
+
+    def __aiter__(self):
+        return self
+
 
 class WalletPairwiseList(AbstractPairwiseList):
 
     def __init__(self, api: (AbstractPairwise, AbstractDID)):
         self._api_pairwise = api[0]
         self._api_did = api[1]
+        self.__is_loading = False
 
     async def create(self, pairwise: Pairwise):
         await self._api_did.store_their_did(did=pairwise.their.did, verkey=pairwise.their.verkey)
@@ -140,6 +172,20 @@ class WalletPairwiseList(AbstractPairwiseList):
             return pairwise
         else:
             return None
+
+    async def _start_loading(self):
+        self.__is_loading = True
+
+    async def _partial_load(self) -> (bool, List[Pairwise]):
+        if self.__is_loading:
+            items = await self._api_pairwise.list_pairwise()
+            self.__is_loading = False
+            return True, [self._restore_pairwise(item['metadata']) for item in items]
+        else:
+            return False, []
+
+    async def _stop_loading(self):
+        self.__is_loading = False
 
     @staticmethod
     def _build_tags(p: Pairwise):

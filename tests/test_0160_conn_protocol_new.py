@@ -123,3 +123,123 @@ async def test_establish_connection(test_suite: ServerTestSuite):
         pairwise = await sirius_sdk.PairwiseList.load_for_verkey(inviter_me.verkey)
         assert pairwise is not None
         assert pairwise.their.did == inviter_me.did
+
+
+@pytest.mark.asyncio
+async def test_update_pairwise_metadata(test_suite: ServerTestSuite):
+    inviter = test_suite.get_agent_params('agent1')
+    invitee = test_suite.get_agent_params('agent2')
+
+    # Get endpoints
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        inviter_endpoint_address = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0].address
+        connection_key = await sirius_sdk.Crypto.create_key()
+        invitation = Invitation(label='Inviter', endpoint=inviter_endpoint_address, recipient_keys=[connection_key])
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        invitee_endpoint_address = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0].address
+
+    # Init Me
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+        inviter_side = sirius_sdk.Pairwise.Me(did, verkey)
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+        invitee_side = sirius_sdk.Pairwise.Me(did, verkey)
+    # Manually set pairwise list
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        await sirius_sdk.DID.store_their_did(invitee_side.did, invitee_side.verkey)
+        p = sirius_sdk.Pairwise(
+            me=inviter_side,
+            their=sirius_sdk.Pairwise.Their(
+                invitee_side.did, 'Invitee', invitee_endpoint_address, invitee_side.verkey
+            )
+        )
+        await sirius_sdk.PairwiseList.create(p)
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        await sirius_sdk.DID.store_their_did(inviter_side.did, inviter_side.verkey)
+        p = sirius_sdk.Pairwise(
+            me=invitee_side,
+            their=sirius_sdk.Pairwise.Their(
+                inviter_side.did, 'Inviter', inviter_endpoint_address, inviter_side.verkey
+            )
+        )
+        await sirius_sdk.PairwiseList.create(p)
+
+    await run_coroutines(
+        run_inviter(
+            inviter['server_address'], inviter['credentials'], inviter['p2p'], connection_key, inviter_side
+        ),
+        run_invitee(
+            invitee['server_address'], invitee['credentials'], invitee['p2p'], invitation, 'Invitee', invitee_side
+        )
+    )
+
+    # Check for Inviter
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        pairwise = await sirius_sdk.PairwiseList.load_for_did(invitee_side.did)
+        assert pairwise.metadata != {}
+        assert pairwise.metadata is not None
+
+    # Check for Invitee
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        pairwise = await sirius_sdk.PairwiseList.load_for_did(inviter_side.did)
+        assert pairwise.metadata != {}
+        assert pairwise.metadata is not None
+
+
+@pytest.mark.asyncio
+async def test_invitee_back_compatibility(indy_agent: IndyAgent, test_suite: ServerTestSuite):
+    their_invitaton = await indy_agent.create_invitation(label='Test Invitee')
+    invitation = Invitation.from_url(their_invitaton['url'])
+    invitee = test_suite.get_agent_params('agent1')
+
+    # Init invitee
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+        invitee_side = sirius_sdk.Pairwise.Me(did, verkey)
+
+    await run_coroutines(
+        run_invitee(
+            invitee['server_address'], invitee['credentials'], invitee['p2p'], invitation, 'Invitee', invitee_side, True
+        ),
+        read_events(
+            invitee['server_address'], invitee['credentials'], invitee['p2p']
+        )
+    )
+    invitation_pairwise = None
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        async for i, pairwise in sirius_sdk.PairwiseList.enumerate():
+            if pairwise.me.did == invitee_side.did:
+                invitation_pairwise = pairwise
+                break
+    assert invitation_pairwise is not None
+
+
+@pytest.mark.asyncio
+async def test_inviter_back_compatibility(indy_agent: IndyAgent, test_suite: ServerTestSuite, agent1: sirius_sdk.Agent):
+    inviter = test_suite.get_agent_params('agent1')
+    # Init inviter
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        inviter_endpoint_address = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0].address
+        connection_key = await sirius_sdk.Crypto.create_key()
+        inviter_endpoint_address = replace_url_components(inviter_endpoint_address, pytest.test_suite_overlay_address)
+        invitation = Invitation(label='Inviter', endpoint=inviter_endpoint_address, recipient_keys=[connection_key])
+        invitation_url = invitation.invitation_url
+        did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+        inviter_side = sirius_sdk.Pairwise.Me(did, verkey)
+
+    await run_coroutines(
+        run_inviter(
+            inviter['server_address'], inviter['credentials'], inviter['p2p'], connection_key, inviter_side, True
+        ),
+        indy_agent.invite(invitation_url=invitation_url),
+    )
+
+    invitated_pairwise = None
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        async for i, p in sirius_sdk.PairwiseList.enumerate():
+            assert isinstance(p, sirius_sdk.Pairwise)
+            if p.me.did == inviter_side.did:
+                invitated_pairwise = p
+                break
+    assert invitated_pairwise is not None

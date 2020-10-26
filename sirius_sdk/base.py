@@ -7,6 +7,7 @@ from inspect import iscoroutinefunction
 import aiohttp
 
 from sirius_sdk.messaging import Message
+from sirius_sdk.hub.coprotocols import AbstractCoProtocol
 from sirius_sdk.errors.exceptions import *
 
 
@@ -147,6 +148,7 @@ class AbstractStateMachine(ABC):
             else:
                 raise RuntimeError('Expect logger is iscoroutine function or callable object')
         self.__logger = logger
+        self.__co_protocols = []
 
     @property
     def time_to_live(self) -> int:
@@ -156,9 +158,14 @@ class AbstractStateMachine(ABC):
     def is_aborted(self) -> bool:
         return self.__is_aborted
 
+    def register_for_aborting(self, co: AbstractCoProtocol):
+        self.__co_protocols.append(co)
+
     async def abort(self):
         """Abort state-machine"""
         self.__is_aborted = True
+        for co in self.__co_protocols:
+            await co.abort()
 
     async def log(self, **kwargs) -> bool:
         if self.__logger:
