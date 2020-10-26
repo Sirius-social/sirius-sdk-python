@@ -15,7 +15,6 @@ from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy
 from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P, AbstractP2PCoProtocol, \
     CoProtocolThreadedTheirs
 
-
 DID: AbstractDID = DIDProxy()
 Crypto: AbstractCrypto = CryptoProxy()
 Microledgers: AbstractMicroledgerList = MicroledgersProxy()

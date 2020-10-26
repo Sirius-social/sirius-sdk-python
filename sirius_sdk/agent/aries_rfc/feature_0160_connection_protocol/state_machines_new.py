@@ -1,4 +1,5 @@
 import logging
+import contextlib
 
 import sirius_sdk
 from sirius_sdk.errors.exceptions import SiriusValidationError, StateMachineAborted, StateMachineTerminatedWithError
@@ -24,6 +25,39 @@ class BaseConnectionStateMachine(sirius_sdk.AbstractStateMachine):
         self.__time_to_live = time_to_live
         self.__me = me
         self.__my_endpoint = my_endpoint
+
+    @property
+    def me(self) -> Pairwise.Me:
+        return self.__me
+
+    @property
+    def my_endpoint(self) -> Endpoint:
+        return self.__my_endpoint
+
+    @property
+    def time_to_live(self) -> Optional[int]:
+        return self.__time_to_live
+
+    @property
+    def problem_report(self) -> ConnProblemReport:
+        return self.__problem_report
+
+    @contextlib.asynccontextmanager
+    async def coprotocol(self, endpoint: TheirEndpoint):
+        co = sirius_sdk.CoProtocolP2PAnon(
+            my_verkey=self.me.verkey,
+            endpoint=endpoint,
+            protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
+            time_to_live=self.time_to_live
+        )
+        self._register_for_aborting(co)
+        try:
+            try:
+                yield co
+            except OperationAbortedManually:
+                raise StateMachineAborted('Aborted by User')
+        finally:
+            self._unregister_for_aborting(co)
 
 
 class Inviter(sirius_sdk.AbstractStateMachine):
