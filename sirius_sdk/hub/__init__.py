@@ -11,7 +11,7 @@ from sirius_sdk.agent.connections import Endpoint
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 
 from .core import _current_hub, init, context
-from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy
+from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy, AnonCredsProxy
 from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P, AbstractP2PCoProtocol, \
     CoProtocolThreadedTheirs
 
@@ -19,6 +19,7 @@ DID: AbstractDID = DIDProxy()
 Crypto: AbstractCrypto = CryptoProxy()
 Microledgers: AbstractMicroledgerList = MicroledgersProxy()
 PairwiseList: AbstractPairwiseList = PairwiseProxy()
+AnonCreds: AnonCredsProxy = AnonCredsProxy()
 
 
 async def ledger(name: str) -> Optional[Ledger]:

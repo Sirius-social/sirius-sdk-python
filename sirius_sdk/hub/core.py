@@ -9,6 +9,7 @@ from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
+from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
@@ -25,12 +26,13 @@ class Hub:
             self, server_uri: str, credentials: bytes, p2p: P2PConnection, io_timeout: int = None,
             storage: AbstractImmutableCollection = None, crypto: AbstractCrypto = None,
             microledgers: AbstractMicroledgerList = None, pairwise_storage: AbstractPairwiseList = None,
-            did: AbstractDID = None, loop: asyncio.AbstractEventLoop = None
+            did: AbstractDID = None, anoncreds: AbstractAnonCreds = None, loop: asyncio.AbstractEventLoop = None
     ):
         self.__crypto = crypto
         self.__microledgers = microledgers
         self.__pairwise_storage = pairwise_storage
         self.__did = did
+        self.__anoncreds = anoncreds
         self.__server_uri = server_uri
         self.__credentials = credentials
         self.__p2p = p2p
@@ -97,6 +99,10 @@ class Hub:
     async def get_did(self) -> AbstractDID:
         async with self.get_agent_connection_lazy() as agent:
             return self.__did or agent.wallet.did
+
+    async def get_anoncreds(self) -> AbstractAnonCreds:
+        async with self.get_agent_connection_lazy() as agent:
+            return self.__anoncreds or agent.wallet.anoncreds
 
     def __create_agent_instance(self):
         self.__agent = Agent(
