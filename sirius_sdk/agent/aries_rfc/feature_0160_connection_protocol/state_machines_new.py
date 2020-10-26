@@ -21,7 +21,7 @@ class BaseConnectionStateMachine(sirius_sdk.AbstractStateMachine):
 
     def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
-        self.__problem_report = None
+        self._problem_report = None
         self.__time_to_live = time_to_live
         self.__me = me
         self.__my_endpoint = my_endpoint
@@ -40,7 +40,7 @@ class BaseConnectionStateMachine(sirius_sdk.AbstractStateMachine):
 
     @property
     def problem_report(self) -> ConnProblemReport:
-        return self.__problem_report
+        return self._problem_report
 
     @contextlib.asynccontextmanager
     async def coprotocol(self, endpoint: TheirEndpoint):
@@ -152,11 +152,11 @@ class Inviter(BaseConnectionStateMachine):
                         await self.log(progress=100, message='Pairwise established', payload=metadata)
                         return True, pairwise
                     elif isinstance(response, ConnProblemReport):
-                        self.__problem_report = response
+                        self._problem_report = response
                         logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
                         await self.log(
                             progress=100, message=f'Terminated with error',
-                            problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
+                            problem_code=self._problem_report.problem_code, explain=self._problem_report.explain
                         )
                         return False, None
                     else:
@@ -171,12 +171,12 @@ class Inviter(BaseConnectionStateMachine):
                         notify=False
                     )
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = ConnProblemReport(
+                self._problem_report = ConnProblemReport(
                     problem_code=e.problem_code,
                     explain=e.explain,
                 )
                 if e.notify:
-                    await co.send(self.__problem_report)
+                    await co.send(self._problem_report)
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain
@@ -292,11 +292,11 @@ class Invitee(BaseConnectionStateMachine):
                                 explain='Invalid connection response signature for connection_key: "%s"' % connection_key,
                             )
                     elif isinstance(response, ConnProblemReport):
-                        self.__problem_report = response
+                        self._problem_report = response
                         logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
                         await self.log(
                             progress=100, message=f'Terminated with error',
-                            problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
+                            problem_code=self._problem_report.problem_code, explain=self._problem_report.explain
                         )
                         return False, None
                 else:
@@ -307,12 +307,12 @@ class Invitee(BaseConnectionStateMachine):
                     )
 
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = ConnProblemReport(
+                self._problem_report = ConnProblemReport(
                     problem_code=e.problem_code,
                     explain=e.explain,
                 )
                 if e.notify:
-                    await co.send(self.__problem_report)
+                    await co.send(self._problem_report)
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain
