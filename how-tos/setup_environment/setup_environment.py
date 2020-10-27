@@ -18,6 +18,7 @@ async def open_connection():
     is_connected = await sirius_sdk.ping()
     assert is_connected
     print('SDK has connection to Agent')
+
     my_did = await sirius_sdk.DID.list_my_dids_with_meta()
     print('DID list')
     print(json.dumps(my_did, indent=2))
