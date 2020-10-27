@@ -181,7 +181,8 @@ class AbstractCoProtocolTransport(ABC):
             endpoint=self.__endpoint,
             my_vk=self.__my_vk,
             routing_keys=self.__routing_keys,
-            coprotocol=False
+            coprotocol=False,
+            ignore_errors=True
         )
 
     async def send_many(self, message: Message, to: List[Pairwise]) -> List[Any]:

@@ -5,23 +5,26 @@ from datetime import datetime
 
 import pytest
 
+import sirius_sdk
 from sirius_sdk import Agent, Pairwise
 from sirius_sdk.agent.codec import encode
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
 from sirius_sdk.agent.ledger import CredentialDefinition
-from sirius_sdk.agent.aries_rfc.feature_0037_present_proof import Verifier, Prover, AttribTranslation, \
-    RequestPresentationMessage
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.state_machines import Verifier, Prover, \
+    AttribTranslation, RequestPresentationMessage
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 
 from .conftest import get_pairwise
-from .helpers import run_coroutines, IndyAgent
+from .helpers import run_coroutines, IndyAgent, ServerTestSuite
 
 
 async def run_verifier(
-        agent: Agent, prover: Pairwise, proof_request: dict, translation: List[AttribTranslation] = None
+        uri: str, credentials: bytes, p2p: sirius_sdk.P2PConnection,
+        prover: Pairwise, proof_request: dict, translation: List[AttribTranslation] = None
 ) -> bool:
-    try:
-        machine = Verifier(prover=prover, pool_name='default', transports=agent)
+    async with sirius_sdk.context(uri, credentials, p2p):
+        ledger = await sirius_sdk.ledger('default')
+        machine = Verifier(prover=prover, ledger=ledger)
         success = await machine.verify(
             proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
         )
@@ -31,38 +34,43 @@ async def run_verifier(
                 print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
             print('=======================================================================')
         return success
-    except Exception as e:
-        print('==== Verifier routine Exception: ' + repr(e))
 
 
-async def run_prover(agent: Agent, verifier: Pairwise, master_secret_id: str):
-    listener = await agent.subscribe()
-    event = await listener.get_one()
-    assert event.pairwise is not None
-    assert event.pairwise.their.did == verifier.their.did
-    request = event.message
-    assert isinstance(request, RequestPresentationMessage)
-    ttl = 60
-    if request.expires_time:
-        expire = str_to_utc(request.expires_time, raise_exceptions=False)
-        delta = expire - datetime.utcnow()
-        if delta.seconds > 0:
-            ttl = delta.seconds
-    try:
-        machine = Prover(verifier=verifier, pool_name='default', transports=agent, time_to_live=ttl)
-        success = await machine.prove(request, master_secret_id)
-        if not success:
-            print('===================== Prover terminated with error ====================')
-            if machine.problem_report:
-                print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
-            print('=======================================================================')
-        return success
-    except Exception as e:
-        print('==== Prover routine Exception: ' + repr(e))
+async def run_prover(
+        uri: str, credentials: bytes, p2p: sirius_sdk.P2PConnection,
+        verifier: Pairwise, master_secret_id: str
+):
+    async with sirius_sdk.context(uri, credentials, p2p):
+        listener = await sirius_sdk.subscribe()
+        event = await listener.get_one()
+        assert event.pairwise is not None
+        assert event.pairwise.their.did == verifier.their.did
+        request = event.message
+        assert isinstance(request, RequestPresentationMessage)
+        ttl = 60
+        if request.expires_time:
+            expire = str_to_utc(request.expires_time, raise_exceptions=False)
+            delta = expire - datetime.utcnow()
+            if delta.seconds > 0:
+                ttl = delta.seconds
+        try:
+            ledger = await sirius_sdk.ledger('default')
+            machine = Prover(verifier=verifier, ledger=ledger, time_to_live=ttl)
+            success = await machine.prove(request, master_secret_id)
+            if not success:
+                print('===================== Prover terminated with error ====================')
+                if machine.problem_report:
+                    print(json.dumps(machine.problem_report, indent=2, sort_keys=True))
+                print('=======================================================================')
+            return success
+        except Exception as e:
+            print('==== Prover routine Exception: ' + repr(e))
 
 
 @pytest.mark.asyncio
-async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent, prover_master_secret_name: str):
+async def test_sane(
+        test_suite: ServerTestSuite, agent1: Agent, agent2: Agent, agent3: Agent, prover_master_secret_name: str
+):
     issuer = agent1
     prover = agent2
     verifier = agent3
@@ -127,11 +135,20 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent, prover_master_s
             cred_id=cred_id
         )
 
-        # FIRE !!!
-        attr_referent_id = 'attr1_referent'
-        pred_referent_id = 'predicate1_referent'
+    finally:
+        await issuer.close()
+        await prover.close()
+        await verifier.close()
+
+    prover = test_suite.get_agent_params('agent2')
+    verifier = test_suite.get_agent_params('agent3')
+
+    # FIRE !!!
+    attr_referent_id = 'attr1_referent'
+    pred_referent_id = 'predicate1_referent'
+    async with sirius_sdk.context(verifier['server_address'], verifier['credentials'], verifier['p2p']):
         proof_request = {
-            "nonce": await verifier.wallet.anoncreds.generate_nonce(),
+            "nonce": await sirius_sdk.AnonCreds.generate_nonce(),
             "name": "Test ProofRequest",
             "version": "0.1",
             "requested_attributes": {
@@ -154,33 +171,29 @@ async def test_sane(agent1: Agent, agent2: Agent, agent3: Agent, prover_master_s
             }
         }
 
-        coro_verifier = run_verifier(
-            agent=verifier,
-            prover=v2p,
-            proof_request=proof_request
-        )
-        coro_prover = run_prover(
-            agent=prover,
-            verifier=p2v,
-            master_secret_id=prover_secret_id
-        )
-        print('Run state machines')
-        results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
-        print('Finish state machines')
-        print(str(results))
-        assert len(results) == 2
-        for res in results:
-            assert res is True
-
-    finally:
-        await issuer.close()
-        await prover.close()
-        await verifier.close()
+    coro_verifier = run_verifier(
+        verifier['server_address'], verifier['credentials'], verifier['p2p'],
+        prover=v2p,
+        proof_request=proof_request
+    )
+    coro_prover = run_prover(
+        prover['server_address'], prover['credentials'], prover['p2p'],
+        verifier=p2v,
+        master_secret_id=prover_secret_id
+    )
+    print('Run state machines')
+    results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
+    print('Finish state machines')
+    print(str(results))
+    assert len(results) == 2
+    for res in results:
+        assert res is True
 
 
 @pytest.mark.asyncio
 async def test_multiple_provers(
-        agent1: Agent, agent2: Agent, agent3: Agent, agent4: Agent, prover_master_secret_name: str
+    test_suite: ServerTestSuite,
+    agent1: Agent, agent2: Agent, agent3: Agent, agent4: Agent, prover_master_secret_name: str
 ):
     issuer = agent1
     prover1 = agent2
@@ -262,11 +275,21 @@ async def test_multiple_provers(
                 cred_id=cred_id
             )
 
-        # FIRE !!!
-        attr_referent_id = 'attr1_referent'
-        pred_referent_id = 'predicate1_referent'
+    finally:
+        await issuer.close()
+        await prover1.close()
+        await prover2.close()
+        await verifier.close()
+
+    prover1 = test_suite.get_agent_params('agent2')
+    verifier = test_suite.get_agent_params('agent3')
+    prover2 = test_suite.get_agent_params('agent4')
+    # FIRE !!!
+    attr_referent_id = 'attr1_referent'
+    pred_referent_id = 'predicate1_referent'
+    async with sirius_sdk.context(verifier['server_address'], verifier['credentials'], verifier['p2p']):
         proof_request = {
-            "nonce": await verifier.wallet.anoncreds.generate_nonce(),
+            "nonce": await sirius_sdk.AnonCreds.generate_nonce(),
             "name": "Test ProofRequest",
             "version": "0.1",
             "requested_attributes": {
@@ -289,27 +312,21 @@ async def test_multiple_provers(
             }
         }
 
-        for prover, v2p, p2v in [(prover1, v_to_p1, p1_to_v), (prover2, v_to_p2, p2_to_v)]:
-            coro_verifier = run_verifier(
-                agent=verifier,
-                prover=v2p,
-                proof_request=proof_request
-            )
-            coro_prover = run_prover(
-                agent=prover,
-                verifier=p2v,
-                master_secret_id=prover_master_secret_name
-            )
-            print('Run state machines')
-            results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
-            print('Finish state machines')
-            print(str(results))
-            assert len(results) == 2
-            for res in results:
-                assert res is True
-
-    finally:
-        await issuer.close()
-        await prover1.close()
-        await prover2.close()
-        await verifier.close()
+    for prover, v2p, p2v in [(prover1, v_to_p1, p1_to_v), (prover2, v_to_p2, p2_to_v)]:
+        coro_verifier = run_verifier(
+            verifier['server_address'], verifier['credentials'], verifier['p2p'],
+            prover=v2p,
+            proof_request=proof_request
+        )
+        coro_prover = run_prover(
+            prover['server_address'], prover['credentials'], prover['p2p'],
+            verifier=p2v,
+            master_secret_id=prover_master_secret_name
+        )
+        print('Run state machines')
+        results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
+        print('Finish state machines')
+        print(str(results))
+        assert len(results) == 2
+        for res in results:
+            assert res is True

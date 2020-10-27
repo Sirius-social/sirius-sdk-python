@@ -222,7 +222,7 @@ class IndyAgent:
             except aiohttp.ClientError:
                 return False, None
 
-    async def __http_post(self, path: str, json_: dict=None):
+    async def __http_post(self, path: str, json_: dict = None):
         url = urljoin(self.__address, path)
         auth = aiohttp.BasicAuth(self.__auth_username, self.__auth_password, 'utf-8')
         netloc = urlparse(self.__address).netloc

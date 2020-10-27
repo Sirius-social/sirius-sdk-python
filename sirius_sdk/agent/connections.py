@@ -198,7 +198,7 @@ class AgentRPC(BaseAgentConnection):
             self, message: Message,
             their_vk: Union[List[str], str], endpoint: str,
             my_vk: Optional[str], routing_keys: Optional[List[str]],
-            coprotocol: bool = False
+            coprotocol: bool = False, ignore_errors: bool = False
     ) -> Optional[Message]:
         """Send Message to other Indy compatible agent
         
@@ -211,6 +211,7 @@ class AgentRPC(BaseAgentConnection):
             See:
              - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols
              - https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading
+        :param ignore_errors: bool hide any raised exception
         :return: Response message if coprotocol is True
         """
         if not self._connector.is_open:
@@ -245,7 +246,8 @@ class AgentRPC(BaseAgentConnection):
                 ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__tcp_connector)
             body = body.decode()
         if not ok:
-            raise SiriusRPCError(body)
+            if not ignore_errors:
+                raise SiriusRPCError(body)
         else:
             if coprotocol:
                 response = await self.read_protocol_message()

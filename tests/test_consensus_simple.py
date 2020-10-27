@@ -4,55 +4,65 @@ from datetime import datetime
 
 import pytest
 
-from sirius_sdk import Agent
+import sirius_sdk
+from sirius_sdk import Agent, P2PConnection
 from sirius_sdk.agent.consensus.simple.state_machines import MicroLedgerSimpleConsensus
 from sirius_sdk.agent.consensus.simple.messages import *
 
 from .conftest import get_pairwise
-from .helpers import run_coroutines
+from .helpers import run_coroutines, ServerTestSuite
 
 
 async def routine_of_ledger_creator(
-        creator: Agent, me: Pairwise.Me, participants: List[str], ledger_name: str, genesis: List[dict]
+        uri: str, credentials: bytes, p2p: P2PConnection,
+        me: Pairwise.Me, participants: List[str], ledger_name: str, genesis: List[dict]
 ):
-    machine = MicroLedgerSimpleConsensus(me, transports=creator)
-    genesis = [Transaction.create(txn) for txn in genesis]
-    success, ledger = await machine.init_microledger(ledger_name, participants, genesis)
-    return success, ledger
+    async with sirius_sdk.context(uri, credentials, p2p):
+        machine = MicroLedgerSimpleConsensus(me)
+        genesis = [Transaction.create(txn) for txn in genesis]
+        success, ledger = await machine.init_microledger(ledger_name, participants, genesis)
+        return success, ledger
 
 
-async def routine_of_ledger_creation_acceptor(acceptor: Agent):
-    listener = await acceptor.subscribe()
-    event = await listener.get_one()
-    assert event.pairwise is not None
-    propose = event.message
-    assert isinstance(propose, InitRequestLedgerMessage)
-    machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor)
-    success, ledger = await machine.accept_microledger(event.pairwise, propose)
-    return success, ledger
-
-
-async def routine_of_txn_committer(
-        creator: Agent, me: Pairwise.Me, participants: List[str], ledger: Microledger, txns: List[dict]
-):
-    machine = MicroLedgerSimpleConsensus(me, transports=creator)
-    txns = [Transaction.create(txn) for txn in txns]
-    success, txns = await machine.commit(ledger, participants, txns)
-    return success, txns
-
-
-async def routine_of_txn_acceptor(acceptor: Agent, txns: List[Transaction] = None):
-    listener = await acceptor.subscribe()
-    while True:
+async def routine_of_ledger_creation_acceptor(uri: str, credentials: bytes, p2p: P2PConnection):
+    async with sirius_sdk.context(uri, credentials, p2p):
+        listener = await sirius_sdk.subscribe()
         event = await listener.get_one()
         assert event.pairwise is not None
         propose = event.message
-        if isinstance(propose, ProposeTransactionsMessage):
-            if txns:
-                propose['transactions'] = txns
-            machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor)
-            success = await machine.accept_commit(event.pairwise, propose)
-            return success
+        assert isinstance(propose, InitRequestLedgerMessage)
+        machine = MicroLedgerSimpleConsensus(event.pairwise.me)
+        success, ledger = await machine.accept_microledger(event.pairwise, propose)
+        return success, ledger
+
+
+async def routine_of_txn_committer(
+        uri: str, credentials: bytes, p2p: P2PConnection,
+        me: Pairwise.Me, participants: List[str], ledger: Microledger, txns: List[dict]
+):
+    async with sirius_sdk.context(uri, credentials, p2p):
+        machine = MicroLedgerSimpleConsensus(me)
+        txns = [Transaction.create(txn) for txn in txns]
+        success, txns = await machine.commit(ledger, participants, txns)
+        return success, txns
+
+
+async def routine_of_txn_acceptor(
+        uri: str, credentials: bytes, p2p: P2PConnection,
+        txns: List[Transaction] = None
+):
+    async with sirius_sdk.context(uri, credentials, p2p):
+        listener = await sirius_sdk.subscribe()
+        while True:
+            event = await listener.get_one()
+            assert event.pairwise is not None
+            propose = event.message
+            if isinstance(propose, ProposeTransactionsMessage):
+                if txns:
+                    propose['transactions'] = txns
+                machine = MicroLedgerSimpleConsensus(event.pairwise.me)
+                success = await machine.accept_commit(event.pairwise, propose)
+                return success
 
 
 @pytest.mark.asyncio
@@ -180,7 +190,12 @@ async def test_transaction_messaging(A: Agent, B: Agent, ledger_name: str):
 
 
 @pytest.mark.asyncio
-async def test_simple_consensus_init_ledger(A: Agent, B: Agent, C: Agent, ledger_name: str):
+async def test_simple_consensus_init_ledger(
+        A: Agent, B: Agent, C: Agent, ledger_name: str, test_suite: ServerTestSuite
+):
+    A_params = test_suite.get_agent_params('agent1')
+    B_params = test_suite.get_agent_params('agent2')
+    C_params = test_suite.get_agent_params('agent3')
     await A.open()
     await B.open()
     await C.open()
@@ -203,9 +218,16 @@ async def test_simple_consensus_init_ledger(A: Agent, B: Agent, C: Agent, ledger
             {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"},
             {"reqId": 2, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op2"}
         ]
-        coro_creator = routine_of_ledger_creator(A, A2B.me, participants, ledger_name, genesis)
-        coro_acceptor1 = routine_of_ledger_creation_acceptor(B)
-        coro_acceptor2 = routine_of_ledger_creation_acceptor(C)
+        coro_creator = routine_of_ledger_creator(
+            A_params['server_address'], A_params['credentials'], A_params['p2p'],
+            A2B.me, participants, ledger_name, genesis
+        )
+        coro_acceptor1 = routine_of_ledger_creation_acceptor(
+            B_params['server_address'], B_params['credentials'], B_params['p2p'],
+        )
+        coro_acceptor2 = routine_of_ledger_creation_acceptor(
+            C_params['server_address'], C_params['credentials'], C_params['p2p'],
+        )
 
         stamp1 = datetime.now()
         print('> begin')
@@ -235,7 +257,12 @@ async def test_simple_consensus_init_ledger(A: Agent, B: Agent, C: Agent, ledger
 
 
 @pytest.mark.asyncio
-async def test_simple_consensus_commit(A: Agent, B: Agent, C: Agent, ledger_name: str):
+async def test_simple_consensus_commit(
+        A: Agent, B: Agent, C: Agent, ledger_name: str, test_suite: ServerTestSuite
+):
+    A_params = test_suite.get_agent_params('agent1')
+    B_params = test_suite.get_agent_params('agent2')
+    C_params = test_suite.get_agent_params('agent3')
     await A.open()
     await B.open()
     await C.open()
@@ -267,9 +294,17 @@ async def test_simple_consensus_commit(A: Agent, B: Agent, C: Agent, ledger_name
             {"reqId": 4, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op4"},
             {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5"},
         ]
-        coro_committer = routine_of_txn_committer(A, A2B.me, participants, ledger_for_a, txns)
-        coro_acceptor1 = routine_of_txn_acceptor(B)
-        coro_acceptor2 = routine_of_txn_acceptor(C)
+
+        coro_committer = routine_of_txn_committer(
+            A_params['server_address'], A_params['credentials'], A_params['p2p'],
+            A2B.me, participants, ledger_for_a, txns
+        )
+        coro_acceptor1 = routine_of_txn_acceptor(
+            B_params['server_address'], B_params['credentials'], B_params['p2p'],
+        )
+        coro_acceptor2 = routine_of_txn_acceptor(
+            C_params['server_address'], C_params['credentials'], C_params['p2p'],
+        )
 
         stamp1 = datetime.now()
         print('> begin')
@@ -294,7 +329,10 @@ async def test_simple_consensus_commit(A: Agent, B: Agent, C: Agent, ledger_name
 
 
 @pytest.mark.asyncio
-async def test_simple_consensus_error(A: Agent, B: Agent, C: Agent, ledger_name: str):
+async def test_simple_consensus_error(A: Agent, B: Agent, C: Agent, ledger_name: str, test_suite: ServerTestSuite):
+    A_params = test_suite.get_agent_params('agent1')
+    B_params = test_suite.get_agent_params('agent2')
+    C_params = test_suite.get_agent_params('agent3')
     await A.open()
     await B.open()
     await C.open()
@@ -333,9 +371,16 @@ async def test_simple_consensus_error(A: Agent, B: Agent, C: Agent, ledger_name:
             {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5", "txnMetadata": {"seqNo": 6}},
         ]
         broken_txns = [Transaction(txn) for txn in broken_txns]
-        coro_committer = routine_of_txn_committer(A, A2B.me, participants, ledger_for_a, txns)
-        coro_acceptor1 = routine_of_txn_acceptor(B, broken_txns)
-        coro_acceptor2 = routine_of_txn_acceptor(C)
+        coro_committer = routine_of_txn_committer(
+            A_params['server_address'], A_params['credentials'], A_params['p2p'],
+            A2B.me, participants, ledger_for_a, txns
+        )
+        coro_acceptor1 = routine_of_txn_acceptor(
+            B_params['server_address'], B_params['credentials'], B_params['p2p'], broken_txns
+        )
+        coro_acceptor2 = routine_of_txn_acceptor(
+            C_params['server_address'], C_params['credentials'], C_params['p2p'], broken_txns
+        )
 
         stamp1 = datetime.now()
         print('> begin')
