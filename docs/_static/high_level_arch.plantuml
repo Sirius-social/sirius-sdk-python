@@ -1,0 +1,63 @@
+@startuml
+cloud "Sirius Hub" as hub{
+
+
+    storage "Load balancing" as "balancer" #line:blue;{
+
+      database "Agent instance" as agent1 {
+
+      }
+
+      database "Agent instance" as agentn {
+
+      }
+
+
+      folder "Co-protocols scheduler" as scheduler #line:gray;line.bold;text:gray{
+       queue "redis channels" as redis  {
+
+         interface "co-protocol [1]" as co1
+         interface "co-protocol [2]" as co2
+
+
+       }
+       queue kafka as kafka {
+
+       }
+
+
+      }
+
+
+    }
+
+    folder Endpoint as endpoint {
+       artifact "Http address" as address
+       artifact "Router" as router
+
+    }
+
+
+
+}
+cloud "External world" as world #line:red;line.bold;text:red {
+   storage "IoT"
+   storage "Agents"
+
+}
+
+cloud SDK as sdk {
+  control "state-machine-1" as sm1
+  control "state-machine-2" as sm2
+
+}
+
+world -down-> address  #line:red;line.bold;text:red
+address -right-> router
+router --> kafka  #red;line.dotted;text:black   : route to kafka topic
+kafka -down-> agent1 #blue;line.dotted;text:blue   : load balancing
+kafka -down-> agentn #blue;line.dotted;text:blue   : load balancing
+agent1 -left-> redis  #red;line.dotted;text:red   : load balancing
+agentn -left-> redis  #red;line.dotted;text:red   : load balancing
+redis -up-> sdk
+@enduml
