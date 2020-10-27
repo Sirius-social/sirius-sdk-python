@@ -55,6 +55,7 @@ class BaseConnectionStateMachine(sirius_sdk.AbstractStateMachine):
             try:
                 yield co
             except OperationAbortedManually:
+                await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
             self._unregister_for_aborting(co)

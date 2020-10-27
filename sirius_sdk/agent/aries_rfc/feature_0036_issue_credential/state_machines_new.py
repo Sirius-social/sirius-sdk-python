@@ -1,4 +1,5 @@
 import contextlib
+from abc import abstractmethod
 from typing import Union
 from datetime import datetime, timedelta
 
@@ -49,6 +50,7 @@ class BaseIssuingStateMachine(AbstractStateMachine):
             try:
                 yield
             except OperationAbortedManually:
+                await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
             self._unregister_for_aborting(self.__coprotocol)
@@ -60,19 +62,30 @@ class BaseIssuingStateMachine(AbstractStateMachine):
                 try:
                     resp.validate()
                 except SiriusValidationError as e:
-                    raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, e.message)
+                    raise StateMachineTerminatedWithError(
+                        ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
+                        e.message
+                    )
                 return resp
             elif isinstance(resp, IssueProblemReport):
                 raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
             else:
                 raise StateMachineTerminatedWithError(
-                    ISSUE_PROCESSING_ERROR, 'Unexpected response @type: %s' % str(resp.type)
+                    ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
+                    'Unexpected response @type: %s' % str(resp.type)
                 )
         else:
-            raise StateMachineTerminatedWithError(ISSUE_PROCESSING_ERROR, 'Response awaiting terminated by timeout')
+            raise StateMachineTerminatedWithError(
+                ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
+                'Response awaiting terminated by timeout'
+            )
 
     async def send(self, msg: Union[BaseIssueCredentialMessage, Ack, IssueProblemReport]):
         await self.__coprotocol.send(msg)
+
+    @abstractmethod
+    def _is_leader(self) -> bool:
+        raise NotImplemented
 
 
 class Issuer(BaseIssuingStateMachine):
@@ -176,6 +189,9 @@ class Issuer(BaseIssuingStateMachine):
                 )
                 return False
 
+    def _is_leader(self) -> bool:
+        return True
+
 
 class Holder(BaseIssuingStateMachine):
     """Implementation of Holder role for Credential-issuing protocol
@@ -227,9 +243,12 @@ class Holder(BaseIssuingStateMachine):
                     cred_request=cred_request,
                     doc_uri=doc_uri
                 )
+
+                # Switch to await participant action
                 resp = await self.switch(request_msg)
                 if not isinstance(resp, IssueCredentialMessage):
                     raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, 'Unexpected @type: %s' % str(resp.type))
+
                 issue_msg = resp
                 try:
                     issue_msg.validate()
@@ -262,6 +281,9 @@ class Holder(BaseIssuingStateMachine):
                 return False, None
             else:
                 return True, cred_id
+
+    def _is_leader(self) -> bool:
+        return False
 
     @staticmethod
     async def _store_credential(

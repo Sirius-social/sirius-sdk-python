@@ -2,12 +2,14 @@ from typing import Optional, List, Union, Any
 
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList, LedgerMeta, Transaction, AbstractMicroledger
 
 from .core import _current_hub
+from ..agent.wallet import PurgeOptions, CacheOptions
 from ..agent.wallet.abstract import AnonCredSchema
 
 
@@ -380,3 +382,28 @@ class PairwiseProxy(AbstractPairwiseList):
     async def _stop_loading(self):
         service = await _current_hub().get_pairwise_list()
         await service._stop_loading()
+
+
+class CacheProxy(AbstractCache):
+
+    async def get_schema(self, pool_name: str, submitter_did: str, id_: str, options: CacheOptions) -> dict:
+        service = await _current_hub().get_cache()
+        return await service.get_schema(
+            pool_name=pool_name, submitter_did=submitter_did, id_=id_, options=options
+        )
+
+    async def get_cred_def(self, pool_name: str, submitter_did: str, id_: str, options: CacheOptions) -> dict:
+        service = await _current_hub().get_cache()
+        return await service.get_cred_def(
+            pool_name=pool_name,
+            submitter_did=submitter_did,
+            id_=id_, options=options
+        )
+
+    async def purge_schema_cache(self, options: PurgeOptions) -> None:
+        service = await _current_hub().get_cache()
+        await service.purge_schema_cache(options=options)
+
+    async def purge_cred_def_cache(self, options: PurgeOptions) -> None:
+        service = await _current_hub().get_cache()
+        await service.purge_cred_def_cache(options=options)

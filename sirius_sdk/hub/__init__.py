@@ -2,6 +2,7 @@ from typing import Optional, List, Union, Any
 
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.messaging import Message
@@ -11,7 +12,7 @@ from sirius_sdk.agent.connections import Endpoint
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 
 from .core import _current_hub, init, context
-from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy, AnonCredsProxy
+from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy, AnonCredsProxy, CacheProxy
 from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P, AbstractP2PCoProtocol, \
     CoProtocolThreadedTheirs
 
@@ -20,6 +21,7 @@ Crypto: AbstractCrypto = CryptoProxy()
 Microledgers: AbstractMicroledgerList = MicroledgersProxy()
 PairwiseList: AbstractPairwiseList = PairwiseProxy()
 AnonCreds: AnonCredsProxy = AnonCredsProxy()
+Cache: AbstractCache = CacheProxy()
 
 
 async def ledger(name: str) -> Optional[Ledger]:

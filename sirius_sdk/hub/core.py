@@ -8,6 +8,7 @@ from sirius_sdk.encryption.p2p import P2PConnection
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.storages import AbstractImmutableCollection
@@ -103,6 +104,10 @@ class Hub:
     async def get_anoncreds(self) -> AbstractAnonCreds:
         async with self.get_agent_connection_lazy() as agent:
             return self.__anoncreds or agent.wallet.anoncreds
+
+    async def get_cache(self) -> AbstractCache:
+        async with self.get_agent_connection_lazy() as agent:
+            return self.__anoncreds or agent.wallet.cache
 
     def __create_agent_instance(self):
         self.__agent = Agent(
