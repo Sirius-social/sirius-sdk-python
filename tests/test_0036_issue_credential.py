@@ -8,7 +8,7 @@ import sirius_sdk
 from sirius_sdk.agent.wallet import NYMRole
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
 from sirius_sdk.agent.ledger import Schema, CredentialDefinition
-from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines_new import Issuer, Holder, \
+from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines import Issuer, Holder, \
     AttribTranslation, ProposedAttrib, OfferCredentialMessage
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 

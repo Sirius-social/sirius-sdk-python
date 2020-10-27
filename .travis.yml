@@ -30,10 +30,10 @@ script:
   - pytest tests/test_ledgers.py
   - pytest tests/test_coprotocols.py
   - pytest tests/test_pairwise.py
-  - pytest tests/test_consensus_simple_new.py
+  - pytest tests/test_consensus_simple.py
   - pytest tests/test_0113_query_answer.py
-  - pytest tests/test_0160_conn_protocol_new.py
+  - pytest tests/test_0160_conn_protocol.py
   - pytest tests/test_0048_trust_ping.py
-  - pytest tests/test_0036_issue_credential_new.py
-  - pytest tests/test_0037_verify_proof_new.py
+  - pytest tests/test_0036_issue_credential.py
+  - pytest tests/test_0037_verify_proof.py
   - pytest tests/test_performance.py

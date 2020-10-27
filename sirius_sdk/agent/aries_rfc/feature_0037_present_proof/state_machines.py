@@ -1,11 +1,15 @@
+from abc import abstractmethod
+import contextlib
 from typing import Union
 from datetime import datetime, timedelta
 
+import sirius_sdk
 from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.hub import CoProtocolP2P
+from sirius_sdk.agent.ledger import Ledger
 from sirius_sdk.agent.aries_rfc.utils import utc_to_str
-from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
-from sirius_sdk.agent.wallet.abstract.cache import AbstractCache, CacheOptions
-from sirius_sdk.agent.sm import AbstractStateMachine
+from sirius_sdk.agent.wallet.abstract.cache import CacheOptions
+from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.messages import *
 
@@ -19,44 +23,107 @@ REQUEST_PROCESSING_ERROR = 'request_processing_error'
 VERIFY_ERROR = 'verify_error'
 
 
-class Verifier(AbstractStateMachine):
+class BaseVerifyStateMachine(AbstractStateMachine):
+
+    def __init__(self, time_to_live: int = 60, logger=None, *args, **kwargs):
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        self._problem_report: Optional[PresentProofProblemReport] = None
+        self.__time_to_live = time_to_live
+        self.__coprotocol: Optional[CoProtocolP2P] = None
+
+    @property
+    def time_to_live(self) -> Optional[int]:
+        return self.__time_to_live
+
+    @property
+    def problem_report(self) -> PresentProofProblemReport:
+        return self._problem_report
+
+    @contextlib.asynccontextmanager
+    async def coprotocol(self, pairwise: Pairwise):
+        self.__coprotocol = CoProtocolP2P(
+            pairwise=pairwise,
+            protocols=[BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL],
+            time_to_live=self.time_to_live
+        )
+        self._register_for_aborting(self.__coprotocol)
+        try:
+            try:
+                yield
+            except OperationAbortedManually:
+                await self.log(progress=100, message='Aborted')
+                raise StateMachineAborted('Aborted by User')
+        finally:
+            self._unregister_for_aborting(self.__coprotocol)
+
+    async def switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
+        ok, resp = await self.__coprotocol.switch(request)
+        if ok:
+            if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
+                try:
+                    resp.validate()
+                except SiriusValidationError as e:
+                    raise StateMachineTerminatedWithError(
+                        RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
+                        e.message
+                    )
+                return resp
+            elif isinstance(resp, PresentProofProblemReport):
+                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
+            else:
+                raise StateMachineTerminatedWithError(
+                    RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
+                    'Unexpected response @type: %s' % str(resp.type)
+                )
+        else:
+            raise StateMachineTerminatedWithError(
+                RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
+                'Response awaiting terminated by timeout'
+            )
+
+    async def send(self, msg: Union[BasePresentProofMessage, Ack, PresentProofProblemReport]):
+        await self.__coprotocol.send(msg)
+
+    @abstractmethod
+    def _is_leader(self) -> bool:
+        raise NotImplemented
+
+
+class Verifier(BaseVerifyStateMachine):
     """Implementation of Verifier role for present-proof protocol
 
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
     """
 
-    def __init__(
-            self, prover: Pairwise, pool_name: str,
-            api: AbstractAnonCreds = None, cache: AbstractCache = None, *args, **kwargs
-    ):
+    def __init__(self, prover: Pairwise, ledger: Ledger, time_to_live: int = 60, logger=None, *args, **kwargs):
         """
         :param prover: Prover described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
-        :param pool_name: network (DKMS) name that is used to verify credentials presented by prover
-        :param api: optionally passed anon-creds api that implemented outside wallet
-          (by default state-machine will use Indy SDK on Agent side)
-        :param cache: optionally passed caching api that implemented outside wallet
-          (by default state-machine will use Indy SDK on Agent side)
+        :param ledger: network (DKMS) name that is used to verify credentials presented by prover
+          (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
         """
 
-        super().__init__(*args, **kwargs)
-        self.__api = api
-        self.__api_internal = api is None
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__prover = prover
-        self.__thread_id = None
-        self.__transport = None
-        self.__cache = cache
-        self.__cache_internal = cache is None
-        self.__problem_report = None
-        self.__pool_name = pool_name
+        self.__pool_name = ledger.name
         self.__requested_proof = None
+
+    @property
+    def requested_proof(self) -> Optional[dict]:
+        return self.__requested_proof
 
     async def verify(
             self, proof_request: dict, translation: List[AttribTranslation] = None,
             comment: str = None, locale: str = BasePresentProofMessage.DEF_LOCALE, proto_version: str = None
     ):
-        await self.__start()
-        try:
+        """
+        :param proof_request: Hyperledger Indy compatible proof-request
+        :param translation: human readable attributes translations
+        :param comment: human readable comment from Verifier to Prover
+        :param locale: locale, for example "en" or "ru"
+        :param proto_version: 0037 protocol version, for example 1.0 or 1.1
+        """
+        async with self.coprotocol(pairwise=self.__prover):
             try:
                 # Step-1: Send proof request
                 expires_time = datetime.utcnow() + timedelta(seconds=self.time_to_live)
@@ -71,7 +138,8 @@ class Verifier(AbstractStateMachine):
                 request_msg.please_ack = True
                 await self.log(progress=30, message='Send request', payload=dict(request_msg))
 
-                presentation = await self.__switch(request_msg)
+                # Switch to await participant action
+                presentation = await self.switch(request_msg)
                 if not isinstance(presentation, PresentationMessage):
                     raise StateMachineTerminatedWithError(
                         RESPONSE_NOT_ACCEPTED, 'Unexpected @type: %s' % str(presentation.type)
@@ -90,14 +158,14 @@ class Verifier(AbstractStateMachine):
                     cred_def_id = identifier['cred_def_id']
                     rev_reg_id = identifier['rev_reg_id']
                     if schema_id and schema_id not in schemas:
-                        schemas[schema_id] = await self.__cache.get_schema(
+                        schemas[schema_id] = await sirius_sdk.Cache.get_schema(
                             self.__pool_name, self.__prover.me.did, schema_id, opts
                         )
                     if cred_def_id and cred_def_id not in credential_defs:
-                        credential_defs[cred_def_id] = await self.__cache.get_cred_def(
+                        credential_defs[cred_def_id] = await sirius_sdk.Cache.get_cred_def(
                             self.__pool_name, self.__prover.me.did, cred_def_id, opts
                         )
-                success = await self.__api.verifier_verify_proof(
+                success = await sirius_sdk.AnonCreds.verifier_verify_proof(
                     proof_request=proof_request,
                     proof=presentation.proof,
                     schemas=schemas,
@@ -112,126 +180,51 @@ class Verifier(AbstractStateMachine):
                         status=Status.OK
                     )
                     await self.log(progress=100, message='Verifying terminated successfully')
-                    await self.__send(ack)
+                    await self.send(ack)
                     return True
                 else:
                     await self.log(progress=100, message='Verifying terminated with ERROR')
                     raise StateMachineTerminatedWithError(VERIFY_ERROR, 'Verifying return false')
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = PresentProofProblemReport(
-                    e.problem_code, e.explain, thread_id=self.__thread_id
+                self._problem_report = PresentProofProblemReport(
+                    e.problem_code, e.explain
                 )
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain
                 )
                 if e.notify:
-                    await self.__send(self.__problem_report)
+                    await self.send(self._problem_report)
                 return False
-        finally:
-            await self.__stop()
 
-    @property
-    def problem_report(self) -> PresentProofProblemReport:
-        return self.__problem_report
-
-    @property
-    def protocols(self) -> List[str]:
-        return [BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL]
-
-    @property
-    def requested_proof(self) -> Optional[dict]:
-        return self.__requested_proof
-
-    async def abort(self):
-        await super().abort()
-        if self.__transport and self.__transport.is_started:
-            self.__problem_report = PresentProofProblemReport(
-                problem_code=REQUEST_PROCESSING_ERROR,
-                explain='Operation is aborted by owner',
-                thread_id=self.__thread_id
-            )
-            await self.__transport.send(self.__problem_report)
-
-    async def __start(self):
-        self.__transport = await self.transports.spawn(self.__prover)
-        await self.__transport.start(self.protocols, self.time_to_live)
-        if self.__api_internal:
-            self.__api = self.__transport.wallet.anoncreds
-        if self.__cache_internal:
-            self.__cache = self.__transport.wallet.cache
-
-    async def __stop(self):
-        if self.__transport:
-            await self.__transport.stop()
-            self.__transport = None
-            if self.__api_internal:
-                self.__api = None
-            if self.__cache_internal:
-                self.__cache = None
-
-    async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
-        ok, resp = await self.__transport.switch(request)
-        if self.is_aborted:
-            await self.log(progress=100, message='Aborted')
-            raise StateMachineAborted
-        if ok:
-            self.__thread_id = None
-            if isinstance(resp, BasePresentProofMessage):
-                if resp.please_ack:
-                    self.__thread_id = resp.ack_message_id
-            if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
-                try:
-                    resp.validate()
-                except SiriusValidationError as e:
-                    raise StateMachineTerminatedWithError(RESPONSE_PROCESSING_ERROR, e.message)
-                return resp
-            elif isinstance(resp, PresentProofProblemReport):
-                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
-            else:
-                raise StateMachineTerminatedWithError(RESPONSE_PROCESSING_ERROR, 'Unexpected response @type: %s' % str(resp.type))
-        else:
-            raise StateMachineTerminatedWithError(RESPONSE_PROCESSING_ERROR, 'Response awaiting terminated by timeout')
-
-    async def __send(self, msg: Union[BasePresentProofMessage, Ack, PresentProofProblemReport]):
-        await self.__transport.send(msg)
+    def _is_leader(self) -> bool:
+        return True
 
 
-class Prover(AbstractStateMachine):
+class Prover(BaseVerifyStateMachine):
     """Implementation of Prover role for present-proof protocol
 
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
     """
 
-    def __init__(
-            self, verifier: Pairwise, pool_name: str,
-            api: AbstractAnonCreds = None, cache: AbstractCache = None,
-            *args, **kwargs
-    ):
+    def __init__(self, verifier: Pairwise, ledger: Ledger, time_to_live: int = 60, logger=None, *args, **kwargs):
         """
         :param verifier: Verifier described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
-        :param pool_name: network (DKMS) name that is used to verify credentials presented by prover
-        :param api: optionally passed anon-creds api that implemented outside wallet
-          (by default state-machine will use Indy SDK on Agent side)
-        :param cache: optionally passed caching api that implemented outside wallet
-          (by default state-machine will use Indy SDK on Agent side)
+        :param ledger: network (DKMS) name that is used to verify credentials presented by prover
+          (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
         """
 
-        super().__init__(*args, **kwargs)
-        self.__api = api
-        self.__api_internal = api is None
+        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__verifier = verifier
-        self.__thread_id = None
-        self.__transport = None
-        self.__cache = cache
-        self.__cache_internal = cache is None
-        self.__problem_report = None
-        self.__pool_name = pool_name
+        self.__pool_name = ledger.name
 
     async def prove(self, request: RequestPresentationMessage, master_secret_id: str) -> bool:
-        await self.__start()
-        try:
+        """
+        :param request: Verifier request
+        :param master_secret_id: prover secret id
+        """
+        async with self.coprotocol(pairwise=self.__verifier):
             try:
                 # Step-1: Process proof-request
                 await self.log(progress=10, message='Received proof request', payload=dict(request))
@@ -242,9 +235,10 @@ class Prover(AbstractStateMachine):
                 cred_infos, schemas, credential_defs, rev_states = await self._extract_credentials_info(
                     request.proof_request, self.__pool_name
                 )
+
                 if cred_infos.get('requested_attributes', None) or cred_infos.get('requested_predicates', None):
                     # Step-2: Build proof
-                    proof = await self.__api.prover_create_proof(
+                    proof = await sirius_sdk.AnonCreds.prover_create_proof(
                         proof_req=request.proof_request,
                         requested_credentials=cred_infos,
                         master_secret_name=master_secret_id,
@@ -260,7 +254,10 @@ class Prover(AbstractStateMachine):
 
                     # Step-3: Wait ACK
                     await self.log(progress=50, message='Send presentation')
-                    ack = await self.__switch(presentation_msg)
+
+                    # Switch to await participant action
+                    ack = await self.switch(presentation_msg)
+
                     if isinstance(ack, Ack):
                         await self.log(progress=100, message='Verify OK!')
                         return True
@@ -276,40 +273,22 @@ class Prover(AbstractStateMachine):
                         REQUEST_PROCESSING_ERROR, 'No proof correspondent to proof-request'
                     )
             except StateMachineTerminatedWithError as e:
-                self.__problem_report = PresentProofProblemReport(
-                    e.problem_code, e.explain, thread_id=self.__thread_id
+                self._problem_report = PresentProofProblemReport(
+                    e.problem_code, e.explain
                 )
                 await self.log(
                     progress=100, message=f'Terminated with error',
                     problem_code=e.problem_code, explain=e.explain
                 )
                 if e.notify:
-                    await self.__send(self.__problem_report)
+                    await self.send(self._problem_report)
                 return False
-        finally:
-            await self.__stop()
-
-    @property
-    def problem_report(self) -> PresentProofProblemReport:
-        return self.__problem_report
-
-    @property
-    def protocols(self) -> List[str]:
-        return [BasePresentProofMessage.PROTOCOL, Ack.PROTOCOL]
-
-    async def abort(self):
-        await super().abort()
-        if self.__transport and self.__transport.is_started:
-            self.__problem_report = PresentProofProblemReport(
-                problem_code=RESPONSE_PROCESSING_ERROR,
-                explain='Operation is aborted by owner',
-                thread_id=self.__thread_id
-            )
-            await self.__transport.send(self.__problem_report)
 
     async def _extract_credentials_info(self, proof_request, pool_name: str) -> (dict, dict, dict, dict):
         # Extract credentials from wallet that satisfy to request
-        proof_response = await self.__api.prover_search_credentials_for_proof_req(proof_request, limit_referents=1)
+        proof_response = await sirius_sdk.AnonCreds.prover_search_credentials_for_proof_req(
+            proof_request, limit_referents=1
+        )
         schemas = {}
         credential_defs = {}
         rev_states = {}
@@ -338,11 +317,11 @@ class Prover(AbstractStateMachine):
         for cred_info in all_infos:
             schema_id = cred_info['schema_id']
             cred_def_id = cred_info['cred_def_id']
-            schema = await self.__cache.get_schema(
+            schema = await sirius_sdk.Cache.get_schema(
                 pool_name=pool_name, submitter_did=self.__verifier.me.did,
                 id_=schema_id, options=opts
             )
-            cred_def = await self.__cache.get_cred_def(
+            cred_def = await sirius_sdk.Cache.get_cred_def(
                 pool_name=pool_name, submitter_did=self.__verifier.me.did,
                 id_=cred_def_id, options=opts
             )
@@ -350,47 +329,5 @@ class Prover(AbstractStateMachine):
             credential_defs[cred_def_id] = cred_def
         return requested_credentials, schemas, credential_defs, rev_states
 
-    async def __start(self):
-        self.__transport = await self.transports.spawn(self.__verifier)
-        await self.__transport.start(self.protocols, self.time_to_live)
-        if self.__api_internal:
-            self.__api = self.__transport.wallet.anoncreds
-        if self.__cache_internal:
-            self.__cache = self.__transport.wallet.cache
-
-    async def __stop(self):
-        if self.__transport:
-            await self.__transport.stop()
-            self.__transport = None
-            if self.__api_internal:
-                self.__api = None
-            if self.__cache_internal:
-                self.__cache = None
-
-    async def __switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
-        ok, resp = await self.__transport.switch(request)
-        if self.is_aborted:
-            await self.log(progress=100, message='Aborted')
-            raise StateMachineAborted
-        if ok:
-            self.__thread_id = None
-            if isinstance(resp, BasePresentProofMessage):
-                if resp.please_ack:
-                    self.__thread_id = resp.ack_message_id
-            if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
-                try:
-                    resp.validate()
-                except SiriusValidationError as e:
-                    raise StateMachineTerminatedWithError(REQUEST_PROCESSING_ERROR, e.message)
-                return resp
-            elif isinstance(resp, PresentProofProblemReport):
-                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
-            else:
-                raise StateMachineTerminatedWithError(
-                    REQUEST_PROCESSING_ERROR, 'Unexpected response @type: %s' % str(resp.type)
-                )
-        else:
-            raise StateMachineTerminatedWithError(REQUEST_PROCESSING_ERROR, 'Response awaiting terminated by timeout')
-
-    async def __send(self, msg: Union[BasePresentProofMessage, Ack, PresentProofProblemReport]):
-        await self.__transport.send(msg)
+    def _is_leader(self) -> bool:
+        return False

@@ -5,7 +5,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk.agent.connections import Endpoint
-from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.state_machines_new import Inviter, Invitee, \
+from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.state_machines import Inviter, Invitee, \
     ConnRequest, Invitation
 
 from .helpers import run_coroutines, IndyAgent, ServerTestSuite

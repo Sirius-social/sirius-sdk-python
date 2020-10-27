@@ -10,7 +10,7 @@ from sirius_sdk import Agent, Pairwise
 from sirius_sdk.agent.codec import encode
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
 from sirius_sdk.agent.ledger import CredentialDefinition
-from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.state_machines_new import Verifier, Prover, \
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.state_machines import Verifier, Prover, \
     AttribTranslation, RequestPresentationMessage
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 

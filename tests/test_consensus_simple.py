@@ -6,7 +6,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent, P2PConnection
-from sirius_sdk.agent.consensus.simple.state_machines_new import MicroLedgerSimpleConsensus
+from sirius_sdk.agent.consensus.simple.state_machines import MicroLedgerSimpleConsensus
 from sirius_sdk.agent.consensus.simple.messages import *
 
 from .conftest import get_pairwise
