@@ -8,7 +8,7 @@ from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.microledgers import serialize_ordering, Microledger
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
-from sirius_sdk.agent.microledgers import Transaction
+from sirius_sdk.agent.microledgers import Transaction, AbstractMicroledger
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
 
 
@@ -160,7 +160,7 @@ class InitResponseLedgerMessage(InitRequestLedgerMessage):
 class MicroLedgerState(dict):
 
     @classmethod
-    def from_ledger(cls, ledger: Microledger):
+    def from_ledger(cls, ledger: AbstractMicroledger):
         return MicroLedgerState(
             {
                 'name': ledger.name,
