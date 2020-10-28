@@ -7,7 +7,7 @@ server side and client side.
 
 Server side named **HUB** has components:
 
-  - **Endpoint**: server that process income requests from Internet - external world
+  - **Endpoint**: address of the server server that process income requests from Internet - external world
   - **Router**: give ability to manipulate with routing keys and forwarding messages to actual Agent instances
   - **Load balancer**: balance income packed messages streams among Agent instances.
     Hub User may keep multiple Agent instances cause of Sirius initialize **Hyperledger Indy**
@@ -38,7 +38,7 @@ Step-by-step
 
       sirius_sdk.init(
          server_uri="<Sirius Hub URL>",
-         credentials="<Agent credentials>",
+         credentials="<Hub account credentials>",
          p2p=sirius_sdk.P2PConnection(
            my_keys=("<sdk-public-key>", "<sdk-secret-key>"),
            their_verkey="<agent-side-public-key>"

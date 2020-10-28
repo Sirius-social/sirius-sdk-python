@@ -73,7 +73,7 @@ So to statically add new relationship you must keep:
 
 .. code-block:: python
 
-      # You received necessity data
+      # You received necessive data
       their_did, their_verkey, their_endpoint = ...
       .....
       # You may generate DID, Verkey on self side to establish P2P connection
@@ -144,7 +144,7 @@ for this purposes. But you may adapt this logic and configure for yourself or ex
               endpoint = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0]
               state_machine = sirius_sdk.aries_rfc.Inviter(
                   me=sirius_sdk.Pairwise.Me(did, verkey),
-                  connection_key=event.recipient_verkey,  # You may detect use-cases by connection-key value
+                  connection_key=event.recipient_verkey,  # You may detect use-case context by connection-key value
                   my_endpoint=endpoint
               )
               ok, pairwise = await state_machine.create_connection(request)
