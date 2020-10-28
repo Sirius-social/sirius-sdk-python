@@ -76,4 +76,4 @@ Required configuration parameters
 
 Code samples
 ======================
-See code samples for DEMO Sirius Hub `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/setup_environment/setup_environment.py>`_
+See code samples for DEMO Sirius Hub `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/setup_environment/main.py>`_

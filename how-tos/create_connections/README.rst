@@ -155,6 +155,6 @@ for this purposes. But you may adapt this logic and configure for yourself or ex
 Code samples
 *******************************************
 
-1. `Both cases <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/create_connections/create_connection.py>`_
-2. `Statically <https://github.com/Sirius-social/sirius-sdk-python/blob/223b9591e795f0bfe48ee3ec6a537ecedc9f65e4/how-tos/create_connections/create_connection.py#L101>`_
-3. `Dynamically <https://github.com/Sirius-social/sirius-sdk-python/blob/223b9591e795f0bfe48ee3ec6a537ecedc9f65e4/how-tos/create_connections/create_connection.py#L118>`_
+1. `Both cases <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/create_connections/main.py>`_
+2. `Statically <https://github.com/Sirius-social/sirius-sdk-python/blob/223b9591e795f0bfe48ee3ec6a537ecedc9f65e4/how-tos/create_connections/main.py#L101>`_
+3. `Dynamically <https://github.com/Sirius-social/sirius-sdk-python/blob/223b9591e795f0bfe48ee3ec6a537ecedc9f65e4/how-tos/create_connections/main.py#L118>`_
