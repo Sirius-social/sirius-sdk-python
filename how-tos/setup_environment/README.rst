@@ -18,7 +18,7 @@ Server side named **HUB** has components:
     - Redis: Sirius use redis channels to schedule co-protocols (sender+recipient verkeys / thread-id / etc.)
     - Co-protocols scheduler: route extracted co-protocol stream to correspondent state-machine (managed via SDK on client-side)
 
-  - **SDK**: schedule state-machines on client-side avoiding callback Hell and save developer from complexity
+  - **SDK**: schedule state-machines on client-side avoiding callback Hell and save developer from communication "magic"
 
 .. image:: https://raw.githubusercontent.com/Sirius-social/sirius-sdk-python/master/docs/_static/high_level_arch.png
    :height: 640px
