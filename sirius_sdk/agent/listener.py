@@ -14,7 +14,7 @@ PY_352 = sys.version_info >= (3, 5, 2)
 
 class Event(Message):
     
-    def __init__(self, pairwise: Pairwise=None, *args, **kwargs):
+    def __init__(self, pairwise: Pairwise = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__pairwise = pairwise
 

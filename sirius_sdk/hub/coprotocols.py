@@ -4,6 +4,7 @@ from typing import Optional, List, Any, Union, Tuple, Dict
 from contextlib import asynccontextmanager
 
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
+from sirius_sdk.agent.listener import Event
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusConnectionClosed, \
     SiriusTimeoutIO
@@ -348,3 +349,30 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
                 raise OperationAbortedManually('User aborted operation')
             else:
                 raise
+
+
+async def open_communication(event: Event, time_to_live: int = None) -> Optional[AbstractP2PCoProtocol]:
+    if event.pairwise is not None and event.message is not None:
+        thread_id = None
+        parent_thread_id = None
+        if THREAD_DECORATOR in event.message:
+            thread_id = event.message.get(THREAD_DECORATOR, {}).get('thid', None)
+        if PLEASE_ACK_DECORATOR in event.message:
+            parent_thread_id = thread_id
+            thread_id = event.message.get(PLEASE_ACK_DECORATOR, {}).get('message_id', None) or event.message.id
+        if thread_id:
+            comm = CoProtocolThreadedP2P(
+                thid=thread_id,
+                to=event.pairwise,
+                pthid=parent_thread_id,
+                time_to_live=time_to_live
+            )
+        else:
+            comm = CoProtocolP2P(
+                pairwise=event.pairwise,
+                protocols=[event.message.protocol],
+                time_to_live=time_to_live
+            )
+        return comm
+    else:
+        return None
