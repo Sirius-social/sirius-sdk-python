@@ -1,0 +1,46 @@
+@startuml
+database "Agent of participant 1" as agent1{
+  queue "Co-Protocols scheduler"  as sheduler1  {
+    usecase "co-1" as co11 #line:red;
+    usecase "co-2" as co12 #line:blue;
+    usecase "co-3" as co13 #line:green;
+    usecase "co-4" as co14 #line:purple;
+  }
+}
+
+
+database "Agent of participant 2" as agent2 {
+  queue "Co-Protocols scheduler" as sheduler2 {
+    usecase "co-1" as co21 #line:red;
+    usecase "co-2" as co22 #line:blue;
+    usecase "co-3" as co23 #line:green;
+    usecase "co-4" as co24 #line:purple;
+  }
+}
+
+
+cloud  "Internet" as internet
+
+
+cloud "Participant 1" as p1 {
+   interface "state-machine-1" as sm11 #line:red;text:red;
+   interface "state-machine-2" as sm12 #line:blue;text:blue;
+   interface "state-machine-3" as sm13 #line:green;text:green;
+   interface "state-machine-4" as sm14 #line:purple;text:purple;
+}
+
+
+
+
+cloud "Participant 2" as p2 {
+   interface "state-machine-1" as sm21 #line:red;text:red;
+   interface "state-machine-2" as sm22 #line:blue;text:blue;
+   interface "state-machine-3" as sm23 #line:green;text:green;
+   interface "state-machine-4" as sm24 #line:purple;text:purple;
+}
+
+p1 -[hidden]> agent1
+agent1 -[hidden]> internet
+internet -[hidden]> agent2
+agent2 -[hidden]> p2
+@enduml
