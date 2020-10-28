@@ -9,15 +9,15 @@ This is the main reason why Sirius SDK is distributed in multiple programming la
 As noticed Nick Szabo in `Smart Contracts: Building Blocks for Digital Markets <http://www.truevaluemetrics.org/DBpdfs/BlockChain/Nick-Szabo-Smart-Contracts-Building-Blocks-for-Digital-Markets-1996-14591.pdf>`_
 trust environment is not immutable storage only, building blocks of trust are:
 
-- 1. First of these is observability, the ability of the principals to observe each others'
+1. First of these is observability, the ability of the principals to observe each others'
      performance of the contract
-- 2. Second objective verifiability, the ability of a principal to prove to an arbitrator
+2. Second objective verifiability, the ability of a principal to prove to an arbitrator
      that a contract has been performed or breached, or the ability of the arbitrator to find this
      out by other means
-- 3. Third objective of contract design is privity, the principle that knowledge and control
+3. Third objective of contract design is privity, the principle that knowledge and control
      over the contents and performance of a contract should be distributed among parties only
      as much as is necessary for the performance of that contract
-- 4. Fourth objective is enforceability, and at the same time minimizing the need for enforcement.
+4. Fourth objective is enforceability, and at the same time minimizing the need for enforcement.
      Improved verifiability often also helps meet this fourth objective.
      Reputation, built-in incentives, "self-enforcing" protocols,
      and verifiability can all play a strong part in meeting the fourth objective.
@@ -56,7 +56,36 @@ Sirius SDK give ability to establish connection relationships in two manners:
 Below we present source code examples.
 
 Case-1: establish connection statically
-*************************
-Sirius based on **Self-sovereign identity** concept as source point for any relationships to
-moving relationships from real world to digital space
+*******************************************
+Sirius based on **Self-sovereign identity** concept as source point to start
+moving relationships from real world to digital space.
 
+.. image:: https://raw.githubusercontent.com/Sirius-social/sirius-sdk-python/master/docs/_static/ssi_actor.png
+   :height: 200px
+   :width: 250px
+   :alt: Actor
+
+So to statically add new relationship you must keep:
+
+- **DID**: `Decentralized identifier <https://www.w3.org/TR/did-core/#dfn-decentralized-identifiers>`_
+- **Verkey**: public key that used to verify digital signatures presented by `DID Controller <https://www.w3.org/TR/did-core/#dfn-did-controllers>`_
+- **Endpoint**: Reachable internet address to communicate with
+
+.. code-block:: python
+
+      # You received necessity data
+      their_did, their_verkey, their_endpoint = ...
+      .....
+      # You may generate DID, Verkey on self side to establish P2P connection
+      # But in advanced, you may use public static DID if you are public organization or any business
+      # Sirius does not enforce your choice
+      my_did, my_verkey = await sirius_sdk.DID.create_and_store_my_did()
+      connection = sirius_sdk.Pairwise(
+            me=sirius_sdk.Pairwise.Me(my_did, my_verkey),
+            their=sirius_sdk.Pairwise.Their(their_did, 'My static connection', their_endpoint, their_verkey)
+      )
+      await sirius_sdk.PairwiseList.create(connection)
+
+
+Case-2: establish connection dynamically
+*******************************************
