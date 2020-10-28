@@ -89,3 +89,72 @@ So to statically add new relationship you must keep:
 
 Case-2: establish connection dynamically
 *******************************************
+In practice we should to have more flexible procedure to establish connection.
+For example, Connection initiator (Inviter) can generate information packet, include all data for establishing
+connection with him and store some context in his Invitation: web page session, for example.
+**Sirius**, by default, has implementation for `Aries protocols <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_
+for this purposes. But you may adapt this logic and configure for yourself or extend thanks to
+**Sirius SDK** is open source.
+
+
+1. Inviter build connection:
+
+.. code-block:: python
+
+      # Inviter create invitation and publish it for example on Web page via QR code
+      # or send via Email
+      # Connection key may be used to determine connection context: business-process, web-session, etc.
+      invitation = sirius_sdk.aries_rfc.Invitation(
+          label='Inviter', endpoint=endpoint.address, recipient_keys=[connection_key]
+      )
+      qr_code_content = invitation.invitation_url
+
+
+2. Invitee received invitation, for example he was scanned QR code
+
+.. code-block:: python
+
+    invitation = sirius_sdk.aries_rfc.Invitation.from_url(qr_code_content)
+    ...
+    # Allocate new did for new connection (you may use const public DID)
+    did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+    my_endpoint = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0]
+    # Allocate and configure state-machine
+    state_machine = sirius_sdk.aries_rfc.Invitee(
+        me=sirius_sdk.Pairwise.Me(did, verkey),
+        my_endpoint=my_endpoint
+    )
+    # Run state-machine that process Aries 0160 protocol
+    ok, pairwise = await state_machine.create_connection(invitation=invitation, my_label='Invitee')
+    assert ok is True
+
+
+3. Inviter received connection-request
+
+.. code-block:: python
+
+      listener = await sirius_sdk.subscribe()
+      # Listen events from Endpoints
+      async for event in listener:
+          # Implementation for Reactive nature of your business-logic
+          request = event.message
+          if isinstance(request, sirius_sdk.aries_rfc.ConnRequest):
+              # Allocate new DID,Verkey for new connection (you may use const public DID)
+              did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+              endpoint = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0]
+              state_machine = sirius_sdk.aries_rfc.Inviter(
+                  me=sirius_sdk.Pairwise.Me(did, verkey),
+                  connection_key=event.recipient_verkey,  # You may detect use-cases by connection-key value
+                  my_endpoint=endpoint
+              )
+              ok, pairwise = await state_machine.create_connection(request)
+              assert ok is True
+
+
+
+Code samples
+*******************************************
+
+1. `Both cases <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/create_connections/create_connection.py>`_
+2. `Statically <https://github.com/Sirius-social/sirius-sdk-python/blob/223b9591e795f0bfe48ee3ec6a537ecedc9f65e4/how-tos/create_connections/create_connection.py#L101>`_
+3. `Dynamically <https://github.com/Sirius-social/sirius-sdk-python/blob/223b9591e795f0bfe48ee3ec6a537ecedc9f65e4/how-tos/create_connections/create_connection.py#L118>`_
