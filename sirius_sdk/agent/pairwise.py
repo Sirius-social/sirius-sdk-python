@@ -132,10 +132,12 @@ class WalletPairwiseList(AbstractPairwiseList):
 
     async def create(self, pairwise: Pairwise):
         await self._api_did.store_their_did(did=pairwise.their.did, verkey=pairwise.their.verkey)
+        metadata = pairwise.metadata or {}
+        metadata.update(self._build_metadata(pairwise))
         await self._api_pairwise.create_pairwise(
             their_did=pairwise.their.did,
             my_did=pairwise.me.did,
-            metadata=pairwise.metadata,
+            metadata=metadata,
             tags=self._build_tags(pairwise)
         )
 
@@ -212,3 +214,22 @@ class WalletPairwiseList(AbstractPairwiseList):
             metadata=metadata
         )
         return pairwise
+
+    @staticmethod
+    def _build_metadata(pairwise: Pairwise) -> dict:
+        metadata = {
+            'me': {
+                'did': pairwise.me.did,
+                'verkey': pairwise.me.verkey
+            },
+            'their': {
+                'did': pairwise.their.did,
+                'verkey': pairwise.their.verkey,
+                'label': pairwise.their.label,
+                'endpoint': {
+                    'address': pairwise.their.endpoint,
+                    'routing_keys': pairwise.their.routing_keys
+                }
+            }
+        }
+        return metadata
