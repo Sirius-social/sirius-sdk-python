@@ -1,0 +1,7 @@
+@startuml
+package "Self-sovereign identity Actor" {
+  file Endpoint
+  file DID
+  file Verkey
+}
+@enduml

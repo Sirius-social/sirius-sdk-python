@@ -57,3 +57,6 @@ Below we present source code examples.
 
 Case-1: establish connection statically
 *************************
+Sirius based on **Self-sovereign identity** concept as source point for any relationships to
+moving relationships from real world to digital space
+
