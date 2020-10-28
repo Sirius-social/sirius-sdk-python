@@ -157,4 +157,4 @@ Code samples
 
 1. `Both cases <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/create_connections/main.py>`_
 2. `Statically <https://github.com/Sirius-social/sirius-sdk-python/blob/e75d1633159f2fd3798e0a2524958ec43f8509e5/how-tos/create_connections/main.py#L80>`_
-3. `https://github.com/Sirius-social/sirius-sdk-python/blob/e75d1633159f2fd3798e0a2524958ec43f8509e5/how-tos/create_connections/main.py#L97>`_
+3. `Dynamically <https://github.com/Sirius-social/sirius-sdk-python/blob/e75d1633159f2fd3798e0a2524958ec43f8509e5/how-tos/create_connections/main.py#L97>`_
