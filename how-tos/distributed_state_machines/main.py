@@ -56,6 +56,7 @@ class BayDoor(AbstractStateMachine, AbstractDevice):
 
     async def open(self) -> bool:
         log('Bay Door: start opening')
+        # Detect if Environment is Friendly or No to make decision
         environment = await self.__detect_current_environment()
         if environment == Environment.FRIENDLY:
             await self.__transition_to(State.OPENED)

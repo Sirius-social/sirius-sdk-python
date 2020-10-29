@@ -44,3 +44,61 @@ manually (e.g., someone pushes a button to cycle an airlock); others might be au
 A simple way to model state machines is with a matrix, where states are rows, events are columns,
 and transitions are the intersections or cells.
 
+How Sirius schedule state-machine
+====================================
+As noticed above, State machines consist of states and transitions, transitions are triggered by events.
+**Sirius SDK** provide mechanisms to provide transition logic in imperative style: line-by-line avoiding handlers and callbacks
+
+
+In code example below we see BayDoor state-machine that process open command in block-style programming manner
+instead of using handlers and callbacks. This approach make code more user friendly.
+
+.. code-block:: python
+
+     async def open(self) -> bool:
+        log('Bay Door: start opening')
+        # Detect if Environment is Friendly or No to make decision
+        environment = await self.__detect_current_environment()
+        if environment == Environment.FRIENDLY:
+            await self.__transition_to(State.OPENED)
+            log('Bay Door: opening finished successfully')
+            return True
+        else:
+            log('Bay Door: opening finished with error due to non Non-Friendly environment')
+            return False
+
+**Sirius SDK** provide it via thread/coroutine suspend-resume. Scheduling mechanism based on
+threading/microthreading/coroutines depends on programming languages and it native cooperative
+multitasking mechanisms.
+Regardless of concrete mechanism, developer may be sure his code is running on separate CPU Stack and
+**SDK** scheduler will allocate CPU time when it needed, so your transmition code may be imagine as
+micro-application that is **turing machine**.
+
+.. code-block:: python
+
+     # SWITCH method suspend runtime thread until participant will respond or error/timeout occur
+     ok, response = await communication.switch(
+         message=Message({
+             '@type': TYPE_STATE_REQUEST
+         })
+     )
+
+Suspend/Resume context and awaiting responses from participants driven by communication abstractions like in
+**GoLang** `concurrency mechanism <https://tour.golang.org/concurrency/2>`_ based on communication channels.
+Communication abstractions are closely related to `Aries RFCs CoProtocol abstraction <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols>`_.
+
+Communication abstractions are implemented in following classes:
+
+- `CoProtocolP2PAnon <https://github.com/Sirius-social/sirius-sdk-python/blob/538cc33b579d7232a8ef40d47994d2156176c3a5/sirius_sdk/hub/coprotocols.py#L77>`_:
+  communicate with participant who does not have Pairwise record. Useful for P2P initialization procedure.
+- `CoProtocolP2P <https://github.com/Sirius-social/sirius-sdk-python/blob/538cc33b579d7232a8ef40d47994d2156176c3a5/sirius_sdk/hub/coprotocols.py#L143>`_:
+  communicate with participant in P2P context
+- `CoProtocolThreadedP2P <https://github.com/Sirius-social/sirius-sdk-python/blob/538cc33b579d7232a8ef40d47994d2156176c3a5/sirius_sdk/hub/coprotocols.py#L207>`_:
+  communicate with participant in P2P context marking messages with unique `process-thread-id <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0008-message-id-and-threading>`_
+- `CoProtocolThreadedTheirs <https://github.com/Sirius-social/sirius-sdk-python/blob/538cc33b579d7232a8ef40d47994d2156176c3a5/sirius_sdk/hub/coprotocols.py#L260>`_:
+  communicate with group of participants in parallel.
+
+It is available thanks to scheduling mechanism on server-side
+
+.. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/scheduling_state_machines.png?raw=true
+   :alt: State machine scheduling
