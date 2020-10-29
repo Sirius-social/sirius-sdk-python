@@ -22,7 +22,7 @@ space suit. We have 4 airlocks, A, B, C, and D--and one launch bay door, E. It l
 .. image:: https://raw.githubusercontent.com/Sirius-social/sirius-sdk-python/master/docs/_static/airlocks.jpg
    :height: 400px
    :width: 640px
-   :alt: AirCraft
+   :alt: Space Ship
 
 
 There are at least interesting two state machine types in this situation:
@@ -152,3 +152,11 @@ Let's connect the dots
 
 Run samples
 ======================
+You may run `Code sample <https://github.com/Sirius-social/sirius-sdk-python/blob/2715325ca5d6e23f7fd3546094467718d5a844ab/how-tos/distributed_state_machines/main.py#L215>`_
+and deep dive to **Sirius SDK**.
+
+.. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/airlocks_screen.png?raw=true
+   :alt: Sample
+
+As you can see on screenshot above no one of airlocks can not be opened while Bay Door is open and
+Space Ship will not be depressurized.
