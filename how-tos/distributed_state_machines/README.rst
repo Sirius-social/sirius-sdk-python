@@ -139,9 +139,16 @@ Let's connect the dots
 - **Sirius** state-machines are implemented by micro-applications that acts in concurrency environment
   managing by **SDK** scheduler in close relationship with server-side **Hub** scheduler.
 - **Transitions** are triggered by **events**. Events are considered as `Aries message types <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#message-types>`_
-  ordered and packet in streams that considered as `<Co-Protocols <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#what-is-a-protocol>`_
-
+  ordered and packet in streams that considered as `Co-Protocols <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#what-is-a-protocol>`_
 
 .. image:: https://github.com/hyperledger/aries-rfcs/blob/master/concepts/0003-protocols/co-protocols.png?raw=true
+   :height: 100px
+   :width: 200px
    :alt: Co-Protocols
 
+- **Messages** that considered as Events have format and structure that was approved by participants
+  in consensual or mandatory manner.
+
+
+Run samples
+======================
