@@ -165,3 +165,13 @@ Space Ship will not be depressurized. Moreover sample code emulate delays in ope
 
 Conclusions
 ====================
+To deploy whole distributed state machine to production system we should build test matrix
+to check failures missing. **Sirius SDK** thanks to lightweight micro-applications environment may help
+to do that rapidly.
+
+Also Self-sovereign identity concept provide atomic building blocks to construct complicated relationships
+among independent entities (Humans, Businesses, IoT).
+Cryptography support and communication abstractions are out of the box thanks to **Sirius SDK**.
+Moreover developer can upgrade existing tools cause of multi-language and open-source nature of solution.
+
+Will show later why we can't view presented distributed-state-machine as consensus procedure for building Trust.
