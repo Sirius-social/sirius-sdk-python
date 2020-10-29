@@ -41,8 +41,6 @@ Now, let’s describe each of the state machines in isolation, formally. State m
 of states and transitions. Transitions are triggered by events. Some events are triggered
 manually (e.g., someone pushes a button to cycle an airlock); others might be automatic
 (e.g., once the bay door finishes opening, the bay door should automatically go into an open state).
-A simple way to model state machines is with a matrix, where states are rows, events are columns,
-and transitions are the intersections or cells.
 
 How Sirius schedule state-machine
 ====================================
@@ -147,16 +145,23 @@ Let's connect the dots
    :alt: Co-Protocols
 
 - **Messages** that considered as Events have format and structure that was approved by participants
-  in consensual or mandatory manner.
+  in consensual or mandatory manner. Just approach provide maximum dive to business processes automation.
+- **Useful output**: Communications entities, BayDoor and AirLocks, may have different hardware and software
+  versions, so State-machines in practice will have different implementation but whole distributed state-machine
+  will continue to work thanks to **Messages** (events) approved by each part.
 
 
-Run samples
+Run sample
 ======================
 You may run `Code sample <https://github.com/Sirius-social/sirius-sdk-python/blob/2715325ca5d6e23f7fd3546094467718d5a844ab/how-tos/distributed_state_machines/main.py#L215>`_
-and deep dive to **Sirius SDK**.
+and deep dive to **Sirius SDK**. To avoid Space Ship depressurizing devices state-machine detect
+environment kinds named as *friendly* and *hostile*
 
 .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/airlocks_screen.png?raw=true
    :alt: Sample
 
 As you can see on screenshot above no one of airlocks can not be opened while Bay Door is open and
-Space Ship will not be depressurized.
+Space Ship will not be depressurized. Moreover sample code emulate delays in open/close actions.
+
+Conclusions
+====================
