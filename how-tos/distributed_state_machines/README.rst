@@ -102,3 +102,33 @@ It is available thanks to scheduling mechanism on server-side
 
 .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/scheduling_state_machines.png?raw=true
    :alt: State machine scheduling
+
+
+Scheduling runtime context via communication abstractions:
+
+.. code-block:: python
+
+     # Communicate with group of participants
+     communication = sirius_sdk.CoProtocolThreadedTheirs(
+        thid='request-id-' + uuid.uuid4().hex,
+        theirs=self.airlocks,
+     )
+     # SWITCH method suspend runtime thread until events will be accumulated or error occur
+     results = await communication.switch(
+        message=Message({
+            '@type': TYPE_STATE_REQUEST
+        })
+     )
+
+     ...
+     # Communicate with participants in P2P context
+     communication = sirius_sdk.CoProtocolThreadedP2P(
+        thid='request-id-' + uuid.uuid4().hex,
+        to=self.baydoor
+     )
+     # SWITCH method suspend runtime thread until participant will respond or error/timeout occur
+     ok, response = await communication.switch(
+        message=Message({
+            '@type': TYPE_STATE_REQUEST
+        })
+     )
