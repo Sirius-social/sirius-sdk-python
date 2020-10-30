@@ -149,7 +149,21 @@ Let's connect the dots
 - **Useful output**: Communications entities, BayDoor and AirLocks, may have different hardware and software
   versions, so State-machines in practice will have different implementation but whole distributed state-machine
   will continue to work thanks to **Messages** (events) approved by each part.
+- **Sirius SDK** provide **Turing completeness** in their transition model that similar
+  to Google **GoLang** concurrency model. So developer may control environment for state-machines
+  transition steps with much algorithms complexity.
 
+.. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/automata_theory.png?raw=true
+   :height: 150px
+   :width: 200px
+   :alt: Automata theory
+
+- **Sirius SDK** transaction model is based on TCP connection to **Indy agent** with running co-protocols scheduler.
+  This solution provide us to be able to:
+
+  - Implement same concurrency model (block-style programming for physically asynchronous things)
+    for any program language regardless of concurrency model of the specific program language and tools
+  - Reduce development, maintaining, testing costs for complex things
 
 Run sample
 ======================
