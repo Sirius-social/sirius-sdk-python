@@ -174,4 +174,4 @@ among independent entities (Humans, Businesses, IoT).
 Cryptography support and communication abstractions are out of the box thanks to **Sirius SDK**.
 Moreover developer can upgrade existing tools cause of multi-language and open-source nature of solution.
 
-Will show later why we can't view presented distributed-state-machine as consensus procedure for building Trust.
+Will show later why we can't view presented distributed-state-machine as consensus procedure for building **Trust**.
