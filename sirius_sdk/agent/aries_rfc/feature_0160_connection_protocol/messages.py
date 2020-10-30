@@ -144,8 +144,8 @@ class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
     NAME = 'invitation'
 
     def __init__(
-            self, label: Optional[str]=None, recipient_keys: Optional[List[str]]=None,
-            endpoint: Optional[str]=None, routing_keys: Optional[List[str]]=None, *args, **kwargs
+            self, label: Optional[str] = None, recipient_keys: Optional[List[str]] = None,
+            endpoint: Optional[str] = None, routing_keys: Optional[List[str]] = None, did: str = None,  *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         if label is not None:
@@ -156,6 +156,8 @@ class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
             self['serviceEndpoint'] = endpoint
         if routing_keys is not None:
             self['routingKeys'] = routing_keys
+        if did is not None:
+            self['did'] = did
 
     def validate(self):
         check_for_attributes(
