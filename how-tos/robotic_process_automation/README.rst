@@ -14,4 +14,21 @@ Preparing for test live demo
    `0036 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0036-issue-credential>`_
    `0037 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof>`_
    for example you may download `Sirius communicator for Android <https://yadi.sk/d/tdxYKNC37s3VOA>`_
-2. Run script `main.py <>`_
+2. Run script `main.py <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/robotic_process_automation/main.py>`_
+
+   .. code-block:: bash
+
+      python main.py
+
+   or you may run in debugger to check how it works step-by-step
+
+3. Scan QR code of **Sirius Bank** virtual assistance to get digital service from bank.
+
+   .. image:: https://demo.socialsirius.com/qr/bf3cf75e7127422d8d4f0eae6c022cc8
+       :height: 200px
+       :width: 200px
+       :alt: Prover role
+
+assume bank already processed **KYC** requirements and linked correspondent services to your P2P Pairwise.
+
+4.
