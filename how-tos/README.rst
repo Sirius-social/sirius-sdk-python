@@ -11,5 +11,5 @@ How-tos guide for business automation with Sirius approach via blockchain and Sm
 - `Distributed state machines <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/distributed_state_machines>`_
    will familiarize readers to distributed state machines concept. That concept is fundament block of Economic
    and Techologic value of Sirius.
-- `Indy anon creds implementation <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/anon_credentials>`_
+- `Indy Anon-Creds implementation <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/anon_credentials>`_
    will demonstrate how **Sirius SDK** helps to implement complex tasks and SSI protocols.
