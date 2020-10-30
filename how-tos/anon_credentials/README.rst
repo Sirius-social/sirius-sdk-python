@@ -131,6 +131,7 @@ Let's pay attention to some lines of code
    and wallet is secure storage only that support of reusing yourself relationships cause of persistent wallet storage.
 
     .. code-block:: python
+
         # You may select what DKMS network you should work with (Sovrin, IndicioNet, etc.)
         dkms = await sirius_sdk.ledger(network_name)
 
@@ -139,6 +140,7 @@ Let's pay attention to some lines of code
    to open-source nature of the SDK developer may upgrade declarations to himself demands
 
    .. code-block:: python
+
         # Ensure schema exists on DKMS
         schema_ = await dkms.ensure_schema_exists(anon_schema, ISSUER_DID)
         # Ensure CredDefs is stored to DKMS
@@ -148,3 +150,13 @@ Let's pay attention to some lines of code
    style. POP is powerful for communication part of use-cases algorithms where muck of acting entities,
    OOP is powerful for manipulating objects with passive nature: storages, entities, etc.
    Developer may combine them both to reach MAX productivity and rationality.
+
+   .. code-block:: python
+
+        dkms = await sirius_sdk.ledger(network_name)
+        feature_0037 = sirius_sdk.aries_rfc.Verifier(
+            prover=prover,
+            ledger=dkms
+        )
+        success = await feature_0037.verify(proof_request)
+
