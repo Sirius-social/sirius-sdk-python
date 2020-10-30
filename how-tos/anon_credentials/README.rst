@@ -123,3 +123,28 @@ DEMO
 =================
 You may check demo source code `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/anon_credentials/main.py>`_
 
+Let's pay attention to some lines of code
+==========================================
+
+1. DKMS is maintaining independently of DID. Indy Wallet use **Elliptic Curve Cryptography** inside
+   so all relationships and anon-cred mechanisms acts in virtual mathematics world of elliptic curves
+   and wallet is secure storage only that support of reusing yourself relationships cause of persistent wallet storage.
+
+    .. code-block:: python
+        # You may select what DKMS network you should work with (Sovrin, IndicioNet, etc.)
+        dkms = await sirius_sdk.ledger(network_name)
+
+
+2. **Sirius SDK** wrap Indy credential mechanisms tools to Native object-oriented-mechanisms. Thanks
+   to open-source nature of the SDK developer may upgrade declarations to himself demands
+
+   .. code-block:: python
+        # Ensure schema exists on DKMS
+        schema_ = await dkms.ensure_schema_exists(anon_schema, ISSUER_DID)
+        # Ensure CredDefs is stored to DKMS
+        cred_def_fetched = await dkms.fetch_cred_defs(tag='TAG', schema_id=schema_.id)
+
+3. **Sirius SDK** combine Object-Oriented (OOP) developing and Procedure-Oriented developing (POP)
+   style. POP is powerful for communication part of use-cases algorithms where muck of acting entities,
+   OOP is powerful for manipulating objects with passive nature: storages, entities, etc.
+   Developer may combine them both to reach MAX productivity and rationality.
