@@ -147,7 +147,7 @@ Let's pay attention to some lines of code
         cred_def_fetched = await dkms.fetch_cred_defs(tag='TAG', schema_id=schema_.id)
 
 3. **Sirius SDK** combine Object-Oriented (OOP) developing and Procedure-Oriented developing (POP)
-   style. POP is powerful for communication part of use-cases algorithms where muck of acting entities,
+   style. POP is powerful for communication part of use-cases algorithms with much of entities that have active nature,
    OOP is powerful for manipulating objects with passive nature: storages, entities, etc.
    Developer may combine them both to reach MAX productivity and rationality.
 
