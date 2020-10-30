@@ -25,9 +25,9 @@ Preparing for test live demo
 3. Scan QR code of **Sirius Bank** virtual assistance to get digital service from bank.
 
    .. image:: https://demo.socialsirius.com/qr/bf3cf75e7127422d8d4f0eae6c022cc8
-       :height: 200px
-       :width: 200px
-       :alt: Prover role
+      :height: 200px
+      :width: 200px
+      :alt: Bank
 
 assume bank already processed **KYC** requirements and linked correspondent services to your P2P Pairwise.
 
