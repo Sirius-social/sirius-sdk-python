@@ -57,7 +57,7 @@ async def generate_invitations_qr_codes() -> (str, str):
         try:
             connection_key = await sirius_sdk.Crypto.create_key(seed='0000000000000000SIRIUS_BANK_CONN')
         except sirius_sdk.indy_exceptions.WalletItemAlreadyExists:
-            log(f'Bank: conn key {CONN_KEY_EMPLOYER} already exists')
+            log(f'Bank: conn key {CONN_KEY_BANK} already exists')
         else:
             log(f'Bank: conn key {connection_key} was created')
             assert connection_key == CONN_KEY_BANK
@@ -80,10 +80,10 @@ async def generate_invitations_qr_codes() -> (str, str):
         try:
             connection_key = await sirius_sdk.Crypto.create_key(seed='000000000000SIRIUS_EMPLOYER_CONN')
         except sirius_sdk.indy_exceptions.WalletItemAlreadyExists:
-            log(f'Employer: conn key {CONN_KEY_BANK} already exists')
+            log(f'Employer: conn key {CONN_KEY_EMPLOYER} already exists')
         else:
             log(f'Employer: conn key {connection_key} was created')
-            assert connection_key == CONN_KEY_BANK
+            assert connection_key == CONN_KEY_EMPLOYER
         endpoints = await sirius_sdk.endpoints()
         simple_endpoint = [e for e in endpoints if e.routing_keys == []][0]
         employer_invitation = sirius_sdk.aries_rfc.Invitation(
@@ -97,10 +97,6 @@ async def generate_invitations_qr_codes() -> (str, str):
 
         # Sirius SDK provide method to generate URL for QR
         # employer_qr_url = await sirius_sdk.generate_qr_code(employer_invitation.invitation_url)
-        print('QR URL ================')
-        url = await sirius_sdk.generate_qr_code(employer_invitation.invitation_url)
-        print(url)
-    print('========================')
     return 'https://socialsirius.com' + bank_invitation.invitation_url, \
            'https://socialsirius.com' + employer_invitation.invitation_url
 
@@ -312,6 +308,6 @@ if __name__ == '__main__':
     print(f'Employer: {qr_employer}')
     print('-------------')
     schema_employer, cred_def_employer = asyncio.get_event_loop().run_until_complete(setup_employer_cred_defs())
-    asyncio.ensure_future(sirius_bank())
+    # asyncio.ensure_future(sirius_bank())
     asyncio.ensure_future(sirius_employer())
     asyncio.get_event_loop().run_forever()
