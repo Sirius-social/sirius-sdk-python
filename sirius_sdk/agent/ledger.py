@@ -392,7 +392,7 @@ class Ledger:
             return ledger_schema
         except LedgerNotFound:
             pass
-        ok, ledger_schema = self.register_schema(schema, submitter_did)
+        ok, ledger_schema = await self.register_schema(schema, submitter_did)
         if ok:
             return ledger_schema
         else:
