@@ -29,10 +29,17 @@ Preparing for test live demo
      :width: 200px
      :alt: Bank
 
-assume bank already processed **KYC** requirements and linked correspondent services to your P2P Pairwise.
-You will can see to get digital **"Loan request"** you should get salary credential from your employer at first.
+   assume bank already processed **KYC** requirements and linked correspondent services to your P2P Pairwise.
+   You will can see to get digital **"Loan request"** you should get salary credential from your employer at first.
 
    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/loan_declined.jpeg?raw=true
      :alt: Loan declined
 
-4.
+4.  Then let's navigate to QR code to establish connection with Demo employer
+
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr.png?raw=true
+     :height: 200px
+     :width: 200px
+     :alt: Employer
+
+   assume employer processed **KYC** requirements and may identify you by PAirwise connection.
