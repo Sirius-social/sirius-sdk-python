@@ -57,7 +57,7 @@ async def generate_invitations_qr_codes() -> (str, str):
         try:
             connection_key = await sirius_sdk.Crypto.create_key(seed='0000000000000000SIRIUS_BANK_CONN')
         except sirius_sdk.indy_exceptions.WalletItemAlreadyExists:
-            log(f'Bank: conn key {CONN_KEY_BANK} already exists')
+            log(f'Bank: conn key {CONN_KEY_EMPLOYER} already exists')
         else:
             log(f'Bank: conn key {connection_key} was created')
             assert connection_key == CONN_KEY_BANK
@@ -93,11 +93,14 @@ async def generate_invitations_qr_codes() -> (str, str):
             did=DID_EMPLOYER
         )
         log('Employer: invitation')
-        log(json.dumps(bank_invitation, indent=2, sort_keys=True))
+        log(json.dumps(employer_invitation, indent=2, sort_keys=True))
 
         # Sirius SDK provide method to generate URL for QR
         # employer_qr_url = await sirius_sdk.generate_qr_code(employer_invitation.invitation_url)
-
+        print('QR URL ================')
+        url = await sirius_sdk.generate_qr_code(employer_invitation.invitation_url)
+        print(url)
+    print('========================')
     return 'https://socialsirius.com' + bank_invitation.invitation_url, \
            'https://socialsirius.com' + employer_invitation.invitation_url
 
