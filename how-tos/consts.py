@@ -39,3 +39,6 @@ AGENT4 = {
         their_verkey='aZvq1rY63UZ4t9J1FCPQry7DfgKjzMueSW2DRSPPHPQ'
     )
 }
+
+
+PROVER_SECRET_ID = 'prover-secret-id'

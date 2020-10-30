@@ -115,7 +115,7 @@ class Verifier(BaseVerifyStateMachine):
     async def verify(
             self, proof_request: dict, translation: List[AttribTranslation] = None,
             comment: str = None, locale: str = BasePresentProofMessage.DEF_LOCALE, proto_version: str = None
-    ):
+    ) -> bool:
         """
         :param proof_request: Hyperledger Indy compatible proof-request
         :param translation: human readable attributes translations

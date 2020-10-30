@@ -2,6 +2,8 @@
 How-tos guide for business automation with Sirius approach via blockchain and Smart-Contracts in style of Self-sovereign identity.
 ========================================================================================================================================
 
+**All samples are tested for Python 3.8**
+
 - `Setup developer environment <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/setup_environment>`_ example
    show how to initialize development environment to start.
 - `P2P connections and Hyperledger Indy Pairwise <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/create_connections>`_

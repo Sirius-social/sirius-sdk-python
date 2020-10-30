@@ -119,5 +119,7 @@ source code `link <https://github.com/Sirius-social/sirius-sdk-python/blob/b7ef8
     )
     await self.send(ack)
 
-
+DEMO
+=================
 You may check demo source code `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/anon_credentials/main.py>`_
+
