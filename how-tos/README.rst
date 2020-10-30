@@ -15,3 +15,5 @@ How-tos guide for business automation with Sirius approach via blockchain and Sm
    and Techologic value of Sirius.
 - `Indy Anon-Creds implementation <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/anon_credentials>`_
    will demonstrate how **Sirius SDK** helps to implement complex tasks and SSI protocols.
+- `Robotic process automation <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/robotic_process_automation>`_
+   will cover how **Sirius** may help to involve humans to **Trust** environments driven by SSI.
