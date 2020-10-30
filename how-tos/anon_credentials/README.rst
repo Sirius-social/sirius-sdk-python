@@ -50,3 +50,74 @@ To breathe life into this idea **Hyperledger Indy** implements 3 techniques:
    - Check DID verkeys
    - Revocate verkeys by DID controllers
    - Write/Read credential definitions and correspondent cryptography data.
+   - Revocation registries: check credential was not revocated.
+   - Others...
+
+As noticed earlier in `state-machines <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/distributed_state_machines>`_ doc
+**Sirius SDK** provide specific transaction model that reduce program code complexity.
+
+Sirius Team explore much of open-source Indy Agents. All of them ready to product solutions.
+But...
+There are hundreds and thousands of code lines for each of Anon-Cred feature:
+
+   - `aries rfc feature 0036 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0036-issue-credential>`_
+   - `aries rfc feature 0037 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof>`_
+   - etc.
+
+Yoc can see below, implementation of prover role (feature 0037 state-machine) takes 35 lines of code:
+
+.. image:: https://github.com/hyperledger/aries-rfcs/raw/master/features/0037-present-proof/credential-presentation.png
+       :height: 200px
+       :width: 300px
+       :alt: Prover role
+
+source code `link <https://github.com/Sirius-social/sirius-sdk-python/blob/b7ef83a6c955429245b450d17a67e8a1a8ec48b0/sirius_sdk/agent/aries_rfc/feature_0037_present_proof/state_machines.py#L222>`_
+
+.. code-block:: python
+
+    offer_msg = offer
+    try:
+        offer_msg.validate()
+    except SiriusValidationError as e:
+        raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
+
+    # Step-1: Process Issuer Offer
+    cred_request, cred_metadata = await sirius_sdk.AnonCreds.prover_create_credential_req(
+        prover_did=self.__issuer.me.did,
+        cred_offer=offer_msg.offer,
+        cred_def=offer_msg.cred_def,
+        master_secret_id=master_secret_id
+    )
+
+    # Step-2: Send request to Issuer
+    request_msg = RequestCredentialMessage(
+        comment=comment,
+        locale=locale,
+        cred_request=cred_request,
+        doc_uri=doc_uri
+    )
+
+    # Switch to await participant action
+    resp = await self.switch(request_msg)
+    if not isinstance(resp, IssueCredentialMessage):
+        raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, 'Unexpected @type: %s' % str(resp.type))
+
+    issue_msg = resp
+    try:
+        issue_msg.validate()
+    except SiriusValidationError as e:
+        raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
+
+    # Step-3: Store credential
+    cred_id = await self._store_credential(
+        cred_metadata, issue_msg.cred, offer.cred_def, None, issue_msg.cred_id
+    )
+    ack = Ack(
+        thread_id=issue_msg.ack_message_id if issue_msg.please_ack else issue_msg.id,
+        status=Status.OK,
+        doc_uri=doc_uri
+    )
+    await self.send(ack)
+
+
+You may check demo source code `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/anon_credentials/main.py>`_
