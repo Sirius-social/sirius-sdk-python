@@ -24,7 +24,7 @@ Preparing for test live demo
 
 3. Scan QR code of **Sirius Bank** virtual assistance to get digital service from bank.
 
-   .. image:: https://demo.socialsirius.com/qr/bf3cf75e7127422d8d4f0eae6c022cc8
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/bank_qr.png?raw=true
      :height: 200px
      :width: 200px
      :alt: Bank
