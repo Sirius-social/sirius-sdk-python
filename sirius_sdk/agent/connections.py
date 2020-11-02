@@ -83,7 +83,7 @@ class BaseAgentConnection(ABC):
     @classmethod
     async def create(
             cls, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int=IO_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+            p2p: P2PConnection, timeout: int = IO_TIMEOUT, loop: asyncio.AbstractEventLoop = None
     ):
         instance = cls(server_address, credentials, p2p, timeout, loop)
         await instance._connector.open()
@@ -419,6 +419,8 @@ class AgentEvents(BaseAgentConnection):
     Reactive nature of Smart-Contract design
     """
 
+    RECONNECT_TRY_COUNT = 2
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__tunnel = None
@@ -431,7 +433,15 @@ class AgentEvents(BaseAgentConnection):
     async def pull(self, timeout: int=None) -> Message:
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
-        data = await self._connector.read(timeout=timeout)
+        data = None
+        for n in range(self.RECONNECT_TRY_COUNT):
+            try:
+                data = await self._connector.read(timeout=timeout)
+                break
+            except SiriusConnectionClosed:
+                await self._reopen()
+        if data is None:
+            SiriusConnectionClosed('agent unreachable')
         try:
             payload = json.loads(data.decode(self._connector.ENC))
         except json.JSONDecodeError:
@@ -445,6 +455,12 @@ class AgentEvents(BaseAgentConnection):
     @classmethod
     def _path(cls):
         return '/events'
+
+    async def _reopen(self):
+        await self._connector.reopen()
+        payload = await self._connector.read(timeout=1)
+        context = Message.deserialize(payload.decode())
+        await self._setup(context)
 
     async def _setup(self, context: Message):
         # Extract load balancing info
