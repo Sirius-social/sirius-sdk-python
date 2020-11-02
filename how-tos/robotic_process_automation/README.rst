@@ -22,7 +22,7 @@ Preparing for test live demo
 
    or you may run in debugger to check how it works step-by-step
 
-3. Scan QR code of **Sirius Bank** virtual assistance to get digital service from bank.
+3. Scan QR code of **Sirius Bank** virtual assistance to get digital service from bank...
 
    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/bank_qr.png?raw=true
      :height: 200px
@@ -35,7 +35,7 @@ Preparing for test live demo
    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/loan_declined.jpeg?raw=true
      :alt: Loan declined
 
-4.  Then let's navigate to QR code to establish connection with Demo employer
+4.  Then let's navigate to QR code to establish connection with Demo employer...
 
    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr.png?raw=true
      :height: 200px
