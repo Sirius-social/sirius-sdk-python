@@ -14,7 +14,7 @@ Preparing for test live demo
    `0036 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0036-issue-credential>`_
    `0037 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof>`_
    for example you may download `Sirius communicator for Android <https://yadi.sk/d/tdxYKNC37s3VOA>`_
-2. Run script `main.py <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/robotic_process_automation/main.py>`_
+2. To play DEMO run script `main.py <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/robotic_process_automation/main.py>`_
 
    .. code-block:: bash
 
@@ -37,9 +37,25 @@ Preparing for test live demo
 
 4.  Then let's navigate to QR code to establish connection with Demo employer...
 
-   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr2.png?raw=true
+    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr2.png?raw=true
      :height: 200px
      :width: 200px
      :alt: Employer
 
-   assume employer processed **KYC** requirements and may identify you by PAirwise connection.
+   assume employer processed **KYC** requirements and may identify you by Pairwise connection.
+   You can see among several digital services that provided by demo employer, you
+   can request for **salary credentials**...
+
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/issue_salary_creds2.jpeg?raw=true
+     :alt: Issued salary credential
+
+5. Then revert to Bank and try again request the **Loan**
+
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/verify_salary_creds2.jpeg?raw=true
+     :alt: Verify salary credential by Bank
+
+
+Sample code
+=================================
+Source code for playing DEMO located `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/robotic_process_automation/main.py>`_
+
