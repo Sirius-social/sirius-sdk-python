@@ -165,6 +165,7 @@ async def sirius_bank(network_name: str = 'test_network'):
                     to=dialog_pairwise
                 )
                 if success:
+                    log(f'Bank: providing service: {answer.response}')
                     if answer.response == service1:
                         feature_0037 = sirius_sdk.aries_rfc.Verifier(
                             prover=dialog_pairwise,
@@ -278,6 +279,7 @@ async def sirius_employer(network_name: str = 'test_network'):
                     to=dialog_pairwise
                 )
                 if success:
+                    log(f'Employer: providing service: {answer.response}')
                     if answer.response == service1:
                         log('Employer: starting to issue Salary credential')
                         cred_def = await dkms.load_cred_def(EMPLOYER_CRED_DEF_ID, DID_EMPLOYER)

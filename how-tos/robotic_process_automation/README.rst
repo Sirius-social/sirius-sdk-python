@@ -37,7 +37,7 @@ Preparing for test live demo
 
 4.  Then let's navigate to QR code to establish connection with Demo employer...
 
-    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr2.png?raw=true
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr2.png?raw=true
      :height: 200px
      :width: 200px
      :alt: Employer
@@ -49,7 +49,7 @@ Preparing for test live demo
    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/issue_salary_creds2.jpeg?raw=true
      :alt: Issued salary credential
 
-5. Then revert to Bank and try again request the **Loan**
+5. Revert to Bank and try again request the **Loan**
 
    .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/verify_salary_creds2.jpeg?raw=true
      :alt: Verify salary credential by Bank
@@ -59,3 +59,39 @@ Sample code
 =================================
 Source code for playing DEMO located `here <https://github.com/Sirius-social/sirius-sdk-python/blob/master/how-tos/robotic_process_automation/main.py>`_
 
+Let's pay attention to source code presented below:
+
+.. code-block:: python
+
+    listener = await sirius_sdk.subscribe()
+    async for event in listener:
+        # Here developer place code to react to participant action
+
+
+
+
+Virtual assistant may provide menu for different use-cases
+
+.. code-block:: python
+
+    ask = sirius_sdk.aries_rfc.Question(
+        valid_responses=[service1, service2, service3],
+        question_text=f'{person_name} welcome!',
+        question_detail='I am your employer Virtual Assistant.',
+        locale='en'
+    )
+    ask.set_ttl(60)  # Set timeout for answer
+    success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+        query=ask,
+        to=dialog_pairwise
+    )
+
+
+Conclusions
+==================
+Building trust environment to reduce transaction cost is complex task.
+Sirius communicator developed as **Indy Edge Agent**, is part of relationship building
+in human-friendly form (customers, employees, etc.).
+Another part of complexity is developing business/gov side of relationship
+via **Sirius SDK** solution that reduce time and money to implement work processes
+in Trust environment.
