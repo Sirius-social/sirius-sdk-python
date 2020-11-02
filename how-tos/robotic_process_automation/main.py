@@ -112,7 +112,7 @@ async def sirius_bank(network_name: str = 'test_network'):
         dkms = await sirius_sdk.ledger(network_name)
         log('Bank: start to listen events')
         async for event in listener:
-            dialog_pairwise: Optional[sirius_sdk.Pairwise] = event.pairwise
+            dialog_pairwise: Optional[sirius_sdk.Pairwise] = None
             if isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
                 # Restore invitation request through invitation.connection_key
                 # You may use this snippet to encrypt to invitation cookie values for example
@@ -121,28 +121,28 @@ async def sirius_bank(network_name: str = 'test_network'):
                     log(f'Bank: received connection request with connection_key: {CONN_KEY_BANK}')
                     if dialog_pairwise is None:
                         log('Bank: unknown participant. Establish new pairwise P2P')
-                        try:
-                            conn_request: sirius_sdk.aries_rfc.ConnRequest = event.message
-                            feature_0160 = sirius_sdk.aries_rfc.Inviter(
-                                me=sirius_sdk.Pairwise.Me(DID_BANK, VERKEY_BANK),  # Public DID
-                                connection_key=event.recipient_verkey,
-                                my_endpoint=my_endpoint,
-                            )
-                            success, dialog_pairwise = await feature_0160.create_connection(conn_request)
-                        except Exception as e:
-                            log('Bank: exception "%s"' % str(e))
-                        else:
-                            if success:
-                                await sirius_sdk.PairwiseList.ensure_exists(dialog_pairwise)
-                                log('Bank: pairwise established successfully')
-                                log(json.dumps(dialog_pairwise.metadata, indent=2, sort_keys=True))
-                            else:
-                                log('Bank: error while establish P2P connection')
-                                if feature_0160.problem_report:
-                                    log('problem report')
-                                    log(json.dumps(feature_0160.problem_report, indent=2, sort_keys=True))
                     else:
-                        log(f'Bank: pairwise for {dialog_pairwise.their.label} already exists')
+                        log(f'Bank: update pairwise for {dialog_pairwise.their.label}')
+                    try:
+                        conn_request: sirius_sdk.aries_rfc.ConnRequest = event.message
+                        feature_0160 = sirius_sdk.aries_rfc.Inviter(
+                            me=sirius_sdk.Pairwise.Me(DID_BANK, VERKEY_BANK),  # Public DID
+                            connection_key=event.recipient_verkey,
+                            my_endpoint=my_endpoint,
+                        )
+                        success, dialog_pairwise = await feature_0160.create_connection(conn_request)
+                    except Exception as e:
+                        log('Bank: exception "%s"' % str(e))
+                    else:
+                        if success:
+                            await sirius_sdk.PairwiseList.ensure_exists(dialog_pairwise)
+                            log('Bank: pairwise established successfully')
+                            log(json.dumps(dialog_pairwise.metadata, indent=2, sort_keys=True))
+                        else:
+                            log('Bank: error while establish P2P connection')
+                            if feature_0160.problem_report:
+                                log('problem report')
+                                log(json.dumps(feature_0160.problem_report, indent=2, sort_keys=True))
                 else:
                     log('Bank: Unknown connection-key')
             elif isinstance(event.message, sirius_sdk.aries_rfc.Message):
@@ -224,7 +224,7 @@ async def sirius_employer(network_name: str = 'test_network'):
         dkms = await sirius_sdk.ledger(network_name)
         log('Employer: start to listen events')
         async for event in listener:
-            dialog_pairwise: Optional[sirius_sdk.Pairwise] = event.pairwise
+            dialog_pairwise: Optional[sirius_sdk.Pairwise] = None
             if isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
                 # Restore invitation request through invitation.connection_key
                 # You may use this snippet to encrypt to invitation cookie values for example
@@ -233,28 +233,28 @@ async def sirius_employer(network_name: str = 'test_network'):
                     log(f'Employer: received connection request with connection_key: {CONN_KEY_BANK}')
                     if dialog_pairwise is None:
                         log('Employer: unknown participant. Establish new pairwise P2P')
-                        try:
-                            conn_request: sirius_sdk.aries_rfc.ConnRequest = event.message
-                            feature_0160 = sirius_sdk.aries_rfc.Inviter(
-                                me=sirius_sdk.Pairwise.Me(DID_EMPLOYER, VERKEY_EMPLOYER),  # Public DID
-                                connection_key=event.recipient_verkey,
-                                my_endpoint=my_endpoint,
-                            )
-                            success, dialog_pairwise = await feature_0160.create_connection(conn_request)
-                        except Exception as e:
-                            log('Employer: exception "%s"' % str(e))
-                        else:
-                            if success:
-                                await sirius_sdk.PairwiseList.ensure_exists(dialog_pairwise)
-                                log('Employer: pairwise established successfully')
-                                log(json.dumps(dialog_pairwise.metadata, indent=2, sort_keys=True))
-                            else:
-                                log('Employer: error while establish P2P connection')
-                                if feature_0160.problem_report:
-                                    log('problem report')
-                                    log(json.dumps(feature_0160.problem_report, indent=2, sort_keys=True))
                     else:
-                        log(f'Employer: pairwise for {dialog_pairwise.their.label} already exists')
+                        log(f'Employer: update pairwise for {dialog_pairwise.their.label}')
+                    try:
+                        conn_request: sirius_sdk.aries_rfc.ConnRequest = event.message
+                        feature_0160 = sirius_sdk.aries_rfc.Inviter(
+                            me=sirius_sdk.Pairwise.Me(DID_EMPLOYER, VERKEY_EMPLOYER),  # Public DID
+                            connection_key=event.recipient_verkey,
+                            my_endpoint=my_endpoint,
+                        )
+                        success, dialog_pairwise = await feature_0160.create_connection(conn_request)
+                    except Exception as e:
+                        log('Employer: exception "%s"' % str(e))
+                    else:
+                        if success:
+                            await sirius_sdk.PairwiseList.ensure_exists(dialog_pairwise)
+                            log('Employer: pairwise established successfully')
+                            log(json.dumps(dialog_pairwise.metadata, indent=2, sort_keys=True))
+                        else:
+                            log('Employer: error while establish P2P connection')
+                            if feature_0160.problem_report:
+                                log('problem report')
+                                log(json.dumps(feature_0160.problem_report, indent=2, sort_keys=True))
                 else:
                     log('Employer: Unknown connection-key')
             elif isinstance(event.message, sirius_sdk.aries_rfc.Message):
@@ -318,6 +318,9 @@ if __name__ == '__main__':
     print(f'Employer: {qr_employer}')
     print('-------------')
     schema_employer, cred_def_employer = asyncio.get_event_loop().run_until_complete(setup_employer_cred_defs())
+    print('*************')
     asyncio.ensure_future(sirius_bank())
+    print('#1')
     asyncio.ensure_future(sirius_employer())
+    print('#2')
     asyncio.get_event_loop().run_forever()

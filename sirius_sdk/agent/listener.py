@@ -52,7 +52,7 @@ class Event(Message):
 
 class Listener:
 
-    def __init__(self, source: AgentEvents, pairwise_resolver: AbstractPairwiseList=None):
+    def __init__(self, source: AgentEvents, pairwise_resolver: AbstractPairwiseList = None):
         self.__source = source
         self.__pairwise_resolver = pairwise_resolver
 

@@ -15,7 +15,7 @@ class BaseSiriusException(Exception):
         )
 
     def __str__(self):
-        return self.__doc__ or super().__str__()
+        return f'{self.message}'
 
 
 class SiriusConnectionClosed(BaseSiriusException):
@@ -64,6 +64,9 @@ class SiriusPromiseContextException(BaseSiriusException):
         self.class_name = class_name
         self.printable = printable
         super().__init__(*args, **kwargs)
+
+    def __str__(self):
+        return f'class_name: {self.class_name}; printable: {self.printable}'
 
 
 class SiriusCryptoError(BaseSiriusException):
@@ -140,6 +143,9 @@ class StateMachineTerminatedWithError(BaseSiriusException):
         self.problem_code = problem_code
         self.explain = explain
         self.notify = notify
+
+    def __str__(self):
+        return f'problem_code: {self.problem_code}; explain: {self.explain}; notify: {self.notify}'
 
 
 class OperationAbortedManually(BaseSiriusException):
