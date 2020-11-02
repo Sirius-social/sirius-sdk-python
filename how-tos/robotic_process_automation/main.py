@@ -17,7 +17,7 @@ VERKEY_EMPLOYER = 'FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4'
 DID_BANK = 'T8MtAB98aCkgNLtNfQx6WG'
 VERKEY_BANK = 'FEvX3nsJ8VjW4qQv4Dh9E3NDEx1bUPDtc9vkaaoKVyz1'
 CONN_KEY_BANK = 'Hoq65QDfJZ1G4qUHXMPkmXcA51ztaQsVTEHN8rZFpWjv'
-CONN_KEY_EMPLOYER = 'X3huyDF8TmcRr2hRzmyaQH6rqzjFdNy557FBxVXJDpPV4'
+CONN_KEY_EMPLOYER = '3huyDF8TmcRr2hRzmyaQH6rqzjFdNy557FBxVXJDpPV4'
 DEMO_SALARY = 3000
 DEMO_CURRENCY = 'USD'
 EMPLOYER_CRED_DEF_ID = 'Th7MpTaRZVRYnPiabds81Y:3:CL:7518:TAG'
@@ -74,6 +74,7 @@ async def generate_invitations_qr_codes() -> (str, str):
 
         # Sirius SDK provide method to generate URL for QR
         # bank_qr_url = await sirius_sdk.generate_qr_code(bank_invitation.invitation_url)
+        # print('BANK QR URL: ' + bank_qr_url)
 
     # EMPLOYER
     async with sirius_sdk.context(**EMPLOYER):
@@ -97,6 +98,8 @@ async def generate_invitations_qr_codes() -> (str, str):
 
         # Sirius SDK provide method to generate URL for QR
         # employer_qr_url = await sirius_sdk.generate_qr_code(employer_invitation.invitation_url)
+        # print('EMPLOYER QR URL: ' + employer_qr_url)
+
     return 'https://socialsirius.com' + bank_invitation.invitation_url, \
            'https://socialsirius.com' + employer_invitation.invitation_url
 
