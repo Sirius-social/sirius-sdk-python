@@ -24,7 +24,7 @@ Preparing for test live demo
 
 3. Scan QR code of **Sirius Bank** virtual assistance to get digital service from bank...
 
-   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/bank_qr.png?raw=true
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/bank_qr2.png?raw=true
      :height: 200px
      :width: 200px
      :alt: Bank
@@ -37,7 +37,7 @@ Preparing for test live demo
 
 4.  Then let's navigate to QR code to establish connection with Demo employer...
 
-   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr.png?raw=true
+   .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/employer_qr2.png?raw=true
      :height: 200px
      :width: 200px
      :alt: Employer
