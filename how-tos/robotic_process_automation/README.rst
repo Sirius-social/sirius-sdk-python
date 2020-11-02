@@ -89,9 +89,20 @@ Virtual assistant may provide menu for different use-cases
 
 Conclusions
 ==================
+In example above trust among Bank and Employer established avoiding necessity for
+both of them configure P2P relationships and develop difficult consensus procedures.
+Bank maintains self managed root-of-trust, so it can accept credentials issued by employer **X**
+because it is bank decision. Anon-Creds concept help cover trust issues avoiding to build
+direct relationship. Moreover, credential owner controls his data.
+
 Building trust environment to reduce transaction cost is complex task.
 Sirius communicator developed as **Indy Edge Agent**, is part of relationship building
 in human-friendly form (customers, employees, etc.).
 Another part of complexity is developing business/gov side of relationship
 via **Sirius SDK** solution that reduce time and money to implement work processes
 in Trust environment.
+
+Human was involved in demo business process in user friendly manner thanks to
+Virtual Assistance driven on Server-side of the independent companies (Bank & Employer)
+that was developed with **Sirius SDK**
+
