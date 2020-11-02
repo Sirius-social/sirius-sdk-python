@@ -112,14 +112,14 @@ async def sirius_bank(network_name: str = 'test_network'):
         dkms = await sirius_sdk.ledger(network_name)
         log('Bank: start to listen events')
         async for event in listener:
+            dialog_pairwise: Optional[sirius_sdk.Pairwise] = event.pairwise
             if isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
                 # Restore invitation request through invitation.connection_key
                 # You may use this snippet to encrypt to invitation cookie values for example
                 # to link device to browser Web Page
                 if event.recipient_verkey == CONN_KEY_BANK:
-                    pairwise: Optional[sirius_sdk.Pairwise] = event.pairwise
-                    log('Bank: received connection request with connection_key: {CONN_KEY_BANK}')
-                    if pairwise is None:
+                    log(f'Bank: received connection request with connection_key: {CONN_KEY_BANK}')
+                    if dialog_pairwise is None:
                         log('Bank: unknown participant. Establish new pairwise P2P')
                         try:
                             conn_request: sirius_sdk.aries_rfc.ConnRequest = event.message
@@ -128,89 +128,92 @@ async def sirius_bank(network_name: str = 'test_network'):
                                 connection_key=event.recipient_verkey,
                                 my_endpoint=my_endpoint,
                             )
-                            success, pairwise = await feature_0160.create_connection(conn_request)
+                            success, dialog_pairwise = await feature_0160.create_connection(conn_request)
                         except Exception as e:
                             log('Bank: exception "%s"' % str(e))
                         else:
                             if success:
-                                await sirius_sdk.PairwiseList.ensure_exists(pairwise)
+                                await sirius_sdk.PairwiseList.ensure_exists(dialog_pairwise)
                                 log('Bank: pairwise established successfully')
-                                log(json.dumps(pairwise.metadata, indent=2, sort_keys=True))
+                                log(json.dumps(dialog_pairwise.metadata, indent=2, sort_keys=True))
                             else:
                                 log('Bank: error while establish P2P connection')
                                 if feature_0160.problem_report:
                                     log('problem report')
                                     log(json.dumps(feature_0160.problem_report, indent=2, sort_keys=True))
                     else:
-                        log(f'Bank: pairwise for {pairwise.their.label} already exists')
-                    # Digital service
-                    if pairwise is not None:
-                        person_name = pairwise.their.label
-                        service1 = 'Loan request'
-                        service2 = 'Personal offers'
-                        ask = sirius_sdk.aries_rfc.Question(
-                            valid_responses=[service1, service2],
-                            question_text=f'{person_name} welcome to personal cabinet',
-                            question_detail='We are glad to make personal offer for you!',
-                            locale='en'
-                        )
-                        ask.set_ttl(60)  # Set timeout for answer
-                        success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
-                            query=ask,
-                            to=pairwise
-                        )
-                        if success:
-                            if answer.response == service1:
-                                feature_0037 = sirius_sdk.aries_rfc.Verifier(
-                                    prover=pairwise,
-                                    ledger=dkms,
-                                )
-                                verify_ok = await feature_0037.verify(
-                                    comment='Prove your salary credentials',
-                                    locale='en',
-                                    proof_request={
-                                        'nonce': await sirius_sdk.AnonCreds.generate_nonce(),
-                                        "name": "Proof your salary",
-                                        "version": "0.1",
-                                        "requested_attributes": {
-                                            'attr1_referent': {
-                                                "name": "salary",
-                                                "restrictions": {
-                                                    "issuer_did": DID_EMPLOYER
-                                                }
-                                            },
-                                            'attr2_referent': {
-                                                "name": "currency",
-                                                "restrictions": {
-                                                    "issuer_did": DID_EMPLOYER
-                                                }
-                                            }
-                                        }
-                                    },
-                                    translation=[
-                                        sirius_sdk.aries_rfc.AttribTranslation('salary', 'Your salary'),
-                                        sirius_sdk.aries_rfc.AttribTranslation('currency', 'Currency'),
-                                    ]
-                                )
-                                if verify_ok:
-                                    txt_msg = sirius_sdk.aries_rfc.Message(
-                                        content='Loan approved',
-                                        locale='en'
-                                    )
-                                else:
-                                    txt_msg = sirius_sdk.aries_rfc.Message(
-                                        content='Loan declined',
-                                        locale='en'
-                                    )
-                                await sirius_sdk.send_to(txt_msg, pairwise)
-                            else:
-                                txt_msg = sirius_sdk.aries_rfc.Message(
-                                    content='Demo personal offer content',
-                                    locale='en'
-                                )
-                                await sirius_sdk.send_to(txt_msg, pairwise)
+                        log(f'Bank: pairwise for {dialog_pairwise.their.label} already exists')
                 else:
                     log('Bank: Unknown connection-key')
+            elif isinstance(event.message, sirius_sdk.aries_rfc.Message):
+                dialog_pairwise = event.pairwise
+            # Digital service
+            if dialog_pairwise is not None:
+                log('Bank: Digital service')
+                person_name = dialog_pairwise.their.label
+                service1 = 'Loan request'
+                service2 = 'Personal offers'
+                ask = sirius_sdk.aries_rfc.Question(
+                    valid_responses=[service1, service2],
+                    question_text=f'{person_name} welcome to personal cabinet',
+                    question_detail='We are glad to make personal offer for you!',
+                    locale='en'
+                )
+                ask.set_ttl(60)  # Set timeout for answer
+                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                    query=ask,
+                    to=dialog_pairwise
+                )
+                if success:
+                    if answer.response == service1:
+                        feature_0037 = sirius_sdk.aries_rfc.Verifier(
+                            prover=dialog_pairwise,
+                            ledger=dkms,
+                        )
+                        verify_ok = await feature_0037.verify(
+                            comment='Prove your salary credentials',
+                            locale='en',
+                            proof_request={
+                                'nonce': await sirius_sdk.AnonCreds.generate_nonce(),
+                                "name": "Proof your salary",
+                                "version": "0.1",
+                                "requested_attributes": {
+                                    'attr1_referent': {
+                                        "name": "salary",
+                                        "restrictions": {
+                                            "issuer_did": DID_EMPLOYER
+                                        }
+                                    },
+                                    'attr2_referent': {
+                                        "name": "currency",
+                                        "restrictions": {
+                                            "issuer_did": DID_EMPLOYER
+                                        }
+                                    }
+                                }
+                            },
+                            translation=[
+                                sirius_sdk.aries_rfc.AttribTranslation('salary', 'Your salary'),
+                                sirius_sdk.aries_rfc.AttribTranslation('currency', 'Currency'),
+                            ]
+                        )
+                        if verify_ok:
+                            txt_msg = sirius_sdk.aries_rfc.Message(
+                                content='Loan approved',
+                                locale='en'
+                            )
+                        else:
+                            txt_msg = sirius_sdk.aries_rfc.Message(
+                                content='Loan declined',
+                                locale='en'
+                            )
+                        await sirius_sdk.send_to(txt_msg, dialog_pairwise)
+                    else:
+                        txt_msg = sirius_sdk.aries_rfc.Message(
+                            content='Demo personal offer content',
+                            locale='en'
+                        )
+                        await sirius_sdk.send_to(txt_msg, dialog_pairwise)
 
 
 async def sirius_employer(network_name: str = 'test_network'):
@@ -221,87 +224,91 @@ async def sirius_employer(network_name: str = 'test_network'):
         dkms = await sirius_sdk.ledger(network_name)
         log('Employer: start to listen events')
         async for event in listener:
+            dialog_pairwise: Optional[sirius_sdk.Pairwise] = event.pairwise
             if isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
                 # Restore invitation request through invitation.connection_key
                 # You may use this snippet to encrypt to invitation cookie values for example
                 # to link device to browser Web Page
                 if event.recipient_verkey == CONN_KEY_EMPLOYER:
-                    pairwise: Optional[sirius_sdk.Pairwise] = event.pairwise
-                    log('Employer: received connection request with connection_key: {CONN_KEY_BANK}')
-                    if pairwise is None:
+                    log(f'Employer: received connection request with connection_key: {CONN_KEY_BANK}')
+                    if dialog_pairwise is None:
                         log('Employer: unknown participant. Establish new pairwise P2P')
                         try:
                             conn_request: sirius_sdk.aries_rfc.ConnRequest = event.message
                             feature_0160 = sirius_sdk.aries_rfc.Inviter(
-                                me=sirius_sdk.Pairwise.Me(DID_BANK, VERKEY_BANK),  # Public DID
+                                me=sirius_sdk.Pairwise.Me(DID_EMPLOYER, VERKEY_EMPLOYER),  # Public DID
                                 connection_key=event.recipient_verkey,
                                 my_endpoint=my_endpoint,
                             )
-                            success, pairwise = await feature_0160.create_connection(conn_request)
+                            success, dialog_pairwise = await feature_0160.create_connection(conn_request)
                         except Exception as e:
                             log('Employer: exception "%s"' % str(e))
                         else:
                             if success:
-                                await sirius_sdk.PairwiseList.ensure_exists(pairwise)
+                                await sirius_sdk.PairwiseList.ensure_exists(dialog_pairwise)
                                 log('Employer: pairwise established successfully')
-                                log(json.dumps(pairwise.metadata, indent=2, sort_keys=True))
+                                log(json.dumps(dialog_pairwise.metadata, indent=2, sort_keys=True))
                             else:
                                 log('Employer: error while establish P2P connection')
                                 if feature_0160.problem_report:
                                     log('problem report')
                                     log(json.dumps(feature_0160.problem_report, indent=2, sort_keys=True))
                     else:
-                        log(f'Employer: pairwise for {pairwise.their.label} already exists')
-                    if pairwise is not None:
-                        person_name = pairwise.their.label
-                        service1 = 'Get Salary credentials'
-                        service2 = 'Request for holiday'
-                        service3 = 'Go to WebSite'
-                        ask = sirius_sdk.aries_rfc.Question(
-                            valid_responses=[service1, service2, service3],
-                            question_text=f'{person_name} welcome!',
-                            question_detail='I am your employer Virtual Assistant.',
-                            locale='en'
-                        )
-                        ask.set_ttl(60)  # Set timeout for answer
-                        success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
-                            query=ask,
-                            to=pairwise
-                        )
-                        if success:
-                            if answer.response == service1:
-                                log('Employer: starting to issue Salary credential')
-                                cred_def = await dkms.load_cred_def(EMPLOYER_CRED_DEF_ID, DID_EMPLOYER)
-                                feature_0036 = sirius_sdk.aries_rfc.Issuer(
-                                    holder=pairwise,
-                                )
-                                success = await feature_0036.issue(
-                                    values={'salary': DEMO_SALARY, 'currency': DEMO_CURRENCY},
-                                    schema=cred_def.schema,
-                                    cred_def=cred_def,
-                                    comment='You may prove your salary in Bank',
-                                    locale='en',
-                                    preview=[
-                                        sirius_sdk.aries_rfc.ProposedAttrib('salary', 'Your salary'),
-                                        sirius_sdk.aries_rfc.ProposedAttrib('currency', 'Currency')
-                                    ],
-                                    cred_id=f'salary-cred-id-for-{pairwise.their.did}'
-                                )
-                                if success:
-                                    log(f'Employer: salary cred successfully finished')
-                                else:
-                                    log('Employer: error while issuing salary credential')
-                                    if feature_0036.problem_report:
-                                        log('problem report')
-                                        log(json.dumps(feature_0036.problem_report, indent=2, sort_keys=True))
-                            else:
-                                txt_msg = sirius_sdk.aries_rfc.Message(
-                                    content=f'You selected "{answer.response}" service',
-                                    locale='en'
-                                )
-                                await sirius_sdk.send_to(txt_msg, pairwise)
+                        log(f'Employer: pairwise for {dialog_pairwise.their.label} already exists')
                 else:
                     log('Employer: Unknown connection-key')
+            elif isinstance(event.message, sirius_sdk.aries_rfc.Message):
+                dialog_pairwise = event.pairwise
+            # Digital service
+            if dialog_pairwise is not None:
+                log('Employer: Digital service')
+                person_name = dialog_pairwise.their.label
+                service1 = 'Get Salary credentials'
+                service2 = 'Request for holiday'
+                service3 = 'Go to WebSite'
+                ask = sirius_sdk.aries_rfc.Question(
+                    valid_responses=[service1, service2, service3],
+                    question_text=f'{person_name} welcome!',
+                    question_detail='I am your employer Virtual Assistant.',
+                    locale='en'
+                )
+                ask.set_ttl(60)  # Set timeout for answer
+                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                    query=ask,
+                    to=dialog_pairwise
+                )
+                if success:
+                    if answer.response == service1:
+                        log('Employer: starting to issue Salary credential')
+                        cred_def = await dkms.load_cred_def(EMPLOYER_CRED_DEF_ID, DID_EMPLOYER)
+                        feature_0036 = sirius_sdk.aries_rfc.Issuer(
+                            holder=dialog_pairwise,
+                        )
+                        success = await feature_0036.issue(
+                            values={'salary': DEMO_SALARY, 'currency': DEMO_CURRENCY},
+                            schema=cred_def.schema,
+                            cred_def=cred_def,
+                            comment='You may prove your salary in Bank',
+                            locale='en',
+                            preview=[
+                                sirius_sdk.aries_rfc.ProposedAttrib('salary', 'Your salary'),
+                                sirius_sdk.aries_rfc.ProposedAttrib('currency', 'Currency')
+                            ],
+                            cred_id=f'salary-cred-id-for-{dialog_pairwise.their.did}'
+                        )
+                        if success:
+                            log(f'Employer: salary cred successfully finished')
+                        else:
+                            log('Employer: error while issuing salary credential')
+                            if feature_0036.problem_report:
+                                log('problem report')
+                                log(json.dumps(feature_0036.problem_report, indent=2, sort_keys=True))
+                    else:
+                        txt_msg = sirius_sdk.aries_rfc.Message(
+                            content=f'You selected "{answer.response}" service',
+                            locale='en'
+                        )
+                        await sirius_sdk.send_to(txt_msg, dialog_pairwise)
 
 
 if __name__ == '__main__':
@@ -311,6 +318,6 @@ if __name__ == '__main__':
     print(f'Employer: {qr_employer}')
     print('-------------')
     schema_employer, cred_def_employer = asyncio.get_event_loop().run_until_complete(setup_employer_cred_defs())
-    # asyncio.ensure_future(sirius_bank())
+    asyncio.ensure_future(sirius_bank())
     asyncio.ensure_future(sirius_employer())
     asyncio.get_event_loop().run_forever()
