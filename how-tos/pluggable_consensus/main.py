@@ -259,7 +259,7 @@ if __name__ == '__main__':
                     topic='Iam', context=LEADER,
                     txn={
                         'message': message,
-                        'txn_order': txn_counter
+                        'seq_no': txn_counter
                     },
                     microledger=microledger_leader,
                     ledger=my_ledger

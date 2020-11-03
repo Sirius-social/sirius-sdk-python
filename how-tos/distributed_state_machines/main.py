@@ -262,9 +262,11 @@ if __name__ == '__main__':
             print('\t!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
 
     async def run():
+        await asyncio.sleep(1)
         while True:
             print_states()
             case = input('Select device (1, 2, 3, 4, exit): ')
+            await asyncio.sleep(1)
             device = None
             if case == '1':
                 device = bay_door
