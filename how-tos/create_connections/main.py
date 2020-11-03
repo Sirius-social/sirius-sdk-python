@@ -50,12 +50,12 @@ async def their_dynamically(connection_key: str):
                 # Allocate new DID,Verkey for new connection (you may use const public DID)
                 did, verkey = await sirius_sdk.DID.create_and_store_my_did()
                 endpoint = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0]
-                state_machine = sirius_sdk.aries_rfc.Inviter(
+                feature_0160 = sirius_sdk.aries_rfc.Inviter(
                     me=sirius_sdk.Pairwise.Me(did, verkey),
                     connection_key=event.recipient_verkey,  # You may detect use-case by connection-key value
                     my_endpoint=endpoint
                 )
-                ok, pairwise = await state_machine.create_connection(request)
+                ok, pairwise = await feature_0160.create_connection(request)
                 assert ok is True
                 await sirius_sdk.PairwiseList.ensure_exists(pairwise)
                 return
@@ -71,8 +71,8 @@ async def me_dynamically(invitation: sirius_sdk.aries_rfc.Invitation) -> sirius_
         my_endpoint = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0]
         me = sirius_sdk.Pairwise.Me(did, verkey)
         # Allocate and configure state-machine
-        state_machine = sirius_sdk.aries_rfc.Invitee(me, my_endpoint)
-        ok, pairwise = await state_machine.create_connection(invitation=invitation, my_label='Invitee')
+        feature_0160 = sirius_sdk.aries_rfc.Invitee(me, my_endpoint)
+        ok, pairwise = await feature_0160.create_connection(invitation=invitation, my_label='Invitee')
         assert ok is True
         return pairwise
 
