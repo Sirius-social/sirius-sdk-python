@@ -145,6 +145,7 @@ class InMemoryLedgerList(AbstractMicroledgerList):
             raise RuntimeError('Already exists')
         ledger = InMemoryLedger(name)
         txns = await ledger.init(genesis)
+        self.__ledgers[name] = ledger
         return ledger, txns
 
     async def ledger(self, name: str) -> AbstractMicroledger:
