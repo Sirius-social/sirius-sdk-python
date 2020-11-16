@@ -11,6 +11,24 @@ class Test2Message(Message):
     pass
 
 
+def test_type_parsing():
+    str1 = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/test-protocol/1.0/name'
+    typ = Type.from_str(str1)
+    assert typ.doc_uri == 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/'
+    assert typ.protocol == 'test-protocol'
+    assert typ.name == 'name'
+    assert typ.version == '1.0'
+    assert typ.version_info.major == 1 and typ.version_info.minor == 0 and typ.version_info.patch == 0
+
+    str2 = 'https://didcomm.org/test-protocol/1.2/name'
+    typ = Type.from_str(str2)
+    assert typ.doc_uri == 'https://didcomm.org/'
+    assert typ.protocol == 'test-protocol'
+    assert typ.name == 'name'
+    assert typ.version == '1.2'
+    assert typ.version_info.major == 1 and typ.version_info.minor == 2 and typ.version_info.patch == 0
+
+
 def test_register_protocol_message_success():
     register_message_class(Test1Message, protocol='test-protocol')
     ok, msg = restore_message_instance(
