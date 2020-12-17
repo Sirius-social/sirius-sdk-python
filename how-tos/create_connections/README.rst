@@ -1,13 +1,13 @@
 ======================================================================
 Establish security relationships with modern cryptography approaches
 ======================================================================
-Trust environment is a broad concept. Often in present days many blockchain platforms say that
-trust environment is immutable storages. But it is restricted view of things. Sirius SDK give flexible tool
+The trusted environment is a broad concept. Often in present days, many blockchain platforms say that
+the trusted environment is immutable storage. But it is a restricted view of things. Sirius SDK gives flexible tool
 to configure Trust with deep dive to your business processes, habits, existing IT approaches.
 This is the main reason why Sirius SDK is distributed in multiple programming languages.
 
 As noticed Nick Szabo in `Smart Contracts: Building Blocks for Digital Markets <http://www.truevaluemetrics.org/DBpdfs/BlockChain/Nick-Szabo-Smart-Contracts-Building-Blocks-for-Digital-Markets-1996-14591.pdf>`_
-trust environment is not immutable storage only, building blocks of trust are:
+trusted environment is not only an immutable storage, building blocks of trust are:
 
 1. First of these is observability, the ability of the principals to observe each others'
      performance of the contract
@@ -23,10 +23,10 @@ trust environment is not immutable storage only, building blocks of trust are:
      and verifiability can all play a strong part in meeting the fourth objective.
      Computer and network security also can contribute greatly to making smart contracts self-enforcing.
 
-Off course immutable storages that presented by **DLT** and other **blockchain** solutions may solve
-this issues. But any tech approach keep in yourself restrictions and potential problems.
+Of course immutable storages that presented by **DLT** and other **blockchain** solutions may solve
+this issues. But any tech approach keeps in itself restrictions and potential problems.
 
-Evidence this kind of view:
+Evidence of this kind of view:
 
   **Ethereum co-founder Vitalik Buterin (2018 interview)**
 
@@ -42,22 +42,22 @@ Evidence this kind of view:
   Why would you need the mediator if you are actually in accordance…?*
 
 
-Instead of enforce tech approaches and architecture, **Sirius SDK** provides *"building blocks"* for configuring
-trust environment with maximum response to your demands.
+Instead of enforcing tech approaches and architecture, **Sirius SDK** provides *"building blocks"* for configuring
+the trusted environment with maximum response to your demands.
 
-Business environment requires relationships. Trust requires this relationships must be cyber-security.
+Business environment requires relationships. Trust requires these relationships to be cyber-secure.
 ============================================================================================================================================
-Sirius SDK give ability to establish connection relationships in two manners:
+Sirius SDK gives an ability to establish connection relationships in two manners:
 
 - Statically
 - Dynamically: with some protocols. Sirius uses `Aries protocols <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_
-  by default but you may use other solutions thanks to **Sirius SDK** is open source
+  by default but one may use other solutions thanks to **Sirius SDK** is open source
 
 Below we present source code examples.
 
-Case-1: establish connection statically
+Case-1: establishing connection statically
 *******************************************
-Sirius based on **Self-sovereign identity** concept as source point to start
+Sirius is based on **Self-sovereign identity** concept as source point to start
 moving relationships from real world to digital space.
 
 .. image:: https://raw.githubusercontent.com/Sirius-social/sirius-sdk-python/master/docs/_static/ssi_actor.png
@@ -68,7 +68,7 @@ moving relationships from real world to digital space.
 So to statically add new relationship you must keep:
 
 - **DID**: `Decentralized identifier <https://www.w3.org/TR/did-core/#dfn-decentralized-identifiers>`_
-- **Verkey**: public key that used to verify digital signatures presented by `DID Controller <https://www.w3.org/TR/did-core/#dfn-did-controllers>`_
+- **Verkey**: public key that is used to verify digital signatures presented by `DID Controller <https://www.w3.org/TR/did-core/#dfn-did-controllers>`_
 - **Endpoint**: Reachable internet address to communicate with
 
 .. code-block:: python
@@ -77,7 +77,7 @@ So to statically add new relationship you must keep:
       their_did, their_verkey, their_endpoint = ...
       .....
       # You may generate DID, Verkey on self side to establish P2P connection
-      # But in advanced, you may use public static DID if you are public organization or any business
+      # But in advance, you may use public static DID if you are public organization or business
       # Sirius does not enforce your choice
       my_did, my_verkey = await sirius_sdk.DID.create_and_store_my_did()
       connection = sirius_sdk.Pairwise(
@@ -87,13 +87,13 @@ So to statically add new relationship you must keep:
       await sirius_sdk.PairwiseList.create(connection)
 
 
-Case-2: establish connection dynamically
+Case-2: establishing connection dynamically
 *******************************************
-In practice we should to have more flexible procedure to establish connection.
+In practice, we should have more flexible procedure to establish connection.
 For example, Connection initiator (Inviter) can generate information packet, include all data for establishing
 connection with him and store some context in his Invitation: web page session, for example.
 **Sirius**, by default, has implementation for `Aries protocols <https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol>`_
-for this purposes. But you may adapt this logic and configure for yourself or extend thanks to
+for this purposes. But you may adapt this logic and configure it for yourself or extend thanks to
 **Sirius SDK** is open source.
 
 

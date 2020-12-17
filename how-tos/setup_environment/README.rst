@@ -2,23 +2,22 @@
 Setup developer environment
 ==================================
 
-It is complex task to build trust environment. Sirius provide separation to
-server side and client side.
+It is a complex task to build a trusted environment. Sirius provides separation to the server side and client side.
 
-Server side named **HUB** has components:
+Server side named **HUB** has the following components:
 
-  - **Endpoint**: address of the server server that process income requests from Internet - external world
-  - **Router**: give ability to manipulate with routing keys and forwarding messages to actual Agent instances
-  - **Load balancer**: balance income packed messages streams among Agent instances.
-    Hub User may keep multiple Agent instances cause of Sirius initialize **Hyperledger Indy**
-    with postgres storage engine support, so Sirius can balance income request stream
+  - **Endpoint**: address of the server that processes income requests from the Internet - external world
+  - **Router**: gives an ability to manipulate with routing keys and forwarding messages to actual Agent instances
+  - **Load balancer**: balances income packed message streams among Agent instances.
+    Hub User may keep multiple Agent instances since Sirius initialize **Hyperledger Indy**
+    with Postgres storage engine support, so Sirius can balance income request stream
     among Postgres replicas.
 
-    - Kafka: balance income packed messages among agent instances
-    - Redis: Sirius use redis channels to schedule co-protocols (sender+recipient verkeys / thread-id / etc.)
-    - Co-protocols scheduler: route extracted co-protocol stream to correspondent state-machine (managed via SDK on client-side)
+    - Kafka: balances income packed messages among agent instances
+    - Redis: Sirius uses Redis channels to schedule co-protocols (sender+recipient verkeys / thread-id / etc.)
+    - Co-protocols scheduler: routes extracted co-protocol stream to correspondent state-machine (managed via SDK on client-side)
 
-  - **SDK**: schedule state-machines on client-side avoiding callback Hell and save developer from communication "magic"
+  - **SDK**: schedules state-machines on client-side avoiding callback Hell and saves developer from communication "magic"
 
 .. image:: https://raw.githubusercontent.com/Sirius-social/sirius-sdk-python/master/docs/_static/high_level_arch.png
    :height: 640px
@@ -51,21 +50,21 @@ Required configuration parameters
   - **credentials**: encoded information that server use to schedule resources to correspondent Kafka topics
   - **p2p**: Sirius Hub can't access to **SDK-To-Agent** communication stream semantic, it schedule
     and route it to correspondent Kafka topics. Agent that was run on Sirius HUB infrastructure may
-    contains hardcoded P2P encryption keys to safely communicate with client side so there is no
-    broke points in Trust environment between SDK user and his Agent.
-    User may setup Sirius Hub locally on self infrastructure. In that case user may avoid p2p encryption between SDK and Agent.
+    contain hardcoded P2P encryption keys to safely communicate with client side so there is no
+    broke points in the trusted environment between SDK user and his Agent.
+    User may setup Sirius Hub locally on its own infrastructure. In this case user may avoid p2p encryption between SDK and Agent.
 
 
-**Step-2** You may call sirius sdk features
+**Step-2** You may call Sirius SDK features
 
-  - Example 1: check connection to Agent
+  - Example 1: Check connection to Agent
 
     .. code-block:: python
 
           is_connected = await sirius_sdk.ping()
           assert is_connected
 
-  - Example 2: List all my dids with metadata
+  - Example 2: List all my DIDs with metadata
 
     .. code-block:: python
 
