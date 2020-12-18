@@ -133,7 +133,7 @@ Scheduling runtime context via communication abstractions:
 
 Let's connect the dots
 ====================================
-- **Sirius** state-machines are implemented as micro-applications that acts in concurrent environment
+- **Sirius** state-machines are implemented as micro-applications that act in concurrent environment
   managing by **SDK** scheduler in close relationship with server-side **Hub** scheduler.
 - **Transitions** are triggered by **events**. Events are considered as `Aries message types <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#message-types>`_
   ordered and packed in streams that considered as `Co-Protocols <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0003-protocols#what-is-a-protocol>`_

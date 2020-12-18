@@ -1,10 +1,10 @@
 ======================================================================
 Anon Creds concept implementation with Sirius transaction model
 ======================================================================
-**Self-sovereign identity** (SSI) bring solution for Identity problem, SSI makes identification decentralization.
+**Self-sovereign identity** (SSI) brings the solution to the Identity problem, SSI makes identification decentralized.
 
-Modern solutions of identity are hyper centralized. To unchain centralization chains, SSI proposes
-to shift point of identity to identity owner in opposite to idea to maintain much identification providers.
+Modern identity solutions are hyper centralized. To unchain the centralization chains, SSI proposes
+to shift the point of identity to the identity owner in opposite to the idea of maintaining many identification providers.
 
 .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/decentralization_identity.png?raw=true
    :height: 300px
@@ -14,49 +14,49 @@ to shift point of identity to identity owner in opposite to idea to maintain muc
 To breathe life into this idea **Hyperledger Indy** implements 3 techniques:
 
 1. `Indy Wallet <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0050-wallets>`_:
-   private storage that collects all cryptographic keys, cyber-secure relationships, owner credentials.
-   Access to wallet has identity owner only thanks to **pass phrase** that used to encode all data in
-   the wallet storage and owner only know **pass phrase**. We may draw an analogy with
-   Bitcoin wallet: no bank, no any financial org or gov can know you bitcoin wallet balance
-   or control currencies movements. Person who is owner of the bitcoin wallet knows **pass phrase** only
-   and modern cryptography and network consensus provide ability for wallet owner control his cash.
+   a private storage that collects all cryptographic keys, cyber-secure relationships, owner credentials.
+   Only the identity owner has access to the wallet thanks to the **pass phrase** that is used to encode all data in
+   the wallet storage and only owner knows this **pass phrase**. We may draw an analogy with
+   Bitcoin wallet: no bank, no any financial organization or government can know you bitcoin wallet balance
+   or control currency movements. Only the person who is the owner of the bitcoin wallet knows the **pass phrase**
+   and modern cryptography and network consensus algorithms provide an ability for wallet owner to control his cash.
 
 2. `AnonCreds <https://github.com/hyperledger-archives/indy-crypto/blob/master/libindy-crypto/docs/anoncreds-design.md>`_
    and `DID (decentralized identifiers) <https://www.w3.org/TR/did-core/#dfn-decentralized-identifiers>`_
-   is techniques that solve problem *`how owner who has credentials issued and accepted by A may present same
-   credentials to B and B may verify that credentials are issued by A to owner he communication with`*
+   are the techniques that solve *`how the owner who has credentials issued and accepted by A may present 
+   these credentials to B and B may verify that the credentials are issued by A to the owner he communicates with`*
 
     .. image:: https://github.com/Sirius-social/sirius-sdk-python/blob/master/docs/_static/anoncreds.jpg?raw=true
        :height: 300px
        :width: 600px
        :alt: Identity decentralization
 
-    useful outcomes:
-      - identity owner may generate different DID for different relationships, so he can operate as anonym
-      - credential issued by A has cryptographic parts that make possible to validate
+    Useful outcomes:
+      - identity owner may generate different DIDs for different relationships, so he can operate as anonym
+      - credential issued by A has cryptographic parts that make it possible to validate
         that credential by verifiers (B) in revealed or ZKP manner
-      - identity owner has full access to his credentials (via wallet) and make desicion
-        does he want present owned credentials fields and how much to present.
-      - every verifier (B) has self `Root Of Trust <https://en.wikipedia.org/wiki/Trust_anchor>`_
+      - identity owner has full access to his credentials (via wallet) and decides whether to provide its own credential 
+      fields and to what extent.
+      - every verifier (B) has its own `Root Of Trust <https://en.wikipedia.org/wiki/Trust_anchor>`_
         avoiding Root center authorities (RCA) which are imposed by PKI technology.
-        PKI with root-of-trust as part of it bring much issues in complex relationships.
+        PKI with root-of-trust as a part of it brings many issues in complex relationships.
 
 3. `DKMS <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0051-dkms>`_
-   decentralized key management system based on blockchain distributed ledger and maintaining
-   by independent participants (like Sovrin network). DKMS acts as independent **arbiter** in
+   decentralized key management system is based on blockchain distributed ledger and maintained
+   by independent participants (like Sovrin network). DKMS acts as independent **arbiter** in the following
    mechanisms:
 
    - Check revocations
    - Check DID verkeys
    - Revocate verkeys by DID controllers
    - Write/Read credential definitions and correspondent cryptography data.
-   - Revocation registries: check credential was not revocated.
+   - Revocation registries: check if credential was not revocated.
    - Others...
 
-As noticed earlier in `state-machines <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/distributed_state_machines>`_ doc
-**Sirius SDK** provide specific transaction model that reduce program code complexity.
+As it noticed earlier in `state-machines <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/distributed_state_machines>`_ doc,
+**Sirius SDK** provides a specific transaction model that reduce the program code complexity.
 
-Sirius Team explore much of open-source Indy Agents. All of them ready to product solutions.
+**Sirius** Team explores much of open-source Indy Agents. All of them are ready to product solutions.
 But...
 There are hundreds and thousands of code lines for each of Anon-Cred feature:
 
@@ -64,7 +64,7 @@ There are hundreds and thousands of code lines for each of Anon-Cred feature:
    - `aries rfc feature 0037 <https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof>`_
    - etc.
 
-Yoc can see below, implementation of prover role (feature 0037 state-machine) takes 35 lines of code:
+One can see below that the implementation of the prover role (feature 0037 state-machine) takes 35 lines of code:
 
 .. image:: https://github.com/hyperledger/aries-rfcs/raw/master/features/0037-present-proof/credential-presentation.png
        :height: 200px
@@ -126,9 +126,9 @@ You may check demo source code `here <https://github.com/Sirius-social/sirius-sd
 Let's pay attention to some lines of code
 ==========================================
 
-1. DKMS is maintaining independently of DID. Indy Wallet use **Elliptic Curve Cryptography** inside
+1. DKMS is maintaining independently of DIDs. Indy Wallet uses **Elliptic Curve Cryptography** inside
    so all relationships and anon-cred mechanisms acts in virtual mathematics world of elliptic curves
-   and wallet is secure storage only that support of reusing yourself relationships cause of persistent wallet storage.
+   and wallet is only a secure storage that supports reusing its relationships using the persistent wallet storage.
 
     .. code-block:: python
 
@@ -136,8 +136,8 @@ Let's pay attention to some lines of code
         dkms = await sirius_sdk.ledger(network_name)
 
 
-2. **Sirius SDK** wrap Indy credential mechanisms tools to Native object-oriented-mechanisms. Thanks
-   to open-source nature of the SDK developer may upgrade declarations to himself demands
+2. **Sirius SDK** wraps Indy credential mechanism tools to Native object-oriented-mechanisms. Thanks
+   to open-source nature of the SDK developer may upgrade declarations to his demands
 
    .. code-block:: python
 
@@ -146,10 +146,10 @@ Let's pay attention to some lines of code
         # Ensure CredDefs is stored to DKMS
         cred_def_fetched = await dkms.fetch_cred_defs(tag='TAG', schema_id=schema_.id)
 
-3. **Sirius SDK** combine Object-Oriented (OOP) developing and Procedure-Oriented developing (POP)
-   style. POP is powerful for communication part of use-cases algorithms with much of entities that have active nature,
+3. **Sirius SDK** combines Object-Oriented (OOP) developing and Procedure-Oriented developing (POP)
+   style. POP is powerful for the communication part of use-cases algorithms with many entities that have active nature,
    OOP is powerful for manipulating objects with passive nature: storages, entities, etc.
-   Developer may combine them both to reach MAX productivity and rationality.
+   Developer may combine them both to reach maximum productivity and rationality.
 
    .. code-block:: python
 
