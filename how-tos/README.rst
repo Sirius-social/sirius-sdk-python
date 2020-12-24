@@ -16,11 +16,11 @@ How-tos guide for business automation with Sirius approach via blockchain and Sm
 - `Indy Anon-Creds implementation <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/anon_credentials>`_
    will demonstrate how **Sirius SDK** helps to implement complex tasks and SSI protocols.
 - `Robotic process automation <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/robotic_process_automation>`_
-   will cover how **Sirius** may help to involve humans to **Trust** environments driven by SSI.
+   will cover how **Sirius** may help to involve humans to **Trusted** environments driven by SSI.
 - `Consensus implementation as distributed-state-machine <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/pluggable_consensus>`_
    Doc will show why `Star battle ship <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/distributed_state_machines#example>`_
-   example is not Byzantine-full and we will discuss about tricks that solve same issues with **Sirius SDK**.
+   example is not Byzantine-full and we will discuss the tricks that solve same issues with **Sirius SDK**.
    Distributed state machines and pluggable consensus.
 - `Sirius Smart-Contracts <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/smart_contracts>`_
-   Separation imperative and declarative logic, pluggable consensus, trust and business-logic over co-protocols.
+   Separation of imperative and declarative logic, pluggable consensus, trust and business-logic over co-protocols.
    App centralization continuum and useful outcomes.
