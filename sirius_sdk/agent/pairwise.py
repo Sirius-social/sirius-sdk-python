@@ -33,20 +33,25 @@ class Pairwise:
 
     class Their(TheirEndpoint):
 
-        def __init__(self, did: str, label: str, endpoint: str, verkey: str, routing_keys: List[str]=None):
+        def __init__(
+                self, did: str, label: str, endpoint: str, verkey: str,
+                routing_keys: List[str] = None, did_doc: dict = None
+        ):
             self.did = did
             self.label = label
+            self.did_doc = did_doc
             super().__init__(endpoint, verkey, routing_keys)
 
     class Me:
 
-        def __init__(self, did, verkey):
+        def __init__(self, did, verkey, did_doc: dict = None):
             self.did = did
             self.verkey = verkey
+            self.did_doc = did_doc
 
         def __eq__(self, other):
             if isinstance(other, Pairwise.Me):
-                return self.did == other.did and self.verkey == other.verkey
+                return self.did == other.did and self.verkey == other.verkey and self.did_doc == other.did_doc
 
     def __init__(self, me: Me, their: Their, metadata: dict=None):
         self.__me = me
@@ -202,7 +207,8 @@ class WalletPairwiseList(AbstractPairwiseList):
         pairwise = Pairwise(
             me=Pairwise.Me(
                 did=metadata.get('me', {}).get('did', None),
-                verkey=metadata.get('me', {}).get('verkey', None)
+                verkey=metadata.get('me', {}).get('verkey', None),
+                did_doc=metadata.get('me', {}).get('did_doc', None)
             ),
             their=Pairwise.Their(
                 did=metadata.get('their', {}).get('did', None),
@@ -210,6 +216,7 @@ class WalletPairwiseList(AbstractPairwiseList):
                 label=metadata.get('their', {}).get('label', None),
                 endpoint=metadata.get('their', {}).get('endpoint', {}).get('address', None),
                 routing_keys=metadata.get('their', {}).get('endpoint', {}).get('routing_keys', None),
+                did_doc=metadata.get('their', {}).get('did_doc', None)
             ),
             metadata=metadata
         )
@@ -220,7 +227,8 @@ class WalletPairwiseList(AbstractPairwiseList):
         metadata = {
             'me': {
                 'did': pairwise.me.did,
-                'verkey': pairwise.me.verkey
+                'verkey': pairwise.me.verkey,
+                'did_doc': pairwise.me.did_doc
             },
             'their': {
                 'did': pairwise.their.did,
@@ -229,7 +237,8 @@ class WalletPairwiseList(AbstractPairwiseList):
                 'endpoint': {
                     'address': pairwise.their.endpoint,
                     'routing_keys': pairwise.their.routing_keys
-                }
+                },
+                'did_doc': pairwise.their.did_doc
             }
         }
         return metadata

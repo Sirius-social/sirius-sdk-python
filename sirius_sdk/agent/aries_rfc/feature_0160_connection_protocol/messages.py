@@ -31,9 +31,9 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
         return await verify_signed(crypto, signed_field)
 
     @staticmethod
-    def build_did_doc(did: str, verkey: str, endpoint: str):
+    def build_did_doc(did: str, verkey: str, endpoint: str, **extra):
         key_id = did + '#1'
-        return {
+        doc = {
             "@context": "https://w3id.org/did/v1",
             "id": did,
             "authentication": [
@@ -56,6 +56,8 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
                 "serviceEndpoint": endpoint,
             }],
         }
+        doc.update(extra)
+        return doc
 
     @property
     def their_did(self):
@@ -218,16 +220,17 @@ class ConnRequest(ConnProtocolMessage, metaclass=RegisterMessage):
     NAME = 'request'
 
     def __init__(
-            self, label: Optional[str]=None, did: Optional[str]=None, verkey: Optional[str]=None,
-            endpoint: Optional[str]=None, *args, **kwargs
+            self, label: Optional[str] = None, did: Optional[str] = None, verkey: Optional[str] = None,
+            endpoint: Optional[str] = None, did_doc_extra: dict = None, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         if label is not None:
             self['label'] = label
         if (did is not None) and (verkey is not None) and (endpoint is not None):
+            extra = did_doc_extra or {}
             self['connection'] = {
                 'DID': did,
-                'DIDDoc': self.build_did_doc(did, verkey, endpoint)
+                'DIDDoc': self.build_did_doc(did, verkey, endpoint, **extra)
             }
 
     @property
@@ -247,14 +250,15 @@ class ConnResponse(ConnProtocolMessage, metaclass=RegisterMessage):
     NAME = 'response'
 
     def __init__(
-            self, did: Optional[str]=None, verkey: Optional[str]=None,
-            endpoint: Optional[str]=None, *args, **kwargs
+            self, did: Optional[str] = None, verkey: Optional[str] = None,
+            endpoint: Optional[str] = None, did_doc_extra: dict = None, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         if (did is not None) and (verkey is not None) and (endpoint is not None):
+            extra = did_doc_extra or {}
             self['connection'] = {
                 'DID': did,
-                'DIDDoc': self.build_did_doc(did, verkey, endpoint)
+                'DIDDoc': self.build_did_doc(did, verkey, endpoint, **extra)
             }
 
     def validate(self):

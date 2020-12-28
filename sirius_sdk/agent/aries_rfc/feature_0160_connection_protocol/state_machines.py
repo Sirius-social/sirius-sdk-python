@@ -79,7 +79,7 @@ class Inviter(BaseConnectionStateMachine):
     def connection_key(self) -> str:
         return self.__connection_key
 
-    async def create_connection(self, request: ConnRequest) -> (bool, Pairwise):
+    async def create_connection(self, request: ConnRequest, did_doc: dict = None) -> (bool, Pairwise):
         # Validate request
         await self.log(progress=0, message='Validate request', payload=dict(request), connection_key=self.connection_key)
         try:
@@ -111,7 +111,8 @@ class Inviter(BaseConnectionStateMachine):
                     did=self.me.did,
                     verkey=self.me.verkey,
                     endpoint=self.my_endpoint.address,
-                    doc_uri=doc_uri
+                    doc_uri=doc_uri,
+                    did_doc_extra=did_doc
                 )
                 if request.please_ack:
                     response.thread_id = request.ack_message_id
@@ -133,6 +134,7 @@ class Inviter(BaseConnectionStateMachine):
                             verkey=their_vk,
                             routing_keys=their_routing_keys
                         )
+                        their_did_doc = dict(request.did_doc)
                         metadata = {
                             'me': {
                                 'did': self.me.did,
@@ -147,10 +149,12 @@ class Inviter(BaseConnectionStateMachine):
                                     'address': their_endpoint_address,
                                     'routing_keys': their_routing_keys
                                 },
-                                'did_doc': dict(request.did_doc)
+                                'did_doc': their_did_doc
                             }
                         }
                         pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
+                        pairwise.me.did_doc = my_did_doc
+                        pairwise.their.did_doc = their_did_doc
                         await self.log(progress=100, message='Pairwise established', payload=metadata)
                         return True, pairwise
                     elif isinstance(response, ConnProblemReport):
@@ -195,7 +199,9 @@ class Invitee(BaseConnectionStateMachine):
     def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
         super().__init__(me=me, my_endpoint=my_endpoint, time_to_live=time_to_live, logger=logger, *args, **kwargs)
 
-    async def create_connection(self, invitation: Invitation, my_label: str) -> (bool, Pairwise):
+    async def create_connection(
+            self, invitation: Invitation, my_label: str, did_doc: dict = None
+    ) -> (bool, Pairwise):
         # Validate invitation
         await self.log(progress=0, message='Invitation validate', payload=dict(invitation))
         try:
@@ -226,7 +232,8 @@ class Invitee(BaseConnectionStateMachine):
                     did=self.me.did,
                     verkey=self.me.verkey,
                     endpoint=self.my_endpoint.address,
-                    doc_uri=doc_uri
+                    doc_uri=doc_uri,
+                    did_doc_extra=did_doc
                 )
 
                 await self.log(progress=50, message='Step-1: send connection request to Inviter', payload=dict(request))
@@ -268,11 +275,13 @@ class Invitee(BaseConnectionStateMachine):
                                 verkey=their_vk,
                                 routing_keys=their_routing_keys
                             )
+                            my_did_doc = dict(request.did_doc)
+                            their_did_doc = dict(response.did_doc)
                             metadata = {
                                 'me': {
                                     'did': self.me.did,
                                     'verkey': self.me.verkey,
-                                    'did_doc': dict(request.did_doc)
+                                    'did_doc': my_did_doc
                                 },
                                 'their': {
                                     'did': their_did,
@@ -282,10 +291,12 @@ class Invitee(BaseConnectionStateMachine):
                                         'address': their_endpoint_address,
                                         'routing_keys': their_routing_keys
                                     },
-                                    'did_doc': dict(response.did_doc)
+                                    'did_doc': their_did_doc
                                 }
                             }
                             pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
+                            pairwise.me.did_doc = my_did_doc
+                            pairwise.their.did_doc = their_did_doc
                             await self.log(progress=100, message='Pairwise established', payload=metadata)
                             return True, pairwise
                         else:

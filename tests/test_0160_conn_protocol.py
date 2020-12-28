@@ -32,7 +32,7 @@ async def read_events(uri: str, credentials: bytes, p2p: sirius_sdk.P2PConnectio
 
 async def run_inviter(
         uri: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, expected_connection_key: str,
-        me: sirius_sdk.Pairwise.Me = None, replace_endpoints: bool = False
+        me: sirius_sdk.Pairwise.Me = None, replace_endpoints: bool = False, did_doc_extra: dict = None
 ):
     async with sirius_sdk.context(uri, credentials, p2p):
         endpoints_ = await sirius_sdk.endpoints()
@@ -57,7 +57,7 @@ async def run_inviter(
                     me = sirius_sdk.Pairwise.Me(did=my_did, verkey=my_verkey)
                 # create connection
                 machine = Inviter(me, connection_key, my_endpoint)
-                ok, pairwise = await machine.create_connection(request)
+                ok, pairwise = await machine.create_connection(request, did_doc_extra)
                 assert ok is True
                 await sirius_sdk.PairwiseList.ensure_exists(pairwise)
         pass
@@ -65,7 +65,8 @@ async def run_inviter(
 
 async def run_invitee(
         uri: str, credentials: bytes, p2p: sirius_sdk.P2PConnection,
-        invitation: Invitation, my_label: str, me: sirius_sdk.Pairwise.Me = None, replace_endpoints: bool = False
+        invitation: Invitation, my_label: str, me: sirius_sdk.Pairwise.Me = None,
+        replace_endpoints: bool = False, did_doc_extra: dict = None
 ):
     async with sirius_sdk.context(uri, credentials, p2p):
         if me is None:
@@ -80,7 +81,7 @@ async def run_invitee(
             invitation['serviceEndpoint'] = new_address
         # Create and start machine
         machine = Invitee(me, my_endpoint)
-        ok, pairwise = await machine.create_connection(invitation=invitation, my_label=my_label)
+        ok, pairwise = await machine.create_connection(invitation=invitation, my_label=my_label, did_doc=did_doc_extra)
         assert ok is True
         await sirius_sdk.PairwiseList.ensure_exists(pairwise)
 
@@ -243,3 +244,63 @@ async def test_inviter_back_compatibility(indy_agent: IndyAgent, test_suite: Ser
                 invitated_pairwise = p
                 break
     assert invitated_pairwise is not None
+
+
+@pytest.mark.asyncio
+async def test_did_doc_extra_fields(test_suite: ServerTestSuite):
+    inviter = test_suite.get_agent_params('agent1')
+    invitee = test_suite.get_agent_params('agent2')
+
+    # Get endpoints
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        inviter_endpoint_address = [e for e in await sirius_sdk.endpoints() if e.routing_keys == []][0].address
+        connection_key = await sirius_sdk.Crypto.create_key()
+        invitation = Invitation(label='Inviter', endpoint=inviter_endpoint_address, recipient_keys=[connection_key])
+
+    # Init Me
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+        inviter_me = sirius_sdk.Pairwise.Me(did, verkey)
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        did, verkey = await sirius_sdk.DID.create_and_store_my_did()
+        invitee_me = sirius_sdk.Pairwise.Me(did, verkey)
+
+    await run_coroutines(
+        run_inviter(
+            inviter['server_address'], inviter['credentials'], inviter['p2p'], connection_key, inviter_me,
+            did_doc_extra={
+                'creator': {'@id': 'uuid-xxx-yyy'},
+                'extra': 'Any'
+            }
+        ),
+        run_invitee(
+            invitee['server_address'], invitee['credentials'], invitee['p2p'], invitation, 'Invitee', invitee_me,
+            did_doc_extra={
+                'creator': {'@id': 'uuid-www-zzz'},
+                'extra': 'Test'
+            }
+        )
+    )
+
+    # Check for Inviter
+    async with sirius_sdk.context(inviter['server_address'], inviter['credentials'], inviter['p2p']):
+        pairwise = await sirius_sdk.PairwiseList.load_for_verkey(invitee_me.verkey)
+        assert pairwise is not None
+        assert pairwise.their.did == invitee_me.did
+        assert pairwise.me.did_doc is not None
+        assert pairwise.me.did_doc.get('creator', {}) == {'@id': 'uuid-xxx-yyy'}
+        assert pairwise.me.did_doc.get('extra', None) == 'Any'
+        assert pairwise.their.did_doc is not None
+        assert pairwise.their.did_doc.get('creator', {}) == {'@id': 'uuid-www-zzz'}
+        assert pairwise.their.did_doc.get('extra', None) == 'Test'
+    # Check for Invitee
+    async with sirius_sdk.context(invitee['server_address'], invitee['credentials'], invitee['p2p']):
+        pairwise = await sirius_sdk.PairwiseList.load_for_verkey(inviter_me.verkey)
+        assert pairwise is not None
+        assert pairwise.their.did == inviter_me.did
+        assert pairwise.me.did_doc is not None
+        assert pairwise.me.did_doc.get('creator', {}) == {'@id': 'uuid-www-zzz'}
+        assert pairwise.me.did_doc.get('extra', None) == 'Test'
+        assert pairwise.their.did_doc is not None
+        assert pairwise.their.did_doc.get('creator', {}) == {'@id': 'uuid-xxx-yyy'}
+        assert pairwise.their.did_doc.get('extra', None) == 'Any'
