@@ -7,6 +7,36 @@ from sirius_sdk.agent.ledger import CredentialDefinition, CacheOptions
 
 
 @pytest.mark.asyncio
+async def test_nym_ops(agent1: Agent, agent2: Agent):
+    steward = agent1
+    await steward.open()
+    await agent2.open()
+    try:
+        seed = '000000000000000000000000Steward1'
+        did_steward, verkey_steward = await steward.wallet.did.create_and_store_my_did(seed=seed)
+        # check-1: read ops sane
+        dkms = steward.ledger('default')
+        ok, resp = await dkms.read_nym(did_steward, did_steward)
+        assert ok is True
+        print('#')
+        did_test, verkey_test = await agent2.wallet.did.create_and_store_my_did()
+        # check-2: read nym operation for unknown DID
+        dkms = agent2.ledger('default')
+        ok, resp = await dkms.read_nym(did_test, did_test)
+        assert ok is False
+        # Check-3: read nym for known DID
+        ok, resp = await dkms.read_nym(did_test, did_steward)
+        assert ok is True
+        # Check-4: write Nym
+        dkms = steward.ledger('default')
+        ok, resp = await dkms.write_nym(did_steward, did_test, verkey_test, alias='Test Alias')
+        assert ok is True
+    finally:
+        await steward.close()
+        await agent2.close()
+
+
+@pytest.mark.asyncio
 async def test_schema_registration(agent1: Agent):
     await agent1.open()
     try:

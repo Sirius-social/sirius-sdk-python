@@ -7,7 +7,7 @@ from sirius_sdk.base import JsonSerializable
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.errors.indy_exceptions import LedgerNotFound
 from sirius_sdk.errors.exceptions import SiriusInvalidPayloadStructure
-from sirius_sdk.agent.wallet.abstract.ledger import AbstractLedger
+from sirius_sdk.agent.wallet.abstract.ledger import AbstractLedger, NYMRole
 from sirius_sdk.agent.wallet.abstract.anoncreds import AnonCredSchema, AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache, CacheOptions
 
@@ -279,6 +279,31 @@ class Ledger:
     @property
     def name(self) -> str:
         return self.__name
+
+    async def read_nym(self, submitter_did: str, target_did: str) -> (bool, dict):
+        resp = await self._api.read_nym(
+            pool_name=self.name,
+            submitter_did=submitter_did,
+            target_did=target_did
+        )
+        success = resp[0]
+        data = resp[1]
+        return success, data
+
+    async def write_nym(
+            self, submitter_did: str, target_did: str, ver_key: str = None, alias: str = None, role: NYMRole = None
+    ) -> (bool, dict):
+        resp = await self._api.write_nym(
+            pool_name=self.name,
+            submitter_did=submitter_did,
+            target_did=target_did,
+            ver_key=ver_key,
+            alias=alias,
+            role=role or NYMRole.COMMON_USER
+        )
+        success = resp[0]
+        data = resp[1]
+        return success, data
 
     async def load_schema(self, id_: str, submitter_did: str) -> Schema:
         body = await self._cache.get_schema(
