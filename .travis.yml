@@ -37,3 +37,4 @@ script:
   - pytest tests/test_0036_issue_credential.py
   - pytest tests/test_0037_verify_proof.py
   - pytest tests/test_performance.py
+  - pytest tests/test_non_secrets.py
