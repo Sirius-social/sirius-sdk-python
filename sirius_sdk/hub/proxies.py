@@ -5,11 +5,12 @@ from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
+from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList, LedgerMeta, Transaction, AbstractMicroledger
 
 from .core import _current_hub
-from ..agent.wallet import PurgeOptions, CacheOptions
+from ..agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
 from ..agent.wallet.abstract import AnonCredSchema
 
 
@@ -407,3 +408,38 @@ class CacheProxy(AbstractCache):
     async def purge_cred_def_cache(self, options: PurgeOptions) -> None:
         service = await _current_hub().get_cache()
         await service.purge_cred_def_cache(options=options)
+
+
+class NonSecretsProxy(AbstractNonSecrets):
+
+    async def add_wallet_record(self, type_: str, id_: str, value: str, tags: dict = None) -> None:
+        service = await _current_hub().get_non_secrets()
+        return await service.add_wallet_record(type_=type_, id_=id_, value=value, tags=tags)
+
+    async def update_wallet_record_value(self, type_: str, id_: str, value: str) -> None:
+        service = await _current_hub().get_non_secrets()
+        return await service.update_wallet_record_value(type_=type_, id_=id_, value=value)
+
+    async def update_wallet_record_tags(self, type_: str, id_: str, tags: dict) -> None:
+        service = await _current_hub().get_non_secrets()
+        return await service.update_wallet_record_tags(type_=type_, id_=id_, tags=tags)
+
+    async def add_wallet_record_tags(self, type_: str, id_: str, tags: dict) -> None:
+        service = await _current_hub().get_non_secrets()
+        return await service.add_wallet_record_tags(type_=type_, id_=id_, tags=tags)
+
+    async def delete_wallet_record_tags(self, type_: str, id_: str, tag_names: List[str]) -> None:
+        service = await _current_hub().get_non_secrets()
+        return await service.delete_wallet_record_tags(type_=type_, id_=id_, tag_names=tag_names)
+
+    async def delete_wallet_record(self, type_: str, id_: str) -> None:
+        service = await _current_hub().get_non_secrets()
+        return await service.delete_wallet_record(type_=type_, id_=id_)
+
+    async def get_wallet_record(self, type_: str, id_: str, options: RetrieveRecordOptions) -> Optional[dict]:
+        service = await _current_hub().get_non_secrets()
+        return await service.get_wallet_record(type_=type_, id_=id_, options=options)
+
+    async def wallet_search(self, type_: str, query: dict, options: RetrieveRecordOptions, limit: int = 1) -> (List[dict], int):
+        service = await _current_hub().get_non_secrets()
+        return await service.wallet_search(type_=type_, query=query, options=options, limit=limit)
