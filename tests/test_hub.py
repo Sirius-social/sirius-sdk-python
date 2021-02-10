@@ -61,3 +61,34 @@ async def test_aborting(test_suite: ServerTestSuite):
     assert id(agent1) != id(agent2)
     assert agent1 is not None
     assert agent2 is not None
+
+
+@pytest.mark.asyncio
+async def test_spawn_child_routines(test_suite: ServerTestSuite):
+    params = test_suite.get_agent_params('agent1')
+
+    hub_parent = None
+    hub_child1 = None
+    hub_child2 = None
+
+    async def child1():
+        nonlocal hub_child1
+        hub_child1 = _current_hub()
+
+    async def child2():
+        nonlocal hub_child2
+        hub_child2 = _current_hub()
+
+    async def parent():
+        nonlocal hub_parent
+        hub_parent = _current_hub()
+        await child1()
+        fut = asyncio.ensure_future(child2())
+        await asyncio.wait([fut])
+
+    async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
+        await parent()
+
+    assert id(hub_parent) == id(hub_child1)
+    assert id(hub_parent) != id(hub_child2)
+    assert id(hub_child1) != id(hub_child2)

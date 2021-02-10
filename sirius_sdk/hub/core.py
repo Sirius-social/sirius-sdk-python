@@ -15,11 +15,11 @@ from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
+from .context import get as context_get, set as context_set, clear as context_clear
 
 
 __ROOT_HUB = None
 __THREAD_LOCAL_HUB = threading.local()
-__COROUTINE_LOCAL_HUB = contextvars.ContextVar('hub')
 
 
 class Hub:
@@ -163,14 +163,13 @@ async def context(
     __THREAD_LOCAL_HUB.instance = hub
     try:
         await hub.open()
-        old_hub_coro = __COROUTINE_LOCAL_HUB.get(None)
-        token = __COROUTINE_LOCAL_HUB.set(hub)
+        old_hub_coro = context_get('hub')
         try:
             yield
         finally:
-            __COROUTINE_LOCAL_HUB.reset(token)
+            context_clear()
             await hub.close()
-            __COROUTINE_LOCAL_HUB.set(old_hub_coro)
+            context_set('hub', old_hub_coro)
     finally:
         __THREAD_LOCAL_HUB.instance = old_hub
 
@@ -189,11 +188,11 @@ def __get_thread_local_gub() -> Optional[Hub]:
 
 
 def _current_hub() -> Hub:
-    inst = __COROUTINE_LOCAL_HUB.get(None)
+    inst = context_get('hub')
     if inst is None:
         root_hub = __get_thread_local_gub() or __get_root_hub()
         if root_hub is None:
             raise SiriusInitializationError('Non initialized Sirius Agent connection')
         inst = root_hub.copy()
-        __COROUTINE_LOCAL_HUB.set(inst)
+        context_set('hub', inst)
     return inst
