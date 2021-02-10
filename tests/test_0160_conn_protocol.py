@@ -188,6 +188,7 @@ async def test_update_pairwise_metadata(test_suite: ServerTestSuite):
         assert pairwise.metadata is not None
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_invitee_back_compatibility(indy_agent: IndyAgent, test_suite: ServerTestSuite):
     their_invitaton = await indy_agent.create_invitation(label='Test Invitee')
@@ -216,6 +217,7 @@ async def test_invitee_back_compatibility(indy_agent: IndyAgent, test_suite: Ser
     assert invitation_pairwise is not None
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_inviter_back_compatibility(indy_agent: IndyAgent, test_suite: ServerTestSuite, agent1: sirius_sdk.Agent):
     inviter = test_suite.get_agent_params('agent1')
