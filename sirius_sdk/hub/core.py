@@ -164,6 +164,7 @@ async def context(
     try:
         await hub.open()
         old_hub_coro = context_get('hub')
+        context_set('hub', hub)
         try:
             yield
         finally:

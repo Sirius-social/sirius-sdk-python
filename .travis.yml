@@ -23,6 +23,7 @@ script:
   - pytest tests/test_messages.py
   - pytest tests/test_encryption.py
   - pytest tests/test_future_promise.py
+  - pytest tests/test_hub.py
   - pytest tests/test_agent.py
   - pytest tests/test_storages.py
   - pytest tests/test_wallet.py
