@@ -39,7 +39,7 @@ setup(
     python_requires='>=3.7',
     include_package_data=True,
     install_requires=[
-        'aiohttp==3.6.2',
+        'aiohttp==3.7.4',
         'base58==2.0.0',
         'multipledispatch==0.6.0',
         'PyNaCl==1.3.0',
