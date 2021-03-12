@@ -5,10 +5,10 @@ from typing import List, Optional
 from sirius_sdk.encryption import bytes_to_b58
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.agent.microledgers import serialize_ordering, Microledger
+from sirius_sdk.agent.microledgers.abstract import serialize_ordering
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
-from sirius_sdk.agent.microledgers import Transaction, AbstractMicroledger
+from sirius_sdk.agent.microledgers.abstract import Transaction, AbstractMicroledger
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
 
 

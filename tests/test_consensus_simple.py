@@ -6,6 +6,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent, P2PConnection
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledger
 from sirius_sdk.agent.consensus.simple.state_machines import MicroLedgerSimpleConsensus
 from sirius_sdk.agent.consensus.simple.messages import *
 
@@ -38,7 +39,7 @@ async def routine_of_ledger_creation_acceptor(uri: str, credentials: bytes, p2p:
 
 async def routine_of_txn_committer(
         uri: str, credentials: bytes, p2p: P2PConnection,
-        me: Pairwise.Me, participants: List[str], ledger: Microledger, txns: List[dict]
+        me: Pairwise.Me, participants: List[str], ledger: AbstractMicroledger, txns: List[dict]
 ):
     async with sirius_sdk.context(uri, credentials, p2p):
         machine = MicroLedgerSimpleConsensus(me)

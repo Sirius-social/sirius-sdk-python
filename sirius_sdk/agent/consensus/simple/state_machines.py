@@ -6,7 +6,7 @@ from typing import Union, Tuple
 
 import sirius_sdk
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.microledgers import MicroledgerList, AbstractMicroledger
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, AbstractMicroledger
 from sirius_sdk.hub import CoProtocolThreadedTheirs, CoProtocolThreadedP2P
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
@@ -70,7 +70,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
 
     async def init_microledger(
             self, ledger_name: str, participants: List[str], genesis: List[Transaction]
-    ) -> (bool, Microledger):
+    ) -> (bool, AbstractMicroledger):
         """
         :param ledger_name: name of new microledger
         :param participants: list of DIDs that present pairwise list of the Microledger relationships
@@ -107,7 +107,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             else:
                 return True, ledger
 
-    async def accept_microledger(self, leader: Pairwise, propose: InitRequestLedgerMessage) -> (bool, Microledger):
+    async def accept_microledger(self, leader: Pairwise, propose: InitRequestLedgerMessage) -> (bool, AbstractMicroledger):
         if self.me.did not in propose.participants:
             raise SiriusContextError('Invalid state machine initialization')
         time_to_live = propose.timeout_sec or self.time_to_live
@@ -153,7 +153,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 return True, ledger
 
     async def commit(
-            self, ledger: Microledger, participants: List[str], transactions: List[Transaction]
+            self, ledger: AbstractMicroledger, participants: List[str], transactions: List[Transaction]
     ) -> (bool, Optional[List[Transaction]]):
         """
         :param ledger: Microledger instance to operate with
@@ -245,7 +245,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         return ledger
 
     async def _init_microledger_internal(
-            self, co: CoProtocolThreadedTheirs, ledger: Microledger, participants: List[str], genesis: List[Transaction]
+            self, co: CoProtocolThreadedTheirs, ledger: AbstractMicroledger, participants: List[str], genesis: List[Transaction]
     ):
 
         # ============= STAGE 1: PROPOSE =================
@@ -309,7 +309,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
 
     async def _accept_microledger_internal(
             self, co: CoProtocolThreadedP2P, leader: Pairwise, propose: InitRequestLedgerMessage, timeout: int
-    ) -> Microledger:
+    ) -> AbstractMicroledger:
         # =============== STAGE 1: PROPOSE ===============
         try:
             propose.validate()
@@ -390,7 +390,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             )
 
     async def _commit_internal(
-            self, co: CoProtocolThreadedTheirs, ledger: Microledger, transactions: List[Transaction], participants: List[str]
+            self, co: CoProtocolThreadedTheirs, ledger: AbstractMicroledger, transactions: List[Transaction], participants: List[str]
     ) -> List[Transaction]:
 
         txn_time = str(datetime.utcnow())

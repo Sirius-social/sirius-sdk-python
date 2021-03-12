@@ -4,7 +4,7 @@ from datetime import datetime
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.agent.microledgers import Transaction, LedgerMeta
+from sirius_sdk.agent.microledgers_.microledgers import Transaction, LedgerMeta
 
 
 @pytest.mark.asyncio

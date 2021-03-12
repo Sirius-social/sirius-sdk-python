@@ -16,7 +16,8 @@ from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.ledger import Ledger
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
-from sirius_sdk.agent.microledgers import MicroledgerList
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers.impl import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
@@ -123,7 +124,7 @@ class Agent(TransportLayers):
         return self.__endpoints
 
     @property
-    def microledgers(self) -> MicroledgerList:
+    def microledgers(self) -> AbstractMicroledgerList:
         self.__check_is_open()
         return self.__microledgers
 

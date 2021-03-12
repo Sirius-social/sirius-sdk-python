@@ -1,5 +1,4 @@
 import asyncio
-import contextvars
 import threading
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -13,7 +12,7 @@ from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
-from sirius_sdk.agent.microledgers import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
 from .context import get as context_get, set as context_set, clear as context_clear
 
