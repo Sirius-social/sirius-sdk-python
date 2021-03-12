@@ -189,6 +189,43 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     )
                     raise
 
+    async def commit_in_parallel(
+            self, ledgers: List[AbstractMicroledger], participants: List[str], transactions: List[Transaction]
+    ) -> bool:
+        """
+        :param ledgers: list of Microledgers instance to operate with
+        :param participants: list of DIDs that present pairwise list of the Microledger relationships
+                (Assumed DIDs are public or every participant has relationship with each other via pairwise)
+        :param transactions: transactions to commit
+        """
+        await self._bootstrap(participants)
+        relationships = [p2p for p2p in self.__cached_p2p.values()]
+        async with self.acceptors(theirs=relationships, thread_id='simple-consensus-commit-parallel-' + uuid.uuid4().hex) as co:
+            try:
+                await self.log(progress=0, message=f'Start parallel committing of {len(transactions)} transactions')
+                txns = []  # await self._commit_internal(co, ledger, transactions, participants)
+                await self.log(progress=100, message='Commit operation was accepted by all participants')
+                return True
+            except Exception as e:
+                for ledger in ledgers:
+                    await ledger.reset_uncommitted()
+                await self.log(message='Reset uncommitted')
+                if isinstance(e, StateMachineTerminatedWithError):
+                    self.__problem_report = SimpleConsensusProblemReport(e.problem_code, e.explain)
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=e.problem_code, explain=e.explain
+                    )
+                    if e.notify:
+                        await co.send(self.__problem_report)
+                    return False
+                else:
+                    await self.log(
+                        progress=100, message=f'Terminated with exception',
+                        exception=str(e)
+                    )
+                    raise
+
     async def accept_commit(self, leader: Pairwise, propose: ProposeTransactionsMessage) -> bool:
         time_to_live = propose.timeout_sec or self.time_to_live
         async with self.leader(their=leader, thread_id=propose.thread_id, time_to_live=time_to_live) as co:
@@ -253,6 +290,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             raise StateMachineTerminatedWithError(
                 problem_code=REQUEST_NOT_ACCEPTED,
                 explain='Preparing: Ledgers [%s] are locked by other state-machine' % ','.join(busy),
+                notify=False
             )
         try:
             # ============= STAGE 1: PROPOSE =================
@@ -416,6 +454,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             raise StateMachineTerminatedWithError(
                 problem_code=REQUEST_NOT_ACCEPTED,
                 explain='Preparing: Ledgers [%s] are locked by other state-machine' % ','.join(busy),
+                notify=False
             )
         try:
             txn_time = str(datetime.utcnow())

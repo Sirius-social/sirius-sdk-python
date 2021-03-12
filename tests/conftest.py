@@ -150,6 +150,11 @@ def ledger_name() -> str:
 
 
 @pytest.fixture()
+def ledger_names() -> list:
+    return ['Ledger-' + uuid.uuid4().hex for n in range(2)]
+
+
+@pytest.fixture()
 def default_network() -> str:
     return 'default'
 

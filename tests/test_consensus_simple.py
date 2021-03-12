@@ -191,6 +191,69 @@ async def test_transaction_messaging(A: Agent, B: Agent, ledger_name: str):
 
 
 @pytest.mark.asyncio
+async def test_parallel_transactions_messaging(A: Agent, B: Agent, ledger_names: List[str]):
+    await A.open()
+    await B.open()
+    try:
+        a2b = await get_pairwise(A, B)
+        b2a = await get_pairwise(B, A)
+        a2b.me.did = 'did:peer:' + a2b.me.did
+        b2a.me.did = 'did:peer:' + b2a.me.did
+        genesis_txns = [
+            Transaction({"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"})
+        ]
+        ledgers_for_a = []
+        ledgers_for_b = []
+        for n in ledger_names:
+            ledger_for_a, _ = await A.microledgers.create(n, genesis_txns)
+            ledger_for_b, _ = await B.microledgers.create(n, genesis_txns)
+            ledgers_for_a.append(ledger_for_a)
+            ledgers_for_b.append(ledger_for_b)
+
+        new_transactions = [
+            Transaction({"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op2"}),
+            Transaction({"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"}),
+        ]
+        # A -> B
+        batches_for_a = []
+        for ledger_for_a in ledgers_for_a:
+            pos1, pos2, new_txns = await ledger_for_a.append(new_transactions)
+            batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger_for_a), transactions=new_txns)
+            batches_for_a.append(batch)
+        propose = ProposeParallelTransactionsMessage(transactions=batches_for_a)
+        propose.validate()
+        # B -> A
+        batches_for_b = []
+        for batch in propose.transactions:
+            ledger_for_b = await B.microledgers.ledger(batch.ledger_name)
+            pos1, pos2, new_txns = await ledger_for_b.append(batch.transactions)
+            batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger_for_b), transactions=new_txns)
+            batches_for_b.append(batch)
+        pre_commit = PreCommitParallelTransactionsMessage(transactions=batches_for_b)
+        await pre_commit.sign_states(B.wallet.crypto, b2a.me)
+        pre_commit.validate()
+        ok, state_hash_for_b = await pre_commit.verify_state(A.wallet.crypto, a2b.their.verkey)
+        assert ok is True
+        assert state_hash_for_b == propose.hash
+        # A -> B
+        commit = CommitParallelTransactionsMessage()
+        commit.add_pre_commit(a2b.their.did, pre_commit)
+        commit.validate()
+        states = await commit.verify_pre_commits(A.wallet.crypto, propose.hash)
+        assert a2b.their.did in str(states)
+        assert a2b.their.verkey in str(states)
+        # B -> A (post-commit)
+        post_commit = PostCommitParallelTransactionsMessage()
+        await post_commit.add_commit_sign(B.wallet.crypto, commit, b2a.me)
+        post_commit.validate()
+        ok = await post_commit.verify_commits(A.wallet.crypto, commit, [a2b.their.verkey])
+        assert ok is True
+    finally:
+        await A.close()
+        await B.close()
+
+
+@pytest.mark.asyncio
 async def test_simple_consensus_init_ledger(
         A: Agent, B: Agent, C: Agent, ledger_name: str, test_suite: ServerTestSuite
 ):
