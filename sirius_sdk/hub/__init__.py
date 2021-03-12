@@ -66,3 +66,16 @@ async def send_to(message: Message, to: Pairwise):
 async def generate_qr_code(value: str) -> str:
     async with _current_hub().get_agent_connection_lazy() as agent:
         return await agent.generate_qr_code(value)
+
+
+async def acquire(resources: List[str], lock_timeout: float, enter_timeout: float = None) -> (bool, List[str]):
+    async with _current_hub().get_agent_connection_lazy() as agent:
+        kwargs = {'resources': resources, 'lock_timeout': lock_timeout}
+        if enter_timeout:
+            kwargs['enter_timeout'] = enter_timeout
+        return await agent.acquire(**kwargs)
+
+
+async def release():
+    async with _current_hub().get_agent_connection_lazy() as agent:
+        await agent.release()
