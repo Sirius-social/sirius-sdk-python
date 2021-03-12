@@ -2,6 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import List, Union, Dict
 
+from sirius_sdk import acquire as resources_acquire, release as resources_release
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.connections import AgentRPC
 
@@ -211,6 +212,14 @@ class AbstractMicroledgerList(ABC):
 
     @abstractmethod
     async def list(self) -> List[LedgerMeta]:
+        pass
+
+    @abstractmethod
+    async def acquire(self, names: List[str], lock_timeout: float):
+        pass
+
+    @abstractmethod
+    async def release(self):
         pass
 
 
@@ -438,6 +447,8 @@ class Microledger(AbstractMicroledger):
 
 class MicroledgerList(AbstractMicroledgerList):
 
+    LOCK_NAMESPACE = 'ledgers'
+
     def __init__(self, api: AgentRPC):
         self.__api = api
         self.instances = {}
@@ -506,6 +517,23 @@ class MicroledgerList(AbstractMicroledgerList):
             }
         )
         return [LedgerMeta(**item) for item in collection]
+
+    async def acquire(self, names: List[str], lock_timeout: float) -> (bool, List[str]):
+        """Lock ledgers given by names.
+
+        :names: names of microledgers
+        :lock_timeout: lock timeout, resources will be released automatically after timeout expired
+        """
+        ledger_names = names[:]  # copy
+        ledger_names = list(set(ledger_names))  # remove duplicates
+        ledger_resources = [f'{self.LOCK_NAMESPACE}/{name}' for name in ledger_names]
+        ok, locked_ledgers = await resources_acquire(resources=ledger_resources, lock_timeout=lock_timeout)
+        locked_ledgers = [item.split('/')[-1] for item in locked_ledgers]  # remove namespace prefix
+        return ok, locked_ledgers
+
+    async def release(self):
+        """Released all resources locked in current context"""
+        await resources_release()
 
     async def __check_is_exists(self, name: str):
         if name not in self.instances.keys():
