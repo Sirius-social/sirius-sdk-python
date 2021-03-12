@@ -211,13 +211,3 @@ class AbstractMicroledgerList(ABC):
     @abstractmethod
     async def list(self) -> List[LedgerMeta]:
         pass
-
-    @abstractmethod
-    async def acquire(self, names: List[str], lock_timeout: float):
-        pass
-
-    @abstractmethod
-    async def release(self):
-        pass
-
-
