@@ -203,7 +203,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         async with self.acceptors(theirs=relationships, thread_id='simple-consensus-commit-parallel-' + uuid.uuid4().hex) as co:
             try:
                 await self.log(progress=0, message=f'Start parallel committing of {len(transactions)} transactions')
-                txns = []  # await self._commit_internal(co, ledger, transactions, participants)
+                await self._commit_internal_parallel(co, ledgers, transactions, participants)
                 await self.log(progress=100, message='Commit operation was accepted by all participants')
                 return True
             except Exception as e:
@@ -254,6 +254,31 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 else:
                     raise
 
+    async def accept_commit_parallel(self, leader: Pairwise, propose: ProposeParallelTransactionsMessage) -> bool:
+        time_to_live = propose.timeout_sec or self.time_to_live
+        async with self.leader(their=leader, thread_id=propose.thread_id, time_to_live=time_to_live) as co:
+            ledgers = await self._load_ledgers(propose)
+            try:
+                await self.log(progress=0, message=f'Start accept {len(propose.transactions)} transactions in parallel mode')
+                await self._accept_commit_internal_parallel(co, ledgers, leader, propose)
+                await self.log(progress=100, message='Accept terminated successfully in parallel mode')
+                return True
+            except Exception as e:
+                for ledger in ledgers:
+                    await ledger.reset_uncommitted()
+                await self.log(message='Reset uncommitted')
+                if isinstance(e, StateMachineTerminatedWithError):
+                    self.__problem_report = SimpleConsensusProblemReport(e.problem_code, e.explain)
+                    await self.log(
+                        progress=100, message=f'Terminated with error',
+                        problem_code=e.problem_code, explain=e.explain
+                    )
+                    if e.notify:
+                        await co.send(self.__problem_report)
+                    return False
+                else:
+                    raise
+
     async def _bootstrap(self, participants: List[str]):
         for did in participants:
             if did != self.me.did:
@@ -281,6 +306,29 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             )
         ledger = await sirius_sdk.Microledgers.ledger(propose.state.name)
         return ledger
+
+    async def _load_ledgers(self, propose: ProposeParallelTransactionsMessage) -> List[AbstractMicroledger]:
+        ledgers = []
+        try:
+            await self._bootstrap(propose.participants)
+            propose.validate()
+            if len(propose.participants) < 2:
+                raise SiriusValidationError(f'Stage-1: participant count less than 2')
+            if self.me.did not in propose.participants:
+                raise SiriusValidationError(f'Stage-1: {self.me.did} is not participant')
+            for batch in propose.transactions:
+                is_ledger_exists = await sirius_sdk.Microledgers.is_exists(batch.ledger_name)
+                if is_ledger_exists:
+                    ledger = await sirius_sdk.Microledgers.ledger(batch.ledger_name)
+                    ledgers.append(ledger)
+                else:
+                    raise SiriusValidationError(f'Stage-1: Ledger with name {batch.ledger_name} does not exists')
+        except SiriusValidationError as e:
+            raise StateMachineTerminatedWithError(
+                problem_code=RESPONSE_NOT_ACCEPTED,
+                explain=e.message
+            )
+        return ledgers
 
     async def _init_microledger_internal(
             self, co: CoProtocolThreadedTheirs, ledger: AbstractMicroledger, participants: List[str], genesis: List[Transaction]
@@ -509,7 +557,8 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 elif isinstance(pre_commit, SimpleConsensusProblemReport):
                     explain = f'Stage-1: Problem report from participant {pairwise.their.did} "{pre_commit.explain}"'
                     raise StateMachineTerminatedWithError(
-                        self.__problem_report.problem_code, self.__problem_report.explain
+                        problem_code=RESPONSE_NOT_ACCEPTED,
+                        explain=explain
                     )
 
             # ===== STAGE-2: Accumulate pre-commits and send commit propose to all participants
@@ -541,7 +590,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                         post_commit_all['commits'].extend(post_commit.commits)
                 elif isinstance(post_commit, SimpleConsensusProblemReport):
                     raise StateMachineTerminatedWithError(
-                        problem_code=self.__problem_report.problem_code,
+                        problem_code=RESPONSE_NOT_ACCEPTED,
                         explain=f'Stage-2: Problem report from participant {pairwise.their.did} "{post_commit.explain}"'
                     )
 
@@ -551,6 +600,123 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             uncommitted_size = ledger.uncommitted_size - ledger.size
             await ledger.commit(uncommitted_size)
             return txns
+        finally:
+            await Locking.release()
+
+    async def _commit_internal_parallel(
+            self, co: CoProtocolThreadedTheirs, ledgers: List[AbstractMicroledger],
+            transactions: List[Transaction], participants: List[str]
+    ) -> List[TransactionsBatch]:
+
+        success, busy = await Locking.acquire(names=[ledger.name for ledger in ledgers], lock_timeout=self.time_to_live)
+        if not success:
+            raise StateMachineTerminatedWithError(
+                problem_code=REQUEST_NOT_ACCEPTED,
+                explain='Preparing: Ledgers [%s] are locked by other state-machine' % ','.join(busy),
+                notify=False
+            )
+        try:
+            txn_time = str(datetime.utcnow())
+            batches = []
+            for ledger in ledgers:
+                start, end, txns = await ledger.append(transactions, txn_time)
+                batch = TransactionsBatch(
+                    state=MicroLedgerState.from_ledger(ledger),
+                    transactions=txns
+                )
+                batches.append(batch)
+            propose = ProposeParallelTransactionsMessage(
+                transactions=batches,
+                participants=participants,
+                timeout_sec=self.time_to_live
+            )
+            # ==== STAGE-1 Propose transactions to participants ====
+            commit = CommitParallelTransactionsMessage(participants=participants)
+            self_pre_commit = PreCommitParallelTransactionsMessage(transactions=batches)
+            await self_pre_commit.sign_states(sirius_sdk.Crypto, self.me)
+            commit.add_pre_commit(
+                participant=self.me.did,
+                pre_commit=self_pre_commit
+            )
+
+            await self.log(progress=20, message='Send Propose to participants (parallel mode)', payload=dict(propose))
+            results = await co.switch(propose)
+            await self.log(progress=30, message='Received Propose from participants (parallel mode)')
+
+            errored_acceptors_did = [pairwise.their.did for pairwise, (ok, _) in results.items() if not ok]
+            if errored_acceptors_did:
+                raise StateMachineTerminatedWithError(
+                    problem_code=REQUEST_PROCESSING_ERROR,
+                    explain='Stage-1: Participants [%s] unreachable (parallel mode)' % ','.join(errored_acceptors_did),
+                )
+
+            await self.log(progress=50, message='Validate responses (parallel mode)')
+
+            for pairwise, (_, pre_commit) in results.items():
+                if isinstance(pre_commit, PreCommitParallelTransactionsMessage):
+                    try:
+                        pre_commit.validate()
+                        success, state = await pre_commit.verify_state(sirius_sdk.Crypto, pairwise.their.verkey)
+                        if not success:
+                            raise SiriusValidationError(
+                                f'Stage-1: Error verifying signed ledger state for participant {pairwise.their.did} (parallel mode)'
+                            )
+                        if pre_commit.hash != propose.hash:
+                            raise SiriusValidationError(
+                                f'Stage-1: Non-consistent ledger state for participant {pairwise.their.did} (parallel mode)'
+                            )
+                    except SiriusValidationError as e:
+                        raise StateMachineTerminatedWithError(
+                            problem_code=RESPONSE_NOT_ACCEPTED,
+                            explain=f'Stage-1: Error for participant {pairwise.their.did}: "{e.message}" (parallel mode)'
+                        )
+                    else:
+                        commit.add_pre_commit(pairwise.their.did, pre_commit)
+                elif isinstance(pre_commit, SimpleConsensusProblemReport):
+                    explain = f'Stage-1: Problem report from participant {pairwise.their.did} "{pre_commit.explain}" (parallel mode)'
+                    raise StateMachineTerminatedWithError(
+                        problem_code=RESPONSE_NOT_ACCEPTED,
+                        explain=explain
+                    )
+            # ===== STAGE-2: Accumulate pre-commits and send commit propose to all participants
+            post_commit_all = PostCommitParallelTransactionsMessage()
+            await post_commit_all.add_commit_sign(sirius_sdk.Crypto, commit, self.me)
+
+            await self.log(progress=60, message='Send Commit to participants (parallel mode)', payload=dict(commit))
+            results = await co.switch(commit)
+            await self.log(progress=70, message='Received Commit response from participants (parallel mode)')
+
+            errored_acceptors_did = [pairwise.their.did for pairwise, (ok, _) in results.items() if not ok]
+            if errored_acceptors_did:
+                raise StateMachineTerminatedWithError(
+                    problem_code=REQUEST_PROCESSING_ERROR,
+                    explain='Stage-2: Participants [%s] unreachable (parallel mode)' % ','.join(errored_acceptors_did),
+                )
+
+            await self.log(progress=80, message='Validate responses (parallel mode)')
+            for pairwise, (_, post_commit) in results.items():
+                if isinstance(post_commit, PostCommitParallelTransactionsMessage):
+                    try:
+                        post_commit.validate()
+                    except SiriusValidationError as e:
+                        raise StateMachineTerminatedWithError(
+                            problem_code=RESPONSE_NOT_ACCEPTED,
+                            explain=f'Stage-2: Error for participant {pairwise.their.did}: "{e.message}" (parallel mode)',
+                        )
+                    else:
+                        post_commit_all['commits'].extend(post_commit.commits)
+                elif isinstance(post_commit, SimpleConsensusProblemReport):
+                    raise StateMachineTerminatedWithError(
+                        problem_code=RESPONSE_NOT_ACCEPTED,
+                        explain=f'Stage-2: Problem report from participant {pairwise.their.did} "{post_commit.explain}" (parallel mode)'
+                    )
+            # ===== STAGE-3: Notify all participants with post-commits and finalize process
+            await self.log(progress=90, message='Send Post-Commit', payload=dict(post_commit_all))
+            await co.send(post_commit_all)
+            for ledger in ledgers:
+                uncommitted_size = ledger.uncommitted_size - ledger.size
+                await ledger.commit(uncommitted_size)
+            return batches
         finally:
             await Locking.release()
 
@@ -641,6 +807,102 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 raise StateMachineTerminatedWithError(
                     problem_code=REQUEST_PROCESSING_ERROR,
                     explain=f'Stage-1: Commit awaiting terminated by timeout for leader: {leader.their.did}'
+                )
+        finally:
+            await Locking.release()
+
+    async def _accept_commit_internal_parallel(
+            self, co: CoProtocolThreadedP2P, ledgers: List[AbstractMicroledger],
+            leader: Pairwise, propose: ProposeParallelTransactionsMessage
+    ):
+        success, busy = await Locking.acquire(names=[ledger.name for ledger in ledgers], lock_timeout=self.time_to_live)
+        if not success:
+            raise StateMachineTerminatedWithError(
+                problem_code=REQUEST_NOT_ACCEPTED,
+                explain='Preparing: Ledgers [%s] are locked by other state-machine' % ','.join(busy),
+            )
+        try:
+            # ===== STAGE-1: Process Propose, apply transactions and response ledgers states on self-side
+            batches = []
+            for batch in propose.transactions:
+                ledger = [x for x in ledgers if x.name == batch.ledger_name][0]
+                pos1, pos2, new_txns = await ledger.append(batch.transactions)
+                batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger), transactions=new_txns)
+                batches.append(batch)
+            pre_commit = PreCommitParallelTransactionsMessage(transactions=batches)
+            await pre_commit.sign_states(sirius_sdk.Crypto, self.me)
+            await self.log(progress=10, message='Send Pre-Commit (parallel mode)', payload=dict(pre_commit))
+
+            ok, commit = await co.switch(pre_commit)
+            if ok:
+                await self.log(progress=20, message='Received Pre-Commit response (parallel mode)', payload=dict(commit))
+                if isinstance(commit, CommitParallelTransactionsMessage):
+                    # ===== STAGE-2: Process Commit request, check neighbours signatures
+                    try:
+                        await self.log(progress=30, message='Validate Commit (parallel mode)')
+                        if set(commit.participants) != set(propose.participants):
+                            raise SiriusValidationError('Non-consistent participants (parallel mode)')
+                        commit.validate()
+                        await commit.verify_pre_commits(sirius_sdk.Crypto, pre_commit.hash)
+                    except SiriusValidationError as e:
+                        raise StateMachineTerminatedWithError(
+                            problem_code=REQUEST_NOT_ACCEPTED,
+                            explain=f'Stage-2: error for actor {leader.their.did}: "{e.message}" (parallel mode)'
+                        )
+                    else:
+                        # ===== STAGE-3: Process post-commit, verify participants operations
+                        post_commit = PostCommitParallelTransactionsMessage()
+                        await post_commit.add_commit_sign(sirius_sdk.Crypto, commit, self.me)
+
+                        await self.log(progress=50, message='Send Post-Commit (parallel mode)', payload=dict(post_commit))
+                        ok, post_commit_all = await co.switch(post_commit)
+                        if ok:
+                            await self.log(
+                                progress=60, message='Received Post-Commit response (parallel mode)', payload=dict(post_commit_all)
+                            )
+                            if isinstance(post_commit_all, PostCommitParallelTransactionsMessage):
+                                try:
+
+                                    await self.log(progress=80, message='Validate response (parallel mode)')
+                                    post_commit_all.validate()
+
+                                    verkeys = [p2p.their.verkey for p2p in self.__cached_p2p.values()]
+                                    await post_commit_all.verify_commits(sirius_sdk.Crypto, commit, verkeys)
+
+                                except SiriusValidationError as e:
+                                    raise StateMachineTerminatedWithError(
+                                        problem_code=REQUEST_NOT_ACCEPTED,
+                                        explain=f'Stage-3: error for leader {leader.their.did}: "{e.message}" (parallel mode)'
+                                    )
+                                else:
+                                    for ledger in ledgers:
+                                        uncommitted_size = ledger.uncommitted_size - ledger.size
+                                        await ledger.commit(uncommitted_size)
+                                    await self.log(progress=90, message='Flush transactions to Ledger storage')
+                            elif isinstance(post_commit_all, SimpleConsensusProblemReport):
+                                raise StateMachineTerminatedWithError(
+                                    problem_code=self.__problem_report.problem_code,
+                                    explain=f'Stage-3: Problem report from leader {leader.their.did}: "{post_commit_all.explain}" (parallel mode)'
+                                )
+                        else:
+                            raise StateMachineTerminatedWithError(
+                                problem_code=REQUEST_PROCESSING_ERROR,
+                                explain=f'Stage-3: Post-Commit awaiting terminated by timeout for leader: {leader.their.did} (parallel mode)'
+                            )
+                elif isinstance(commit, SimpleConsensusProblemReport):
+                    explain = f'Stage-1: Problem report from leader {leader.their.did}: "{commit.explain}" (parallel mode)'
+                    self.__problem_report = SimpleConsensusProblemReport(commit.problem_code, explain)
+                    raise StateMachineTerminatedWithError(
+                        problem_code=self.__problem_report.problem_code, explain=self.__problem_report.explain
+                    )
+                else:
+                    raise StateMachineTerminatedWithError(
+                        problem_code=REQUEST_NOT_ACCEPTED, explain='Unexpected message @type: %s (parallel mode)' % (str(commit.type))
+                    )
+            else:
+                raise StateMachineTerminatedWithError(
+                    problem_code=REQUEST_PROCESSING_ERROR,
+                    explain=f'Stage-1: Commit awaiting terminated by timeout for leader: {leader.their.did} (parallel mode)'
                 )
         finally:
             await Locking.release()

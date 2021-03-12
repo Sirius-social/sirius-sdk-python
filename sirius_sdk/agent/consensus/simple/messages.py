@@ -443,17 +443,18 @@ class BaseParallelTransactionsMessage(SimpleConsensusMessage):
 
     NAME = 'stage-parallel'
 
-    def __init__(self, transactions: List[TransactionsBatch] = None, *args, **kwargs):
+    def __init__(self, transactions: List[Union[TransactionsBatch, dict]] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if transactions is not None:
-            for batch in transactions:
-                for txn in batch.transactions:
-                    txn = Transaction(txn)
-                    if not txn.has_metadata():
-                        raise SiriusContextError(f'Transaction must have metadata for Ledger "{batch.state.name}"')
-            self['transactions'] = transactions
+            processing_transactions = []
+            for txn in transactions:
+                if isinstance(txn, TransactionsBatch):
+                    processing_transactions.append(txn)
+                elif isinstance(txn, dict):
+                    processing_transactions.append(TransactionsBatch(**txn))
+            self['transactions'] = processing_transactions
             # Fix states as hash
-            states = [MicroLedgerState(batch.state) for batch in transactions]
+            states = [MicroLedgerState(batch.state) for batch in processing_transactions]
             # sort by ledger name, assume ledger name is unique in system
             # to make available to calc accumulated hash predictable
             states = list(sorted(states, key=lambda s: s.name))
