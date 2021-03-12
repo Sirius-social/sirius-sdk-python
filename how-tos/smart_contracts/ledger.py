@@ -3,7 +3,7 @@ import hashlib
 import datetime
 from typing import List, Union
 
-from sirius_sdk.agent.microledgers_.microledgers import AbstractMicroledgerList, AbstractMicroledger, Transaction, AuditProof, \
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, AbstractMicroledger, Transaction, AuditProof, \
     MerkleInfo, LedgerMeta
 
 
