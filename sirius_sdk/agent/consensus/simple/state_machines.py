@@ -11,6 +11,7 @@ from sirius_sdk.hub import CoProtocolThreadedTheirs, CoProtocolThreadedP2P
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.consensus.simple.messages import *
+from sirius_sdk.agent.consensus import Locking
 
 # Problem codes
 REQUEST_NOT_ACCEPTED = "request_not_accepted"
