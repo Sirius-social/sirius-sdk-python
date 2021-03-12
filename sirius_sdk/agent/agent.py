@@ -16,7 +16,8 @@ from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.ledger import Ledger
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
-from sirius_sdk.agent.microledgers import MicroledgerList
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers.impl import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
 
@@ -123,7 +124,7 @@ class Agent(TransportLayers):
         return self.__endpoints
 
     @property
-    def microledgers(self) -> MicroledgerList:
+    def microledgers(self) -> AbstractMicroledgerList:
         self.__check_is_open()
         return self.__microledgers
 
@@ -300,6 +301,10 @@ class Agent(TransportLayers):
         )
 
     async def generate_qr_code(self, value: str) -> str:
+        """Service for QR codes generation
+
+        You may create PNG image for QR code to share it on Web or others.
+        """
         self.__check_is_open()
         resp = await self.__rpc.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/generate_qr',
@@ -308,6 +313,32 @@ class Agent(TransportLayers):
             }
         )
         return resp['url']
+
+    async def acquire(self, resources: List[str], lock_timeout: float, enter_timeout: float = 3) -> (bool, List[str]):
+        """Acquire N resources given by names
+
+        :param resources: names of resources that you are going to lock
+        :param lock_timeout: max timeout resources will be locked. Resources will be automatically unlocked on expire
+        :param enter_timeout: timeout to wait resources are released
+        """
+
+        self.__check_is_open()
+        success, busy = await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/acquire',
+            params={
+                'names': resources,
+                'enter_timeout': enter_timeout,
+                'lock_timeout': lock_timeout
+            }
+        )
+        return success, busy
+
+    async def release(self):
+        """Release earlier locked resources"""
+
+        await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/release'
+        )
 
     async def reopen(self, kill_tasks: bool = False):
         self.__check_is_open()

@@ -1,217 +1,90 @@
 import json
-from abc import ABC, abstractmethod
-from typing import List, Union, Dict
+from typing import Union, List
 
-from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.connections import AgentRPC
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, Transaction, AbstractMicroledger, \
+    LedgerMeta, MerkleInfo, AuditProof
+from sirius_sdk.errors.exceptions import SiriusContextError
 
 
-METADATA_ATTR = 'txnMetadata'
+class MicroledgerList(AbstractMicroledgerList):
 
+    LOCK_NAMESPACE = 'ledgers'
 
-def serialize_ordering(value: dict) -> bytes:
-    data = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
-    return data
+    def __init__(self, api: AgentRPC):
+        self.__api = api
+        self.instances = {}
 
-
-class Transaction(dict):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if METADATA_ATTR not in self:
-            self[METADATA_ATTR] = {}
-
-    def has_metadata(self) -> bool:
-        if METADATA_ATTR in self.keys():
-            meta = self[METADATA_ATTR]
-            return len(meta.keys()) > 0
-        else:
-            return False
-
-    @staticmethod
-    def create(*args, **kwargs):
-        inst = Transaction(*args, **kwargs)
-        if inst[METADATA_ATTR] != {}:
-            raise SiriusContextError('"%s" attribute must be empty for new transaction' % METADATA_ATTR)
-        return inst
-
-    @staticmethod
-    def from_value(from_: Union[List[dict], dict]) -> Union[List[Dict], Dict]:
-        if isinstance(from_, list):
-            return [Transaction(txn) for txn in from_]
-        elif isinstance(from_, dict):
-            return Transaction(from_)
-        else:
-            raise SiriusContextError('Unexpected input value')
-
-
-class MerkleInfo:
-
-    def __init__(self, root_hash: str, audit_path: List[str]):
-        self.__root_hash = root_hash
-        self.__audit_path = audit_path
-
-    @property
-    def root_hash(self) -> str:
-        return self.__root_hash
-
-    @property
-    def audit_path(self) -> List[str]:
-        return self.__audit_path
-
-
-class LedgerMeta(dict):
-
-    def __init__(self, name: str, uid: str, created: str):
-        super().__init__()
-        self['name'] = name
-        self['uid'] = uid
-        self['created'] = created
-
-    @property
-    def name(self) -> str:
-        return self['name']
-
-    @property
-    def uid(self) -> str:
-        return self['uid']
-
-    @property
-    def created(self) -> str:
-        return self['created']
-
-
-class AuditProof(MerkleInfo):
-
-    def __init__(self, root_hash: str, audit_path: List[str], ledger_size: int):
-        super().__init__(root_hash, audit_path)
-        self.__ledger_size = ledger_size
-
-    @property
-    def ledger_size(self) -> int:
-        return self.__ledger_size
-
-
-class AbstractMicroledger(ABC):
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def size(self) -> int:
-        pass
-
-    @property
-    @abstractmethod
-    def uncommitted_size(self) -> int:
-        pass
-
-    @property
-    @abstractmethod
-    def root_hash(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def uncommitted_root_hash(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def seq_no(self) -> int:
-        pass
-
-    @abstractmethod
-    async def reload(self):
-        pass
-
-    @abstractmethod
-    async def rename(self, new_name: str):
-        pass
-
-    @abstractmethod
-    async def init(self, genesis: List[Transaction]) -> List[Transaction]:
-        pass
-
-    @abstractmethod
-    async def append(
-            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int] = None
-    ) -> (int, int, List[Transaction]):
-        pass
-
-    @abstractmethod
-    async def commit(self, count: int) -> (int, int, List[Transaction]):
-        pass
-
-    @abstractmethod
-    async def discard(self, count: int):
-        pass
-
-    @abstractmethod
-    async def merkle_info(self, seq_no: int) -> MerkleInfo:
-        pass
-
-    @abstractmethod
-    async def audit_proof(self, seq_no: int) -> AuditProof:
-        pass
-
-    @abstractmethod
-    async def reset_uncommitted(self):
-        pass
-
-    @abstractmethod
-    async def get_transaction(self, seq_no: int) -> Transaction:
-        pass
-
-    @abstractmethod
-    async def get_uncommitted_transaction(self, seq_no: int) -> Transaction:
-        pass
-
-    @abstractmethod
-    async def get_last_transaction(self) -> Transaction:
-        pass
-
-    @abstractmethod
-    async def get_last_committed_transaction(self) -> Transaction:
-        pass
-
-    @abstractmethod
-    async def get_all_transactions(self) -> List[Transaction]:
-        pass
-
-    @abstractmethod
-    async def get_uncommitted_transactions(self) -> List[Transaction]:
-        pass
-
-
-class AbstractMicroledgerList(ABC):
-
-    @abstractmethod
     async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (AbstractMicroledger, List[Transaction]):
-        pass
+        genesis_txns = []
+        for txn in genesis:
+            if isinstance(txn, Transaction):
+                genesis_txns.append(txn)
+            elif isinstance(txn, dict):
+                genesis_txns.append(Transaction.create(txn))
+            else:
+                raise RuntimeError('Unexpected transaction type')
+        instance = Microledger(name, self.__api)
+        txns = await instance.init(genesis_txns)
+        self.instances[name] = instance
+        return instance, txns
 
-    @abstractmethod
     async def ledger(self, name: str) -> AbstractMicroledger:
-        pass
+        if name not in self.instances:
+            await self.__check_is_exists(name)
+            instance = Microledger(name, self.__api)
+            self.instances[name] = instance
+        return self.instances[name]
 
-    @abstractmethod
     async def reset(self, name: str):
-        pass
+        await self.__check_is_exists(name)
+        await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/reset',
+            params={
+                'name': name
+            }
+        )
+        if name in self.instances.keys():
+            del self.instances[name]
 
-    @abstractmethod
     async def is_exists(self, name: str):
-        pass
+        is_exists = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/is_exists',
+            params={
+                'name': name
+            }
+        )
+        return is_exists
 
-    @abstractmethod
     async def leaf_hash(self, txn: Union[Transaction, bytes]) -> bytes:
-        pass
+        if isinstance(txn, Transaction):
+            data = json.dumps(txn, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
+        elif isinstance(txn, bytes):
+            data = txn
+        else:
+            raise RuntimeError('Unexpected transaction type')
+        leaf_hash = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/leaf_hash',
+            params={
+                'data': data
+            }
+        )
+        return leaf_hash
 
-    @abstractmethod
     async def list(self) -> List[LedgerMeta]:
-        pass
+        collection = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/list',
+            params={
+                'name': '*'
+            }
+        )
+        return [LedgerMeta(**item) for item in collection]
+
+    async def __check_is_exists(self, name: str):
+        if name not in self.instances.keys():
+            is_exists = await self.is_exists(name)
+            if not is_exists:
+                raise SiriusContextError('MicroLedger with name "" does not exists' % name)
 
 
 class Microledger(AbstractMicroledger):
@@ -434,81 +307,3 @@ class Microledger(AbstractMicroledger):
     def __check_state_is_exists(self):
         if self.__state is None:
             raise SiriusContextError('Load state of Microledger at First!')
-
-
-class MicroledgerList(AbstractMicroledgerList):
-
-    def __init__(self, api: AgentRPC):
-        self.__api = api
-        self.instances = {}
-
-    async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (AbstractMicroledger, List[Transaction]):
-        genesis_txns = []
-        for txn in genesis:
-            if isinstance(txn, Transaction):
-                genesis_txns.append(txn)
-            elif isinstance(txn, dict):
-                genesis_txns.append(Transaction.create(txn))
-            else:
-                raise RuntimeError('Unexpected transaction type')
-        instance = Microledger(name, self.__api)
-        txns = await instance.init(genesis_txns)
-        self.instances[name] = instance
-        return instance, txns
-
-    async def ledger(self, name: str) -> AbstractMicroledger:
-        if name not in self.instances:
-            await self.__check_is_exists(name)
-            instance = Microledger(name, self.__api)
-            self.instances[name] = instance
-        return self.instances[name]
-
-    async def reset(self, name: str):
-        await self.__check_is_exists(name)
-        await self.__api.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/reset',
-            params={
-                'name': name
-            }
-        )
-        if name in self.instances.keys():
-            del self.instances[name]
-
-    async def is_exists(self, name: str):
-        is_exists = await self.__api.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/is_exists',
-            params={
-                'name': name
-            }
-        )
-        return is_exists
-
-    async def leaf_hash(self, txn: Union[Transaction, bytes]) -> bytes:
-        if isinstance(txn, Transaction):
-            data = json.dumps(txn, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
-        elif isinstance(txn, bytes):
-            data = txn
-        else:
-            raise RuntimeError('Unexpected transaction type')
-        leaf_hash = await self.__api.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/leaf_hash',
-            params={
-                'data': data
-            }
-        )
-        return leaf_hash
-
-    async def list(self) -> List[LedgerMeta]:
-        collection = await self.__api.remote_call(
-            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers/1.0/list',
-            params={
-                'name': '*'
-            }
-        )
-        return [LedgerMeta(**item) for item in collection]
-
-    async def __check_is_exists(self, name: str):
-        if name not in self.instances.keys():
-            is_exists = await self.is_exists(name)
-            if not is_exists:
-                raise SiriusContextError('MicroLedger with name "" does not exists' % name)

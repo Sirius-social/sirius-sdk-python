@@ -1,14 +1,14 @@
 import json
 import hashlib
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from sirius_sdk.encryption import bytes_to_b58
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.agent.microledgers import serialize_ordering, Microledger
+from sirius_sdk.agent.microledgers.abstract import serialize_ordering
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
-from sirius_sdk.agent.microledgers import Transaction, AbstractMicroledger
+from sirius_sdk.agent.microledgers.abstract import Transaction, AbstractMicroledger
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
 
 
@@ -380,6 +380,215 @@ class PostCommitTransactionsMessage(BaseTransactionsMessage):
         self['commits'] = commits
 
     async def verify_commits(self, api: AbstractCrypto, expected: CommitTransactionsMessage, verkeys: List[str]) -> bool:
+        actual_verkeys = [commit['signer'] for commit in self.commits]
+        if not set(verkeys).issubset(set(actual_verkeys)):
+            return False
+        for signed in self.commits:
+            commit, is_success = await verify_signed(api, signed)
+            if is_success:
+                cleaned_commit = {k: v for k, v in commit.items() if not k.startswith('~')}
+                cleaned_expect = {k: v for k, v in expected.items() if not k.startswith('~')}
+                if cleaned_commit != cleaned_expect:
+                    return False
+            else:
+                return False
+        return True
+
+    def validate(self):
+        super().validate()
+        if not self.commits:
+            raise SiriusValidationError('Commits collection is empty')
+
+
+class TransactionsBatch(dict):
+
+    def __init__(self, state: MicroLedgerState = None, transactions: List[Transaction] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if transactions is not None:
+            for txn in transactions:
+                txn = Transaction(txn)
+                if not txn.has_metadata():
+                    raise SiriusContextError('Transaction must have metadata for specific Ledger')
+            self['transactions'] = transactions
+        if state:
+            state = MicroLedgerState(state)
+            self['state'] = state
+
+    @property
+    def ledger_name(self) -> Optional[str]:
+        if self.state:
+            return self.state.name
+        else:
+            return None
+
+    @property
+    def transactions(self) -> Optional[List[Transaction]]:
+        txns = self.get('transactions', None)
+        if txns is not None:
+            return [Transaction(txn) for txn in txns]
+        else:
+            return None
+
+    @property
+    def state(self) -> Optional[MicroLedgerState]:
+        state = self.get('state', None)
+        if state is not None:
+            state = MicroLedgerState(state)
+            return state if state.is_filled() else None
+        else:
+            return None
+
+
+class BaseParallelTransactionsMessage(SimpleConsensusMessage):
+
+    NAME = 'stage-parallel'
+
+    def __init__(self, transactions: List[Union[TransactionsBatch, dict]] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if transactions is not None:
+            processing_transactions = []
+            for txn in transactions:
+                if isinstance(txn, TransactionsBatch):
+                    processing_transactions.append(txn)
+                elif isinstance(txn, dict):
+                    processing_transactions.append(TransactionsBatch(**txn))
+            self['transactions'] = processing_transactions
+            # Fix states as hash
+            states = [MicroLedgerState(batch.state) for batch in processing_transactions]
+            # sort by ledger name, assume ledger name is unique in system
+            # to make available to calc accumulated hash predictable
+            states = list(sorted(states, key=lambda s: s.name))
+            accum = hashlib.sha256()
+            for state in states:
+                accum.update(state.hash.encode())
+            self['hash'] = accum.hexdigest()
+
+    @property
+    def thread_id(self) -> Optional[str]:
+        return self.get(THREAD_DECORATOR, {}).get('thid', None)
+
+    @property
+    def transactions(self) -> Optional[List[TransactionsBatch]]:
+        txns = self.get('transactions', None)
+        if txns is not None:
+            return [TransactionsBatch(batch.state, batch.transactions) for batch in txns]
+        else:
+            return None
+
+    @property
+    def hash(self) -> Optional[str]:
+        return self.get('hash', None)
+
+
+class ProposeParallelTransactionsMessage(BaseParallelTransactionsMessage):
+    """Message to process parallel transactions propose by Actor
+    """
+    NAME = 'stage-propose-parallel'
+
+    def __init__(self, transactions: List[TransactionsBatch] = None, timeout_sec: int = None, *args, **kwargs):
+        super().__init__(transactions=transactions, *args, **kwargs)
+        if timeout_sec:
+            self['timeout_sec'] = timeout_sec
+
+    @property
+    def timeout_sec(self) -> Optional[int]:
+        return self.get('timeout_sec', None)
+
+    def validate(self):
+        super().validate()
+        if not self.transactions:
+            raise SiriusValidationError('Empty transactions list')
+        for batch in self.transactions:
+            if not batch.state:
+                raise SiriusValidationError(f'Empty state for Ledger')
+            for txn in batch.transactions:
+                if not txn.has_metadata():
+                    raise SiriusValidationError('Transaction must have metadata')
+        if not self.hash:
+            raise SiriusValidationError('Empty hash')
+
+
+class PreCommitParallelTransactionsMessage(BaseParallelTransactionsMessage):
+    """Message to accumulate participants signed accepts for transactions list in parallel mode
+    """
+    NAME = 'stage-pre-commit-parallel'
+
+    async def sign_states(self, api: AbstractCrypto, me: Pairwise.Me):
+        signed = await sign(api, self.hash, me.verkey)
+        self['hash~sig'] = signed
+        del self['transactions']
+
+    async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[str]):
+        hash_signed = self.get('hash~sig', None)
+        if hash_signed:
+            if hash_signed['signer'] == expected_verkey:
+                state_hash, is_success = await verify_signed(api, hash_signed)
+                return is_success, state_hash
+            else:
+                return False, None
+        else:
+            return False, None
+
+
+class CommitParallelTransactionsMessage(BaseParallelTransactionsMessage):
+    """Message to commit transactions list in parallel mode
+    """
+    NAME = 'stage-commit-parallel'
+
+    @property
+    def pre_commits(self) -> dict:
+        return self.get('pre_commits', {})
+
+    def add_pre_commit(self, participant: str, pre_commit: PreCommitParallelTransactionsMessage):
+        if 'hash~sig' not in pre_commit:
+            raise SiriusContextError(f'Pre-Commit for participant {participant} does not have hash~sig attribute')
+        pre_commits = self.pre_commits
+        pre_commits[participant] = pre_commit['hash~sig']
+        self['pre_commits'] = pre_commits
+        participants = self.participants
+        participants.append(participant)
+        self['participants'] = list(set(participants))
+
+    def validate(self):
+        super().validate()
+        if not self.participants:
+            raise SiriusValidationError('Participants list is empty')
+        for participant in self.participants:
+            if participant not in self.pre_commits.keys():
+                raise SiriusValidationError(f'Pre-Commit for participant "{participant}" does not exists')
+
+    async def verify_pre_commits(self, api: AbstractCrypto, expected_hash: str):
+        states = {}
+        for participant, signed in self.pre_commits.items():
+            state_hash, is_success = await verify_signed(api, signed)
+            if not is_success:
+                raise SiriusValidationError(f'Error verifying pre_commit for participant: {participant}')
+            if state_hash != expected_hash:
+                raise SiriusValidationError(f'Ledger state for participant {participant} is not consistent')
+            states[participant] = (expected_hash, signed)
+        return states
+
+
+class PostCommitParallelTransactionsMessage(BaseTransactionsMessage):
+    """Message to commit transactions list in parallel mode
+    """
+    NAME = 'stage-post-commit-parallel'
+
+    @property
+    def commits(self) -> List[dict]:
+        payload = self.get('commits', [])
+        if payload:
+            return payload
+        else:
+            return []
+
+    async def add_commit_sign(self, api: AbstractCrypto, commit: CommitParallelTransactionsMessage, me: Pairwise.Me):
+        signed = await sign(api, commit, me.verkey)
+        commits = self.commits
+        commits.append(signed)
+        self['commits'] = commits
+
+    async def verify_commits(self, api: AbstractCrypto, expected: CommitParallelTransactionsMessage, verkeys: List[str]) -> bool:
         actual_verkeys = [commit['signer'] for commit in self.commits]
         if not set(verkeys).issubset(set(actual_verkeys)):
             return False

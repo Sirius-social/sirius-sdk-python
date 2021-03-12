@@ -1,10 +1,9 @@
 import json
 import hashlib
 import datetime
-from typing import List, Union, Optional
+from typing import List, Union
 
-import sirius_sdk
-from sirius_sdk.agent.microledgers import AbstractMicroledgerList, AbstractMicroledger, Transaction, AuditProof, \
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, AbstractMicroledger, Transaction, AuditProof, \
     MerkleInfo, LedgerMeta
 
 

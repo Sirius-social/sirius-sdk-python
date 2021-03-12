@@ -6,6 +6,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent, P2PConnection
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledger
 from sirius_sdk.agent.consensus.simple.state_machines import MicroLedgerSimpleConsensus
 from sirius_sdk.agent.consensus.simple.messages import *
 
@@ -38,12 +39,16 @@ async def routine_of_ledger_creation_acceptor(uri: str, credentials: bytes, p2p:
 
 async def routine_of_txn_committer(
         uri: str, credentials: bytes, p2p: P2PConnection,
-        me: Pairwise.Me, participants: List[str], ledger: Microledger, txns: List[dict]
+        me: Pairwise.Me, participants: List[str],
+        ledger: Union[AbstractMicroledger, List[AbstractMicroledger]], txns: List[dict]
 ):
     async with sirius_sdk.context(uri, credentials, p2p):
         machine = MicroLedgerSimpleConsensus(me)
         txns = [Transaction.create(txn) for txn in txns]
-        success, txns = await machine.commit(ledger, participants, txns)
+        if isinstance(ledger, AbstractMicroledger):
+            success, txns = await machine.commit(ledger, participants, txns)
+        else:
+            success = await machine.commit_in_parallel(ledger, participants, txns)
         return success, txns
 
 
@@ -62,6 +67,10 @@ async def routine_of_txn_acceptor(
                     propose['transactions'] = txns
                 machine = MicroLedgerSimpleConsensus(event.pairwise.me)
                 success = await machine.accept_commit(event.pairwise, propose)
+                return success
+            elif isinstance(propose, ProposeParallelTransactionsMessage):
+                machine = MicroLedgerSimpleConsensus(event.pairwise.me)
+                success = await machine.accept_commit_parallel(event.pairwise, propose)
                 return success
 
 
@@ -180,6 +189,69 @@ async def test_transaction_messaging(A: Agent, B: Agent, ledger_name: str):
         assert a2b.their.verkey in str(states)
         # B -> A (post-commit)
         post_commit = PostCommitTransactionsMessage()
+        await post_commit.add_commit_sign(B.wallet.crypto, commit, b2a.me)
+        post_commit.validate()
+        ok = await post_commit.verify_commits(A.wallet.crypto, commit, [a2b.their.verkey])
+        assert ok is True
+    finally:
+        await A.close()
+        await B.close()
+
+
+@pytest.mark.asyncio
+async def test_parallel_transactions_messaging(A: Agent, B: Agent, ledger_names: List[str]):
+    await A.open()
+    await B.open()
+    try:
+        a2b = await get_pairwise(A, B)
+        b2a = await get_pairwise(B, A)
+        a2b.me.did = 'did:peer:' + a2b.me.did
+        b2a.me.did = 'did:peer:' + b2a.me.did
+        genesis_txns = [
+            Transaction({"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"})
+        ]
+        ledgers_for_a = []
+        ledgers_for_b = []
+        for n in ledger_names:
+            ledger_for_a, _ = await A.microledgers.create(n, genesis_txns)
+            ledger_for_b, _ = await B.microledgers.create(n, genesis_txns)
+            ledgers_for_a.append(ledger_for_a)
+            ledgers_for_b.append(ledger_for_b)
+
+        new_transactions = [
+            Transaction({"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op2"}),
+            Transaction({"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"}),
+        ]
+        # A -> B
+        batches_for_a = []
+        for ledger_for_a in ledgers_for_a:
+            pos1, pos2, new_txns = await ledger_for_a.append(new_transactions)
+            batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger_for_a), transactions=new_txns)
+            batches_for_a.append(batch)
+        propose = ProposeParallelTransactionsMessage(transactions=batches_for_a)
+        propose.validate()
+        # B -> A
+        batches_for_b = []
+        for batch in propose.transactions:
+            ledger_for_b = await B.microledgers.ledger(batch.ledger_name)
+            pos1, pos2, new_txns = await ledger_for_b.append(batch.transactions)
+            batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger_for_b), transactions=new_txns)
+            batches_for_b.append(batch)
+        pre_commit = PreCommitParallelTransactionsMessage(transactions=batches_for_b)
+        await pre_commit.sign_states(B.wallet.crypto, b2a.me)
+        pre_commit.validate()
+        ok, state_hash_for_b = await pre_commit.verify_state(A.wallet.crypto, a2b.their.verkey)
+        assert ok is True
+        assert state_hash_for_b == propose.hash
+        # A -> B
+        commit = CommitParallelTransactionsMessage()
+        commit.add_pre_commit(a2b.their.did, pre_commit)
+        commit.validate()
+        states = await commit.verify_pre_commits(A.wallet.crypto, propose.hash)
+        assert a2b.their.did in str(states)
+        assert a2b.their.verkey in str(states)
+        # B -> A (post-commit)
+        post_commit = PostCommitParallelTransactionsMessage()
         await post_commit.add_commit_sign(B.wallet.crypto, commit, b2a.me)
         post_commit.validate()
         ok = await post_commit.verify_commits(A.wallet.crypto, commit, [a2b.their.verkey])
@@ -322,6 +394,87 @@ async def test_simple_consensus_commit(
             assert 'op3' in str(all_txns)
             assert 'op4' in str(all_txns)
             assert 'op5' in str(all_txns)
+    finally:
+        await A.close()
+        await B.close()
+        await C.close()
+
+
+@pytest.mark.asyncio
+async def test_simple_consensus_commit_parallel(
+        A: Agent, B: Agent, C: Agent, ledger_names: List[str], test_suite: ServerTestSuite
+):
+    A_params = test_suite.get_agent_params('agent1')
+    B_params = test_suite.get_agent_params('agent2')
+    C_params = test_suite.get_agent_params('agent3')
+    await A.open()
+    await B.open()
+    await C.open()
+    try:
+        A2B = await get_pairwise(A, B)
+        A2C = await get_pairwise(A, C)
+        assert A2B.me == A2C.me
+        B2A = await get_pairwise(B, A)
+        B2C = await get_pairwise(B, C)
+        assert B2A.me == B2C.me
+        C2A = await get_pairwise(C, A)
+        C2B = await get_pairwise(C, B)
+        assert C2A.me == C2B.me
+        participants = [
+            A2B.me.did,
+            A2B.their.did,
+            A2C.their.did
+        ]
+        genesis = [
+            {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"},
+            {"reqId": 2, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op2"}
+        ]
+        txns = [
+            {"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"},
+            {"reqId": 4, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op4"},
+            {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5"},
+        ]
+        # Init ledgers
+        leader_ledgers = []
+        for name in ledger_names:
+            ledger_of_leader, _ = await A.microledgers.create(name, genesis)
+            leader_ledgers.append(ledger_of_leader)
+            await B.microledgers.create(name, genesis)
+            await C.microledgers.create(name, genesis)
+
+        coro_committer = routine_of_txn_committer(
+            A_params['server_address'], A_params['credentials'], A_params['p2p'],
+            A2B.me, participants, leader_ledgers, txns
+        )
+        coro_acceptor1 = routine_of_txn_acceptor(
+            B_params['server_address'], B_params['credentials'], B_params['p2p'],
+        )
+        coro_acceptor2 = routine_of_txn_acceptor(
+            C_params['server_address'], C_params['credentials'], C_params['p2p'],
+        )
+
+        stamp1 = datetime.now()
+        print('> begin')
+        await run_coroutines(
+            coro_committer,
+            coro_acceptor1,
+            coro_acceptor2,
+            timeout=60
+        )
+        print('> end')
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'***** Consensus timeout: {delta.seconds}')
+
+        for name in ledger_names:
+            ledger_for_a = await A.microledgers.ledger(name)
+            ledger_for_b = await B.microledgers.ledger(name)
+            ledger_for_c = await C.microledgers.ledger(name)
+            for ledger in [ledger_for_a, ledger_for_b, ledger_for_c]:
+                all_txns = await ledger.get_all_transactions()
+                assert 'op3' in str(all_txns)
+                assert 'op4' in str(all_txns)
+                assert 'op5' in str(all_txns)
     finally:
         await A.close()
         await B.close()

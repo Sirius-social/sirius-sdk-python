@@ -1,23 +1,19 @@
 import os
 import sys
 import json
-import uuid
 import random
 import asyncio
 from abc import abstractmethod
-from typing import Optional, List, Dict
+from typing import List, Dict
 
-import sirius_sdk
-from sirius_sdk.messaging import Message
-from sirius_sdk.base import AbstractStateMachine, StateMachineTerminatedWithError
-from sirius_sdk.agent.microledgers import Transaction
+from sirius_sdk.agent.microledgers_.microledgers import Transaction
 from sirius_sdk.agent.consensus import simple as simple_consensus
-from sirius_sdk.agent.microledgers import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers_.microledgers import AbstractMicroledgerList
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from consts import *
 from helpers import establish_connection
-from ledger import InMemoryLedger, InMemoryLedgerList
+from ledger import InMemoryLedgerList
 
 
 def log(message: str):

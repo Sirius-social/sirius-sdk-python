@@ -8,7 +8,6 @@ from sirius_sdk.messaging.fields import DIDField
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.connections import AgentRPC, RoutingBatch
 from sirius_sdk.agent.pairwise import TheirEndpoint, Pairwise
-from sirius_sdk.agent.microledgers import MicroledgerList
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 
 
@@ -41,7 +40,6 @@ class AbstractCoProtocolTransport(ABC):
         self._check_verkeys = False
         self.__default_timeout = rpc.timeout
         self.__wallet = DynamicWallet(self._rpc)
-        self.__microledgers = MicroledgerList(api=self._rpc)
         self.__pairwise_list = WalletPairwiseList(api=(self.__wallet.pairwise, self.__wallet.did))
         self.__die_timestamp = None
         self.__their_vk = None
@@ -76,10 +74,6 @@ class AbstractCoProtocolTransport(ABC):
     @property
     def wallet(self) -> DynamicWallet:
         return self.__wallet
-
-    @property
-    def microledgers(self) -> MicroledgerList:
-        return self.__microledgers
 
     @property
     def pairwise_list(self) -> AbstractPairwiseList:

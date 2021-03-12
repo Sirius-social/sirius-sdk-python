@@ -7,7 +7,7 @@ from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.agent.microledgers import AbstractMicroledgerList, LedgerMeta, Transaction, AbstractMicroledger
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, AbstractMicroledger
 
 from .core import _current_hub
 from ..agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
@@ -344,6 +344,14 @@ class MicroledgersProxy(AbstractMicroledgerList):
     async def list(self) -> List[LedgerMeta]:
         service = await _current_hub().get_microledgers()
         return await service.list()
+
+    async def acquire(self, names: List[str], lock_timeout: float):
+        service = await _current_hub().get_microledgers()
+        return await service.acquire(names, lock_timeout)
+
+    async def release(self):
+        service = await _current_hub().get_microledgers()
+        await service.release()
 
 
 class PairwiseProxy(AbstractPairwiseList):
