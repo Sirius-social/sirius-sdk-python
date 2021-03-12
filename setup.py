@@ -39,14 +39,12 @@ setup(
     python_requires='>=3.7',
     include_package_data=True,
     install_requires=[
-        'aiohttp==3.6.2',
-        'base58==2.0.0',
+        'aiohttp>=3.7.4',
+        'base58>=2.0.0',
         'multipledispatch==0.6.0',
         'PyNaCl==1.3.0',
-        'pytest==5.4.2',
-        'pytest-asyncio==0.12.0',
-        'python-dateutil==2.8.1',
-        'pytime==0.2.0',
-        'semver==2.10.1',
+        'python-dateutil>=2.8.1',
+        'pytime>=0.2.0',
+        'semver>=2.10.1',
     ]
 )
