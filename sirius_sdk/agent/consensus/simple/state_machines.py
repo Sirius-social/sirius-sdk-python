@@ -8,6 +8,7 @@ from sirius_sdk.agent.microledgers import MicroledgerList
 from sirius_sdk.agent.sm import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.consensus.simple.messages import *
+from sirius_sdk.agent.locks import AbstractLocks
 
 # Problem codes
 REQUEST_NOT_ACCEPTED = "request_not_accepted"
@@ -21,7 +22,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
     def __init__(
             self, me: Pairwise.Me,
             crypto: AbstractCrypto = None, pairwise_list: AbstractPairwiseList = None,
-            microledgers: MicroledgerList = None, *args, **kwargs
+            microledgers: MicroledgerList = None, locks: AbstractLocks = None, *args, **kwargs
     ):
         self.__me = me
         self.__problem_report = None
@@ -35,6 +36,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         self.__thread_id = None
         self.__cached_p2p = {}
         self.__neighbours = []
+        self.__locks = locks
         super().__init__(*args, **kwargs)
 
     @property
@@ -686,3 +688,17 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 explain=f'Stage-1: Commit awaiting terminated by timeout for actor: {actor.their.did}',
                 their_did=actor.their.did
             )
+
+    async def _acquire(self, ledger_names: List[str]) -> (bool, List[str]):
+        if self.__locks:
+            resources = [f'ledgers/{name}' for name in ledger_names]
+            resources = list(set(resources))
+            ok, locked_ledgers = await self.__locks.acquire(resources=resources, lock_timeout=self.time_to_live)
+            locked_ledgers = [item.split('/')[-1] for item in locked_ledgers]  # remove namespace prefix
+            return ok, locked_ledgers
+        else:
+            return True, []
+
+    async def _release(self):
+        if self.__locks:
+            await self.__locks.release()

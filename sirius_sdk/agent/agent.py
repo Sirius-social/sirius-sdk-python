@@ -19,6 +19,7 @@ from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
+from sirius_sdk.agent.locks import AbstractLocks, Locks
 
 
 class TransportLayers(ABC):
@@ -98,6 +99,7 @@ class Agent(TransportLayers):
         self.__microledgers = None
         self.__name = name
         self.__spawn_strategy = spawn_strategy
+        self.__locks = None
 
     @property
     def name(self) -> Optional[str]:
@@ -131,6 +133,11 @@ class Agent(TransportLayers):
     def pairwise_list(self) -> AbstractPairwiseList:
         self.__check_is_open()
         return self.__pairwise_list
+
+    @property
+    def locks(self) -> AbstractLocks:
+        self.__check_is_open()
+        return self.__locks
 
     @dispatch(str, TheirEndpoint)
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
@@ -234,6 +241,7 @@ class Agent(TransportLayers):
             )
         self.__pairwise_list = WalletPairwiseList(api=(self.__wallet.pairwise, self.__wallet.did))
         self.__microledgers = MicroledgerList(api=self.__rpc)
+        self.__locks = Locks(rpc=self.__rpc)
 
     async def subscribe(self) -> Listener:
         self.__check_is_open()
