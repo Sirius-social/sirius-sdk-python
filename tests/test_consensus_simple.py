@@ -15,7 +15,7 @@ from .helpers import run_coroutines
 async def routine_of_ledger_creator(
         creator: Agent, me: Pairwise.Me, participants: List[str], ledger_name: str, genesis: List[dict]
 ):
-    machine = MicroLedgerSimpleConsensus(me, transports=creator)
+    machine = MicroLedgerSimpleConsensus(me, transports=creator, locks=creator.locks)
     genesis = [Transaction.create(txn) for txn in genesis]
     success, ledger = await machine.init_microledger(ledger_name, participants, genesis)
     return success, ledger
@@ -27,17 +27,20 @@ async def routine_of_ledger_creation_acceptor(acceptor: Agent):
     assert event.pairwise is not None
     propose = event.message
     assert isinstance(propose, InitRequestLedgerMessage)
-    machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor)
+    machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor, locks=acceptor.locks)
     success, ledger = await machine.accept_microledger(event.pairwise, propose)
     return success, ledger
 
 
 async def routine_of_txn_committer(
-        creator: Agent, me: Pairwise.Me, participants: List[str], ledger: Microledger, txns: List[dict]
+        creator: Agent, me: Pairwise.Me, participants: List[str], ledger: Union[Microledger, List[Microledger]], txns: List[dict]
 ):
-    machine = MicroLedgerSimpleConsensus(me, transports=creator)
+    machine = MicroLedgerSimpleConsensus(me, transports=creator, locks=creator.locks)
     txns = [Transaction.create(txn) for txn in txns]
-    success, txns = await machine.commit(ledger, participants, txns)
+    if isinstance(ledger, Microledger):
+        success, txns = await machine.commit(ledger, participants, txns)
+    else:
+        success = await machine.commit_in_parallel(ledger, participants, txns)
     return success, txns
 
 
@@ -50,8 +53,12 @@ async def routine_of_txn_acceptor(acceptor: Agent, txns: List[Transaction] = Non
         if isinstance(propose, ProposeTransactionsMessage):
             if txns:
                 propose['transactions'] = txns
-            machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor)
+            machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor, locks=acceptor.locks)
             success = await machine.accept_commit(event.pairwise, propose)
+            return success
+        elif isinstance(propose, ProposeParallelTransactionsMessage):
+            machine = MicroLedgerSimpleConsensus(event.pairwise.me, transports=acceptor, locks=acceptor.locks)
+            success = await machine.accept_commit_parallel(event.pairwise, propose)
             return success
 
 
@@ -350,6 +357,77 @@ async def test_simple_consensus_commit(A: Agent, B: Agent, C: Agent, ledger_name
             assert 'op3' in str(all_txns)
             assert 'op4' in str(all_txns)
             assert 'op5' in str(all_txns)
+    finally:
+        await A.close()
+        await B.close()
+        await C.close()
+
+
+@pytest.mark.asyncio
+async def test_simple_consensus_commit_parallel(A: Agent, B: Agent, C: Agent, ledger_names: List[str]):
+    await A.open()
+    await B.open()
+    await C.open()
+    try:
+        A2B = await get_pairwise(A, B)
+        A2C = await get_pairwise(A, C)
+        assert A2B.me == A2C.me
+        B2A = await get_pairwise(B, A)
+        B2C = await get_pairwise(B, C)
+        assert B2A.me == B2C.me
+        C2A = await get_pairwise(C, A)
+        C2B = await get_pairwise(C, B)
+        assert C2A.me == C2B.me
+        participants = [
+            A2B.me.did,
+            A2B.their.did,
+            A2C.their.did
+        ]
+        genesis = [
+            {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"},
+            {"reqId": 2, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op2"}
+        ]
+        txns = [
+            {"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"},
+            {"reqId": 4, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op4"},
+            {"reqId": 5, "identifier": "2btLJAAb1S3x6hZYdVyAePjqtQYi2ZBSRGy4569RZu8h", "op": "op5"},
+        ]
+        # Init ledgers
+        leader_ledgers = []
+        for name in ledger_names:
+            ledger_of_leader, _ = await A.microledgers.create(name, genesis)
+            leader_ledgers.append(ledger_of_leader)
+            await B.microledgers.create(name, genesis)
+            await C.microledgers.create(name, genesis)
+
+        coro_committer = routine_of_txn_committer(
+            A, A2B.me, participants, leader_ledgers, txns
+        )
+        coro_acceptor1 = routine_of_txn_acceptor(B)
+        coro_acceptor2 = routine_of_txn_acceptor(C)
+
+        stamp1 = datetime.now()
+        print('> begin')
+        await run_coroutines(
+            coro_committer,
+            coro_acceptor1,
+            coro_acceptor2,
+            timeout=60
+        )
+        print('> end')
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        print(f'***** Consensus timeout: {delta.seconds}')
+
+        for name in ledger_names:
+            ledger_for_a = await A.microledgers.ledger(name)
+            ledger_for_b = await B.microledgers.ledger(name)
+            ledger_for_c = await C.microledgers.ledger(name)
+            for ledger in [ledger_for_a, ledger_for_b, ledger_for_c]:
+                all_txns = await ledger.get_all_transactions()
+                assert 'op3' in str(all_txns)
+                assert 'op4' in str(all_txns)
+                assert 'op5' in str(all_txns)
     finally:
         await A.close()
         await B.close()
