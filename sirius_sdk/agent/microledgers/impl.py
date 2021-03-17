@@ -3,8 +3,72 @@ from typing import Union, List
 
 from sirius_sdk.agent.connections import AgentRPC
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, Transaction, AbstractMicroledger, \
-    LedgerMeta, MerkleInfo, AuditProof
+    LedgerMeta, MerkleInfo, AuditProof, AbstractBatchedAPI
 from sirius_sdk.errors.exceptions import SiriusContextError
+
+
+class BatchedAPI(AbstractBatchedAPI):
+
+    def __init__(self,  api: AgentRPC):
+        self.__api = api
+        self.__names = []
+
+    async def open(self, names: List[str]) -> List[AbstractMicroledger]:
+        await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/open',
+            params={
+                'names': names
+            }
+        )
+        self.__names = names
+        states = await self.states()
+        return states
+
+    async def close(self):
+        await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/close'
+        )
+
+    async def states(self) -> List[AbstractMicroledger]:
+        states = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/states'
+        )
+        resp = self.__return_ledgers(states)
+        return resp
+
+    async def append(
+            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int] = None
+    ) -> List[AbstractMicroledger]:
+        states = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/append_txns',
+            params={
+                'txns': transactions,
+                'txn_time': txn_time
+            }
+        )
+        resp = self.__return_ledgers(states)
+        return resp
+
+    async def commit(self) -> List[AbstractMicroledger]:
+        states = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/commit_txns'
+        )
+        resp = self.__return_ledgers(states)
+        return resp
+
+    async def reset_uncommitted(self) -> List[AbstractMicroledger]:
+        states = await self.__api.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/reset_uncommitted'
+        )
+        resp = self.__return_ledgers(states)
+        return resp
+
+    def __return_ledgers(self, states: dict) -> List[AbstractMicroledger]:
+        resp = []  # keep ledgers ordering
+        for name in self.__names:
+            state = states[name]
+            resp.append(Microledger(name, self.__api, state))
+        return resp
 
 
 class MicroledgerList(AbstractMicroledgerList):
@@ -13,7 +77,11 @@ class MicroledgerList(AbstractMicroledgerList):
 
     def __init__(self, api: AgentRPC):
         self.__api = api
+        self.__batched_api = BatchedAPI(api)
         self.instances = {}
+
+    async def batched(self) -> AbstractBatchedAPI:
+        return self.__batched_api
 
     async def create(self, name: str, genesis: Union[List[Transaction], List[dict]]) -> (AbstractMicroledger, List[Transaction]):
         genesis_txns = []
@@ -89,10 +157,10 @@ class MicroledgerList(AbstractMicroledgerList):
 
 class Microledger(AbstractMicroledger):
 
-    def __init__(self, name: str, api: AgentRPC):
+    def __init__(self, name: str, api: AgentRPC, state: dict = None):
         self.__name = name
         self.__api = api
-        self.__state = None
+        self.__state = state
 
     @property
     def name(self) -> str:

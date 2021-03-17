@@ -186,6 +186,35 @@ class AbstractMicroledger(ABC):
         pass
 
 
+class AbstractBatchedAPI(ABC):
+
+    @abstractmethod
+    async def open(self, names: List[str]) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def close(self):
+        pass
+
+    @abstractmethod
+    async def states(self) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def append(
+            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int] = None
+    ) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def commit(self) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def reset_uncommitted(self) -> List[AbstractMicroledger]:
+        pass
+
+
 class AbstractMicroledgerList(ABC):
 
     @abstractmethod
@@ -210,4 +239,8 @@ class AbstractMicroledgerList(ABC):
 
     @abstractmethod
     async def list(self) -> List[LedgerMeta]:
+        pass
+
+    @abstractmethod
+    async def batched(self) -> AbstractBatchedAPI:
         pass

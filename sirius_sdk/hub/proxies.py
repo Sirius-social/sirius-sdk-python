@@ -7,7 +7,8 @@ from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, AbstractMicroledger
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, \
+    AbstractMicroledger, AbstractBatchedAPI
 
 from .core import _current_hub
 from ..agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
@@ -318,6 +319,11 @@ class CryptoProxy(AbstractCrypto):
 
 
 class MicroledgersProxy(AbstractMicroledgerList):
+
+    async def batched(self) -> AbstractBatchedAPI:
+        service = await _current_hub().get_microledgers()
+        batched = await service.batched()
+        return batched
 
     async def create(
             self, name: str, genesis: Union[List[Transaction], List[dict]]

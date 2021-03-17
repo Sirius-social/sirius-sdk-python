@@ -94,7 +94,7 @@ def build_request(msg_type: str, future: Future, params: dict) -> Message:
     :return: RPC service packet
     """
     typ = Type.from_str(msg_type)
-    if typ.protocol not in ['sirius_rpc', 'admin', 'microledgers']:
+    if typ.protocol not in ['sirius_rpc', 'admin', 'microledgers', 'microledgers-batched']:
         raise SiriusInvalidType('Expect sirius_rpc protocol')
     return Message({
         '@type': msg_type,
