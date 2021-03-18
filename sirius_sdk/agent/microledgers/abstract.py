@@ -189,7 +189,7 @@ class AbstractMicroledger(ABC):
 class AbstractBatchedAPI(ABC):
 
     @abstractmethod
-    async def open(self, names: List[str]) -> List[AbstractMicroledger]:
+    async def open(self, ledgers: Union[List[str], List[AbstractMicroledger]]) -> List[AbstractMicroledger]:
         pass
 
     @abstractmethod

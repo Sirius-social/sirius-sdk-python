@@ -14,14 +14,24 @@ class BatchedAPI(AbstractBatchedAPI):
         self.__names = []
         self.__external = external
 
-    async def open(self, names: List[str]) -> List[AbstractMicroledger]:
+    async def open(self, ledgers: Union[List[str], List[AbstractMicroledger]]) -> List[AbstractMicroledger]:
+        names_to_open = []
+        for ledger in ledgers:
+            if isinstance(ledger, AbstractMicroledger):
+                names_to_open.append(ledger.name)
+            elif isinstance(ledger, str):
+                names_to_open.append(ledger)
+            else:
+                raise RuntimeError(f'Unexpected ledgers item type: {str(type(ledger))}')
+
+        names_to_open = list(set(names_to_open))  # remove duplicates
         await self.__api.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/microledgers-batched/1.0/open',
             params={
-                'names': names
+                'names': names_to_open
             }
         )
-        self.__names = names
+        self.__names = names_to_open
         states = await self.states()
         return states
 

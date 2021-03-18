@@ -480,6 +480,10 @@ async def test_microledgers_in_same_context_space(agent4: Agent, ledger_name: st
             ledger_from_local = await agent4.microledgers.ledger(ledger_name)
 
             assert 2 == ledger_from_batched.uncommitted_size == ledger_from_local.uncommitted_size
+
+            await batched.append(commit_txns)
+            assert ledger_from_local.uncommitted_size == 3
+
         finally:
             await batched.close()
     finally:
