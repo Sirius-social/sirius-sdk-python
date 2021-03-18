@@ -1,5 +1,5 @@
 import json
-from typing import Union, List
+from typing import Union, List, Dict
 
 from sirius_sdk.agent.connections import AgentRPC
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, Transaction, AbstractMicroledger, \
@@ -9,9 +9,10 @@ from sirius_sdk.errors.exceptions import SiriusContextError
 
 class BatchedAPI(AbstractBatchedAPI):
 
-    def __init__(self,  api: AgentRPC):
+    def __init__(self,  api: AgentRPC, external: Dict[str, AbstractMicroledger] = None):
         self.__api = api
         self.__names = []
+        self.__external = external
 
     async def open(self, names: List[str]) -> List[AbstractMicroledger]:
         await self.__api.remote_call(
@@ -67,7 +68,10 @@ class BatchedAPI(AbstractBatchedAPI):
         resp = []  # keep ledgers ordering
         for name in self.__names:
             state = states[name]
-            resp.append(Microledger(name, self.__api, state))
+            ledger = Microledger(name, self.__api, state)
+            if self.__external:
+                ledger.assign_to(self.__external[name])
+            resp.append(ledger)
         return resp
 
 
@@ -77,8 +81,8 @@ class MicroledgerList(AbstractMicroledgerList):
 
     def __init__(self, api: AgentRPC):
         self.__api = api
-        self.__batched_api = BatchedAPI(api)
         self.instances = {}
+        self.__batched_api = BatchedAPI(api, self.instances)
 
     async def batched(self) -> AbstractBatchedAPI:
         return self.__batched_api
@@ -161,6 +165,10 @@ class Microledger(AbstractMicroledger):
         self.__name = name
         self.__api = api
         self.__state = state
+
+    def assign_to(self, other: AbstractMicroledger):
+        if isinstance(other, Microledger):
+            other.__state = self.__state
 
     @property
     def name(self) -> str:

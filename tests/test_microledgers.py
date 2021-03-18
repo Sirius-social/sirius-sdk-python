@@ -458,3 +458,29 @@ async def test_batched_ops_performance(agent4: Agent):
         assert seconds_for_100 < seconds_for_100_non_parallel/2
     finally:
         await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_microledgers_in_same_context_space(agent4: Agent, ledger_name: str):
+    genesis_txns = [
+        {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
+    ]
+    commit_txns = [
+        {"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", 'txnMetadata': {}}
+    ]
+    await agent4.open()
+    try:
+        await agent4.microledgers.create(ledger_name, genesis_txns)
+        batched = await agent4.microledgers.batched()
+        await batched.open([ledger_name])
+        try:
+            ledgers = await batched.append(commit_txns)
+            ledger_from_batched = ledgers[0]
+
+            ledger_from_local = await agent4.microledgers.ledger(ledger_name)
+
+            assert 2 == ledger_from_batched.uncommitted_size == ledger_from_local.uncommitted_size
+        finally:
+            await batched.close()
+    finally:
+        await agent4.close()

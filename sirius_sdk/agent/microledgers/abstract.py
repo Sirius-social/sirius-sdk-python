@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Optional
 
 # from sirius_sdk import acquire as resources_acquire, release as resources_release
 from sirius_sdk.errors.exceptions import *
@@ -242,5 +242,5 @@ class AbstractMicroledgerList(ABC):
         pass
 
     @abstractmethod
-    async def batched(self) -> AbstractBatchedAPI:
+    async def batched(self) -> Optional[AbstractBatchedAPI]:
         pass
