@@ -5,11 +5,12 @@ from sirius_sdk.agent.connections import AgentRPC
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, Transaction, AbstractMicroledger, \
     LedgerMeta, MerkleInfo, AuditProof, AbstractBatchedAPI
 from sirius_sdk.errors.exceptions import SiriusContextError
+from sirius_sdk.agent.microledgers.expiringdict import ExpiringDict
 
 
 class BatchedAPI(AbstractBatchedAPI):
 
-    def __init__(self,  api: AgentRPC, external: Dict[str, AbstractMicroledger] = None):
+    def __init__(self, api: AgentRPC, external: Dict[str, AbstractMicroledger] = None):
         self.__api = api
         self.__names = []
         self.__external = external
@@ -90,11 +91,11 @@ class BatchedAPI(AbstractBatchedAPI):
 
 class MicroledgerList(AbstractMicroledgerList):
 
-    LOCK_NAMESPACE = 'ledgers'
+    TTL = 60*60  # 1 hour
 
     def __init__(self, api: AgentRPC):
         self.__api = api
-        self.instances = {}
+        self.instances: Dict[str, AbstractMicroledger] = ExpiringDict(ttl=self.TTL)
         self.__batched_api = BatchedAPI(api, self.instances)
 
     async def batched(self) -> AbstractBatchedAPI:

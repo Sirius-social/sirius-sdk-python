@@ -46,5 +46,6 @@ setup(
         'python-dateutil>=2.8.1',
         'pytime>=0.2.0',
         'semver>=2.10.1',
+        'sortedcontainers~=2.3.0'
     ]
 )
