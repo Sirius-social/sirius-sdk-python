@@ -6,6 +6,7 @@ from typing import List, Union, Dict, Optional
 from sirius_sdk.errors.exceptions import *
 
 METADATA_ATTR = 'txnMetadata'
+ATTR_TIME = 'txnTime'
 
 
 def serialize_ordering(value: dict) -> bytes:
@@ -26,6 +27,16 @@ class Transaction(dict):
             return len(meta.keys()) > 0
         else:
             return False
+
+    @property
+    def time(self) -> Optional[str]:
+        return self.get(METADATA_ATTR, {}).get(ATTR_TIME)
+
+    @time.setter
+    def time(self, value: str):
+        metadata = self.get(METADATA_ATTR, {})
+        metadata[ATTR_TIME] = value
+        self[METADATA_ATTR] = metadata
 
     @staticmethod
     def create(*args, **kwargs):
@@ -241,6 +252,5 @@ class AbstractMicroledgerList(ABC):
     async def list(self) -> List[LedgerMeta]:
         pass
 
-    @abstractmethod
     async def batched(self) -> Optional[AbstractBatchedAPI]:
-        pass
+        return None

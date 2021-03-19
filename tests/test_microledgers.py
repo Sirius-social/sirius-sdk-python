@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from sirius_sdk import Agent
+from sirius_sdk.errors.exceptions import SiriusPromiseContextException
 from sirius_sdk.agent.microledgers.abstract import Transaction, LedgerMeta, AbstractMicroledger
 
 
@@ -486,5 +487,21 @@ async def test_microledgers_in_same_context_space(agent4: Agent, ledger_name: st
 
         finally:
             await batched.close()
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_batched_ops_errors(agent4: Agent, ledger_names: list):
+    await agent4.open()
+    try:
+        api = await agent4.microledgers.batched()
+        try:
+            await api.open(['missing-ledger-name'])
+        except SiriusPromiseContextException as e:
+            exc = e
+        else:
+            exc = None
+        assert exc is not None
     finally:
         await agent4.close()

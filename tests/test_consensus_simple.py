@@ -203,6 +203,7 @@ async def test_parallel_transactions_messaging(A: Agent, B: Agent, ledger_names:
     await A.open()
     await B.open()
     try:
+        txn_time = str(datetime.now())
         a2b = await get_pairwise(A, B)
         b2a = await get_pairwise(B, A)
         a2b.me.did = 'did:peer:' + a2b.me.did
@@ -222,22 +223,23 @@ async def test_parallel_transactions_messaging(A: Agent, B: Agent, ledger_names:
             Transaction({"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op2"}),
             Transaction({"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"}),
         ]
+        for txn in new_transactions:
+            txn.time = txn_time
         # A -> B
-        batches_for_a = []
+        states_for_a = []
         for ledger_for_a in ledgers_for_a:
             pos1, pos2, new_txns = await ledger_for_a.append(new_transactions)
-            batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger_for_a), transactions=new_txns)
-            batches_for_a.append(batch)
-        propose = ProposeParallelTransactionsMessage(transactions=batches_for_a)
+            state = MicroLedgerState.from_ledger(ledger_for_a)
+            states_for_a.append(state)
+        propose = ProposeParallelTransactionsMessage(transactions=new_transactions, states=states_for_a)
         propose.validate()
         # B -> A
-        batches_for_b = []
-        for batch in propose.transactions:
-            ledger_for_b = await B.microledgers.ledger(batch.ledger_name)
-            pos1, pos2, new_txns = await ledger_for_b.append(batch.transactions)
-            batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger_for_b), transactions=new_txns)
-            batches_for_b.append(batch)
-        pre_commit = PreCommitParallelTransactionsMessage(transactions=batches_for_b)
+        states_for_b = []
+        for ledger_name in propose.ledgers:
+            ledger_for_b = await B.microledgers.ledger(ledger_name)
+            pos1, pos2, new_txns = await ledger_for_b.append(propose.transactions)
+            states_for_b.append(MicroLedgerState.from_ledger(ledger_for_b))
+        pre_commit = PreCommitParallelTransactionsMessage(transactions=new_transactions, states=states_for_b)
         await pre_commit.sign_states(B.wallet.crypto, b2a.me)
         pre_commit.validate()
         ok, state_hash_for_b = await pre_commit.verify_state(A.wallet.crypto, a2b.their.verkey)
@@ -256,6 +258,77 @@ async def test_parallel_transactions_messaging(A: Agent, B: Agent, ledger_names:
         post_commit.validate()
         ok = await post_commit.verify_commits(A.wallet.crypto, commit, [a2b.their.verkey])
         assert ok is True
+    finally:
+        await A.close()
+        await B.close()
+
+
+@pytest.mark.asyncio
+async def test_parallel_batching_api_messaging(A: Agent, B: Agent, ledger_names: List[str]):
+    txn_time = str(datetime.now())
+    await A.open()
+    await B.open()
+    try:
+        a2b = await get_pairwise(A, B)
+        b2a = await get_pairwise(B, A)
+        a2b.me.did = 'did:peer:' + a2b.me.did
+        b2a.me.did = 'did:peer:' + b2a.me.did
+        genesis_txns = [
+            Transaction({"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1"})
+        ]
+
+        ledgers_for_a = []
+        ledgers_for_b = []
+        for n in ledger_names:
+            ledger_for_a, _ = await A.microledgers.create(n, genesis_txns)
+            ledgers_for_a.append(ledger_for_a)
+            ledger_for_b, _ = await B.microledgers.create(n, genesis_txns)
+            ledgers_for_b.append(ledger_for_b)
+
+        new_transactions = [
+            Transaction({"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op2"}),
+            Transaction({"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3"}),
+        ]
+        for txn in new_transactions:
+            txn.time = txn_time
+
+        batching_api_for_a = await A.microledgers.batched()
+        batching_api_for_b = await B.microledgers.batched()
+        await batching_api_for_a.open(ledger_names)
+        await batching_api_for_b.open(ledger_names)
+        try:
+            # A -> B
+            await batching_api_for_a.append(new_transactions)
+            propose = ProposeParallelTransactionsMessage(
+                transactions=new_transactions,
+                states=[MicroLedgerState.from_ledger(item) for item in ledgers_for_a]
+            )
+            propose.validate()
+            # B -> A
+            await batching_api_for_b.append(propose.transactions)
+            states_for_b = [MicroLedgerState.from_ledger(item) for item in ledgers_for_b]
+            pre_commit = PreCommitParallelTransactionsMessage(states=states_for_b)
+            await pre_commit.sign_states(B.wallet.crypto, b2a.me)
+            pre_commit.validate()
+            ok, state_hash_for_b = await pre_commit.verify_state(A.wallet.crypto, a2b.their.verkey)
+            assert ok is True
+            assert state_hash_for_b == propose.hash
+            # A -> B
+            commit = CommitParallelTransactionsMessage()
+            commit.add_pre_commit(a2b.their.did, pre_commit)
+            commit.validate()
+            states = await commit.verify_pre_commits(A.wallet.crypto, propose.hash)
+            assert a2b.their.did in str(states)
+            assert a2b.their.verkey in str(states)
+            # B -> A (post-commit)
+            post_commit = PostCommitParallelTransactionsMessage()
+            await post_commit.add_commit_sign(B.wallet.crypto, commit, b2a.me)
+            post_commit.validate()
+            ok = await post_commit.verify_commits(A.wallet.crypto, commit, [a2b.their.verkey])
+            assert ok is True
+        finally:
+            await batching_api_for_a.close()
+            await batching_api_for_b.close()
     finally:
         await A.close()
         await B.close()
