@@ -1,4 +1,5 @@
 import uuid
+import copy
 import logging
 import contextlib
 from datetime import datetime
@@ -6,7 +7,7 @@ from typing import Union, Tuple
 
 import sirius_sdk
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, AbstractMicroledger
+from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, AbstractMicroledger, AbstractBatchedAPI
 from sirius_sdk.hub import CoProtocolThreadedTheirs, CoProtocolThreadedP2P
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
@@ -190,7 +191,8 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                     raise
 
     async def commit_in_parallel(
-            self, ledgers: List[AbstractMicroledger], participants: List[str], transactions: List[Transaction]
+            self, ledgers: List[Union[AbstractMicroledger, str]],
+            participants: List[str], transactions: List[Transaction]
     ) -> bool:
         """
         :param ledgers: list of Microledgers instance to operate with
@@ -201,35 +203,54 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
         await self._bootstrap(participants)
         relationships = [p2p for p2p in self.__cached_p2p.values()]
         async with self.acceptors(theirs=relationships, thread_id='simple-consensus-commit-parallel-' + uuid.uuid4().hex) as co:
-            try:
-                await self.log(progress=0, message=f'Start parallel committing of {len(transactions)} transactions')
-                await self._commit_internal_parallel(co, ledgers, transactions, participants)
-                await self.log(progress=100, message='Commit operation was accepted by all participants')
-                return True
-            except Exception as e:
+            batching_api = await sirius_sdk.Microledgers.batched()
+            ledgers_for_commit: List[AbstractMicroledger] = []
+            if batching_api is None:
                 for ledger in ledgers:
-                    await ledger.reset_uncommitted()
-                await self.log(message='Reset uncommitted')
-                if isinstance(e, StateMachineTerminatedWithError):
-                    self.__problem_report = SimpleConsensusProblemReport(e.problem_code, e.explain)
-                    await self.log(
-                        progress=100, message=f'Terminated with error',
-                        problem_code=e.problem_code, explain=e.explain
-                    )
-                    if e.notify:
-                        await co.send(self.__problem_report)
-                    return False
-                else:
-                    await self.log(
-                        progress=100, message=f'Terminated with exception',
-                        exception=str(e)
-                    )
-                    raise
+                    if isinstance(ledger, AbstractMicroledger):
+                        ledgers_for_commit.append(ledger)
+                    elif isinstance(ledger, str):
+                        inst = await sirius_sdk.Microledgers.ledger(ledger)
+                        ledgers_for_commit.append(inst)
+                    else:
+                        raise RuntimeError('Unexpected ledger type: %s' % str(type(ledger)))
+            else:
+                ledgers_for_commit = await batching_api.open(ledgers)
+            try:
+                try:
+                    await self.log(progress=0, message=f'Start parallel committing of {len(transactions)} transactions')
+                    await self._commit_internal_parallel(co, ledgers_for_commit, transactions, participants, batching_api)
+                    await self.log(progress=100, message='Commit operation was accepted by all participants')
+                    return True
+                except Exception as e:
+                    if batching_api is None:
+                        for ledger in ledgers_for_commit:
+                            await ledger.reset_uncommitted()
+                    else:
+                        await batching_api.reset_uncommitted()
+                    await self.log(message='Reset uncommitted')
+                    if isinstance(e, StateMachineTerminatedWithError):
+                        self.__problem_report = SimpleConsensusProblemReport(e.problem_code, e.explain)
+                        await self.log(
+                            progress=100, message=f'Terminated with error',
+                            problem_code=e.problem_code, explain=e.explain
+                        )
+                        if e.notify:
+                            await co.send(self.__problem_report)
+                        return False
+                    else:
+                        await self.log(
+                            progress=100, message=f'Terminated with exception',
+                            exception=str(e)
+                        )
+                        raise
+            finally:
+                if batching_api is not None:
+                    await batching_api.close()
 
     async def accept_commit(self, leader: Pairwise, propose: ProposeTransactionsMessage) -> bool:
         time_to_live = propose.timeout_sec or self.time_to_live
         async with self.leader(their=leader, thread_id=propose.thread_id, time_to_live=time_to_live) as co:
-
             ledger = None
             try:
                 await self.log(progress=0, message=f'Start acception {len(propose.transactions)} transactions')
@@ -257,27 +278,38 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
     async def accept_commit_parallel(self, leader: Pairwise, propose: ProposeParallelTransactionsMessage) -> bool:
         time_to_live = propose.timeout_sec or self.time_to_live
         async with self.leader(their=leader, thread_id=propose.thread_id, time_to_live=time_to_live) as co:
-            ledgers = await self._load_ledgers(propose)
+            batching_api = await sirius_sdk.Microledgers.batched()
+            if batching_api is None:
+                ledgers_for_commit: List[AbstractMicroledger] = await self._load_ledgers(propose)
+            else:
+                ledgers_for_commit: List[AbstractMicroledger] = await batching_api.open(propose.ledgers)
             try:
-                await self.log(progress=0, message=f'Start accept {len(propose.transactions)} transactions in parallel mode')
-                await self._accept_commit_internal_parallel(co, ledgers, leader, propose)
-                await self.log(progress=100, message='Accept terminated successfully in parallel mode')
-                return True
-            except Exception as e:
-                for ledger in ledgers:
-                    await ledger.reset_uncommitted()
-                await self.log(message='Reset uncommitted')
-                if isinstance(e, StateMachineTerminatedWithError):
-                    self.__problem_report = SimpleConsensusProblemReport(e.problem_code, e.explain)
-                    await self.log(
-                        progress=100, message=f'Terminated with error',
-                        problem_code=e.problem_code, explain=e.explain
-                    )
-                    if e.notify:
-                        await co.send(self.__problem_report)
-                    return False
-                else:
-                    raise
+                try:
+                    await self.log(progress=0, message=f'Start accept {len(propose.transactions)} transactions in parallel mode')
+                    await self._accept_commit_internal_parallel(co, ledgers_for_commit, leader, propose, batching_api)
+                    await self.log(progress=100, message='Accept terminated successfully in parallel mode')
+                    return True
+                except Exception as e:
+                    if batching_api is None:
+                        for ledger in ledgers_for_commit:
+                            await ledger.reset_uncommitted()
+                    else:
+                        await batching_api.reset_uncommitted()
+                    await self.log(message='Reset uncommitted')
+                    if isinstance(e, StateMachineTerminatedWithError):
+                        self.__problem_report = SimpleConsensusProblemReport(e.problem_code, e.explain)
+                        await self.log(
+                            progress=100, message=f'Terminated with error',
+                            problem_code=e.problem_code, explain=e.explain
+                        )
+                        if e.notify:
+                            await co.send(self.__problem_report)
+                        return False
+                    else:
+                        raise
+            finally:
+                if batching_api is not None:
+                    await batching_api.close()
 
     async def _bootstrap(self, participants: List[str]):
         for did in participants:
@@ -316,19 +348,41 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                 raise SiriusValidationError(f'Stage-1: participant count less than 2')
             if self.me.did not in propose.participants:
                 raise SiriusValidationError(f'Stage-1: {self.me.did} is not participant')
-            for batch in propose.transactions:
-                is_ledger_exists = await sirius_sdk.Microledgers.is_exists(batch.ledger_name)
+            for ledger_name in propose.ledgers:
+                is_ledger_exists = await sirius_sdk.Microledgers.is_exists(ledger_name)
                 if is_ledger_exists:
-                    ledger = await sirius_sdk.Microledgers.ledger(batch.ledger_name)
+                    ledger = await sirius_sdk.Microledgers.ledger(ledger_name)
                     ledgers.append(ledger)
                 else:
-                    raise SiriusValidationError(f'Stage-1: Ledger with name {batch.ledger_name} does not exists')
+                    raise SiriusValidationError(f'Stage-1: Ledger with name {ledger_name} does not exists')
         except SiriusValidationError as e:
             raise StateMachineTerminatedWithError(
                 problem_code=RESPONSE_NOT_ACCEPTED,
                 explain=e.message
             )
         return ledgers
+
+    @staticmethod
+    async def _append_txns(
+            ledgers: List[AbstractMicroledger], transactions: List[Transaction],
+            txn_time: str = None, batching_api: Optional[AbstractBatchedAPI] = None
+    ) -> List[MicroLedgerState]:
+        for txn in transactions:
+            if txn_time:
+                txn.time = txn_time
+            if not txn.has_metadata():
+                raise RuntimeError('Transaction must to have metadata')
+            if not txn.time:
+                txn.time = txn_time
+        states: List[MicroLedgerState] = []
+        if batching_api is None:
+            for ledger in ledgers:
+                pos1, pos2, new_txns = await ledger.append(transactions)
+                states.append(MicroLedgerState.from_ledger(ledger))
+        else:
+            _ = await batching_api.append(transactions)
+            states = [MicroLedgerState.from_ledger(item) for item in _]
+        return states
 
     async def _init_microledger_internal(
             self, co: CoProtocolThreadedTheirs, ledger: AbstractMicroledger, participants: List[str], genesis: List[Transaction]
@@ -605,9 +659,8 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
 
     async def _commit_internal_parallel(
             self, co: CoProtocolThreadedTheirs, ledgers: List[AbstractMicroledger],
-            transactions: List[Transaction], participants: List[str]
-    ) -> List[TransactionsBatch]:
-
+            transactions: List[Transaction], participants: List[str], batching_api: AbstractBatchedAPI = None
+    ):
         success, busy = await Locking.acquire(names=[ledger.name for ledger in ledgers], lock_timeout=self.time_to_live)
         if not success:
             raise StateMachineTerminatedWithError(
@@ -617,22 +670,17 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             )
         try:
             txn_time = str(datetime.utcnow())
-            batches = []
-            for ledger in ledgers:
-                start, end, txns = await ledger.append(transactions, txn_time)
-                batch = TransactionsBatch(
-                    state=MicroLedgerState.from_ledger(ledger),
-                    transactions=txns
-                )
-                batches.append(batch)
+            new_transactions = [Transaction.create(copy.deepcopy(txn)) for txn in transactions]  # copy original txn collection
+            states = await self._append_txns(ledgers, new_transactions, txn_time, batching_api)
             propose = ProposeParallelTransactionsMessage(
-                transactions=batches,
+                transactions=new_transactions,
+                states=states,
                 participants=participants,
                 timeout_sec=self.time_to_live
             )
             # ==== STAGE-1 Propose transactions to participants ====
             commit = CommitParallelTransactionsMessage(participants=participants)
-            self_pre_commit = PreCommitParallelTransactionsMessage(transactions=batches)
+            self_pre_commit = PreCommitParallelTransactionsMessage(transactions=new_transactions, states=states)
             await self_pre_commit.sign_states(sirius_sdk.Crypto, self.me)
             commit.add_pre_commit(
                 participant=self.me.did,
@@ -713,10 +761,12 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             # ===== STAGE-3: Notify all participants with post-commits and finalize process
             await self.log(progress=90, message='Send Post-Commit', payload=dict(post_commit_all))
             await co.send(post_commit_all)
-            for ledger in ledgers:
-                uncommitted_size = ledger.uncommitted_size - ledger.size
-                await ledger.commit(uncommitted_size)
-            return batches
+            if batching_api is None:
+                for ledger in ledgers:
+                    uncommitted_size = ledger.uncommitted_size - ledger.size
+                    await ledger.commit(uncommitted_size)
+            else:
+                await batching_api.commit()
         finally:
             await Locking.release()
 
@@ -813,7 +863,7 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
 
     async def _accept_commit_internal_parallel(
             self, co: CoProtocolThreadedP2P, ledgers: List[AbstractMicroledger],
-            leader: Pairwise, propose: ProposeParallelTransactionsMessage
+            leader: Pairwise, propose: ProposeParallelTransactionsMessage, batching_api: AbstractBatchedAPI = None
     ):
         success, busy = await Locking.acquire(names=[ledger.name for ledger in ledgers], lock_timeout=self.time_to_live)
         if not success:
@@ -823,13 +873,8 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
             )
         try:
             # ===== STAGE-1: Process Propose, apply transactions and response ledgers states on self-side
-            batches = []
-            for batch in propose.transactions:
-                ledger = [x for x in ledgers if x.name == batch.ledger_name][0]
-                pos1, pos2, new_txns = await ledger.append(batch.transactions)
-                batch = TransactionsBatch(state=MicroLedgerState.from_ledger(ledger), transactions=new_txns)
-                batches.append(batch)
-            pre_commit = PreCommitParallelTransactionsMessage(transactions=batches)
+            states = await self._append_txns(ledgers, propose.transactions, batching_api=batching_api)
+            pre_commit = PreCommitParallelTransactionsMessage(transactions=propose.transactions, states=states)
             await pre_commit.sign_states(sirius_sdk.Crypto, self.me)
             await self.log(progress=10, message='Send Pre-Commit (parallel mode)', payload=dict(pre_commit))
 
@@ -875,9 +920,12 @@ class MicroLedgerSimpleConsensus(AbstractStateMachine):
                                         explain=f'Stage-3: error for leader {leader.their.did}: "{e.message}" (parallel mode)'
                                     )
                                 else:
-                                    for ledger in ledgers:
-                                        uncommitted_size = ledger.uncommitted_size - ledger.size
-                                        await ledger.commit(uncommitted_size)
+                                    if batching_api is None:
+                                        for ledger in ledgers:
+                                            uncommitted_size = ledger.uncommitted_size - ledger.size
+                                            await ledger.commit(uncommitted_size)
+                                    else:
+                                        await batching_api.commit()
                                     await self.log(progress=90, message='Flush transactions to Ledger storage')
                             elif isinstance(post_commit_all, SimpleConsensusProblemReport):
                                 raise StateMachineTerminatedWithError(

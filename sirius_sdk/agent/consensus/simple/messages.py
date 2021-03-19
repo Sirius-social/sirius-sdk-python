@@ -400,9 +400,14 @@ class PostCommitTransactionsMessage(BaseTransactionsMessage):
             raise SiriusValidationError('Commits collection is empty')
 
 
-class TransactionsBatch(dict):
+class BaseParallelTransactionsMessage(SimpleConsensusMessage):
 
-    def __init__(self, state: MicroLedgerState = None, transactions: List[Transaction] = None, *args, **kwargs):
+    NAME = 'stage-parallel'
+
+    def __init__(
+            self, transactions: List[Transaction] = None,
+            states: List[Union[MicroLedgerState, dict]] = None, *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         if transactions is not None:
             for txn in transactions:
@@ -410,51 +415,9 @@ class TransactionsBatch(dict):
                 if not txn.has_metadata():
                     raise SiriusContextError('Transaction must have metadata for specific Ledger')
             self['transactions'] = transactions
-        if state:
-            state = MicroLedgerState(state)
-            self['state'] = state
-
-    @property
-    def ledger_name(self) -> Optional[str]:
-        if self.state:
-            return self.state.name
-        else:
-            return None
-
-    @property
-    def transactions(self) -> Optional[List[Transaction]]:
-        txns = self.get('transactions', None)
-        if txns is not None:
-            return [Transaction(txn) for txn in txns]
-        else:
-            return None
-
-    @property
-    def state(self) -> Optional[MicroLedgerState]:
-        state = self.get('state', None)
-        if state is not None:
-            state = MicroLedgerState(state)
-            return state if state.is_filled() else None
-        else:
-            return None
-
-
-class BaseParallelTransactionsMessage(SimpleConsensusMessage):
-
-    NAME = 'stage-parallel'
-
-    def __init__(self, transactions: List[Union[TransactionsBatch, dict]] = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if transactions is not None:
-            processing_transactions = []
-            for txn in transactions:
-                if isinstance(txn, TransactionsBatch):
-                    processing_transactions.append(txn)
-                elif isinstance(txn, dict):
-                    processing_transactions.append(TransactionsBatch(**txn))
-            self['transactions'] = processing_transactions
+        if states:
             # Fix states as hash
-            states = [MicroLedgerState(batch.state) for batch in processing_transactions]
+            states = [MicroLedgerState(state) for state in states]
             # sort by ledger name, assume ledger name is unique in system
             # to make available to calc accumulated hash predictable
             states = list(sorted(states, key=lambda s: s.name))
@@ -468,10 +431,10 @@ class BaseParallelTransactionsMessage(SimpleConsensusMessage):
         return self.get(THREAD_DECORATOR, {}).get('thid', None)
 
     @property
-    def transactions(self) -> Optional[List[TransactionsBatch]]:
+    def transactions(self) -> Optional[List[Transaction]]:
         txns = self.get('transactions', None)
         if txns is not None:
-            return [TransactionsBatch(batch.state, batch.transactions) for batch in txns]
+            return [Transaction(txn) for txn in txns]
         else:
             return None
 
@@ -485,10 +448,20 @@ class ProposeParallelTransactionsMessage(BaseParallelTransactionsMessage):
     """
     NAME = 'stage-propose-parallel'
 
-    def __init__(self, transactions: List[TransactionsBatch] = None, timeout_sec: int = None, *args, **kwargs):
-        super().__init__(transactions=transactions, *args, **kwargs)
+    def __init__(
+            self, transactions: List[Transaction] = None, states: List[Union[MicroLedgerState, dict]] = None,
+            timeout_sec: int = None, *args, **kwargs
+    ):
+        super().__init__(transactions=transactions, states=states, *args, **kwargs)
         if timeout_sec:
             self['timeout_sec'] = timeout_sec
+        if states:
+            states = [MicroLedgerState(state) for state in states]
+            self['ledgers'] = [state.name for state in states]
+
+    @property
+    def ledgers(self) -> List[str]:
+        return self.get('ledgers', [])
 
     @property
     def timeout_sec(self) -> Optional[int]:
@@ -498,12 +471,11 @@ class ProposeParallelTransactionsMessage(BaseParallelTransactionsMessage):
         super().validate()
         if not self.transactions:
             raise SiriusValidationError('Empty transactions list')
-        for batch in self.transactions:
-            if not batch.state:
-                raise SiriusValidationError(f'Empty state for Ledger')
-            for txn in batch.transactions:
-                if not txn.has_metadata():
-                    raise SiriusValidationError('Transaction must have metadata')
+        for txn in self.transactions:
+            if not txn.has_metadata():
+                raise SiriusValidationError('Transaction must have metadata')
+        if not self.ledgers:
+            raise SiriusValidationError('Ledgers is empty')
         if not self.hash:
             raise SiriusValidationError('Empty hash')
 
@@ -516,7 +488,8 @@ class PreCommitParallelTransactionsMessage(BaseParallelTransactionsMessage):
     async def sign_states(self, api: AbstractCrypto, me: Pairwise.Me):
         signed = await sign(api, self.hash, me.verkey)
         self['hash~sig'] = signed
-        del self['transactions']
+        if 'transactions' in self:
+            del self['transactions']
 
     async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[str]):
         hash_signed = self.get('hash~sig', None)

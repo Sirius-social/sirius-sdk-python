@@ -4,7 +4,19 @@ from datetime import datetime
 import pytest
 
 from sirius_sdk import Agent
-from sirius_sdk.agent.microledgers.abstract import Transaction, LedgerMeta
+from sirius_sdk.errors.exceptions import SiriusPromiseContextException
+from sirius_sdk.agent.microledgers.abstract import Transaction, LedgerMeta, AbstractMicroledger
+
+
+def get_state(ledger: AbstractMicroledger) -> dict:
+    return {
+        'name': ledger.name,
+        'seq_no': ledger.seq_no,
+        'size': ledger.size,
+        'uncommitted_size': ledger.uncommitted_size,
+        'root_hash': ledger.root_hash,
+        'uncommitted_root_hash': ledger.uncommitted_root_hash
+    }
 
 
 @pytest.mark.asyncio
@@ -318,5 +330,214 @@ async def test_rename(agent4: Agent, ledger_name: str):
         is_exists2 = await agent4.microledgers.is_exists(new_name)
         assert is_exists1 is False
         assert is_exists2 is True
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_batched_ops(agent4: Agent, ledger_names: list):
+    await agent4.open()
+    try:
+        genesis_txns = [
+            {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
+        ]
+        reset_txns = [
+            {"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op2", 'txnMetadata': {}}
+        ]
+        commit_txns = [
+            {"reqId": 3, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", 'txnMetadata': {}}
+        ]
+        txn_time = str(datetime.utcnow())
+
+        for ledger_name in ledger_names:
+            await agent4.microledgers.create(ledger_name, genesis_txns)
+
+        batched = await agent4.microledgers.batched()
+        ledgers = await batched.open(ledger_names)
+        try:
+            assert all(ledger.name in ledger_names for ledger in ledgers)
+            # Fetch states
+            ledgers = await batched.states()
+            states_before = {ledger.name: get_state(ledger) for ledger in ledgers}
+            assert set(states_before.keys()) == set(ledger_names)
+            # Append
+            ledgers = await batched.append(reset_txns)
+            states_after_append = {ledger.name: get_state(ledger) for ledger in ledgers}
+            assert set(states_after_append.keys()) == set(ledger_names)
+            for ledger_name_, state_ in states_after_append.items():
+                assert state_['uncommitted_size'] == 2
+            # Reset uncommitted
+            ledgers = await batched.reset_uncommitted()
+            states_after_reset_uncommitted = {ledger.name: get_state(ledger) for ledger in ledgers}
+            assert set(states_after_reset_uncommitted.keys()) == set(ledger_names)
+            for ledger_name_, state_ in states_after_reset_uncommitted.items():
+                assert state_['uncommitted_size'] == 1
+            # Append + Commit
+            await batched.append(commit_txns, txn_time=txn_time)
+            ledgers = await batched.commit()
+            states_after_commit = {ledger.name: get_state(ledger) for ledger in ledgers}
+            for ledger_name_, state_ in states_after_commit.items():
+                assert state_['uncommitted_size'] == 2
+                assert state_['size'] == 2
+            # Check all txns
+            for ledger_name in ledger_names:
+                ledger = await agent4.microledgers.ledger(ledger_name)
+                txns = await ledger.get_all_transactions()
+                assert 'op1' in str(txns)
+                assert 'op2' not in str(txns)
+                assert 'op3' in str(txns)
+                assert txn_time in str(txns)
+        finally:
+            await batched.close()
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_batched_ops_performance(agent4: Agent):
+    genesis_txns = [
+        {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
+    ]
+    commit_txns = [
+        {"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", 'txnMetadata': {}}
+    ]
+    await agent4.open()
+    try:
+        # Calc timeout for ledgers count = 2
+        ledger_names = [f'Ledger-{uuid.uuid4().hex}' for n in range(2)]
+        for ledger_name in ledger_names:
+            await agent4.microledgers.create(ledger_name, genesis_txns)
+        batched = await agent4.microledgers.batched()
+        await batched.open(ledger_names)
+        try:
+            stamp1 = datetime.now()
+            await batched.append(commit_txns)
+            ledgers = await batched.commit()
+            stamp2 = datetime.now()
+        finally:
+            await batched.close()
+        delta = stamp2 - stamp1
+        seconds_for_2 = delta.total_seconds()
+        print('========== Timeout for 2 Ledgers =======')
+        print(f'\tSeconds: {seconds_for_2}')
+        print('========================================')
+        # Calc timeout for ledgers count = 100
+        ledger_names = [f'Ledger-{uuid.uuid4().hex}' for n in range(100)]
+        for ledger_name in ledger_names:
+            await agent4.microledgers.create(ledger_name, genesis_txns)
+        batched = await agent4.microledgers.batched()
+        await batched.open(ledger_names)
+        try:
+            stamp1 = datetime.now()
+            await batched.append(commit_txns)
+            await batched.commit()
+            stamp2 = datetime.now()
+        finally:
+            await batched.close()
+        delta = stamp2 - stamp1
+        seconds_for_100 = delta.total_seconds()
+        print('========== Timeout for 100 Ledgers =======')
+        print(f'\tSeconds: {seconds_for_100}')
+        print('========================================')
+        assert seconds_for_100 < 50 * seconds_for_2
+        # Check for 100 ledgers out-of batched mode
+        ledger_names = [f'Ledger-{uuid.uuid4().hex}' for n in range(100)]
+        ledgers = []
+        for ledger_name in ledger_names:
+            ledger, txns = await agent4.microledgers.create(ledger_name, genesis_txns)
+            ledgers.append(ledger)
+        stamp1 = datetime.now()
+        for ledger in ledgers:
+            await ledger.append(commit_txns)
+            await ledger.commit(count=len(commit_txns))
+        stamp2 = datetime.now()
+        delta = stamp2 - stamp1
+        seconds_for_100_non_parallel = delta.total_seconds()
+        print('========== Timeout for 100 Ledgers Non-parallel mode=======')
+        print(f'\tSeconds: {seconds_for_100_non_parallel}')
+        print('========================================')
+        assert seconds_for_100 < seconds_for_100_non_parallel/2
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_microledgers_in_same_context_space_1(agent4: Agent, ledger_name: str):
+    genesis_txns = [
+        {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
+    ]
+    commit_txns = [
+        {"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", 'txnMetadata': {}}
+    ]
+    await agent4.open()
+    try:
+        await agent4.microledgers.create(ledger_name, genesis_txns)
+        batched = await agent4.microledgers.batched()
+        await batched.open([ledger_name])
+        try:
+            ledgers = await batched.append(commit_txns)
+            ledger_from_batched = ledgers[0]
+
+            ledger_from_local = await agent4.microledgers.ledger(ledger_name)
+
+            assert 2 == ledger_from_batched.uncommitted_size == ledger_from_local.uncommitted_size
+
+            await batched.append(commit_txns)
+            assert ledger_from_local.uncommitted_size == 3
+
+        finally:
+            await batched.close()
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_microledgers_in_same_context_space_2(agent4: Agent, ledger_name: str):
+    genesis_txns = [
+        {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
+    ]
+    commit_txns = [
+        {"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", 'txnMetadata': {}}
+    ]
+    await agent4.open()
+    try:
+        await agent4.microledgers.create(ledger_name, genesis_txns)
+    finally:
+        await agent4.close()
+
+    # Next open iteration refresh Agent context
+    await agent4.open()
+    try:
+        batched = await agent4.microledgers.batched()
+        await batched.open([ledger_name])
+        try:
+            ledgers = await batched.append(commit_txns)
+            ledger_from_batched = ledgers[0]
+
+            ledger_from_local = await agent4.microledgers.ledger(ledger_name)
+
+            assert 2 == ledger_from_batched.uncommitted_size == ledger_from_local.uncommitted_size
+
+            await batched.append(commit_txns)
+            assert ledger_from_local.uncommitted_size == 3
+
+        finally:
+            await batched.close()
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_batched_ops_errors(agent4: Agent, ledger_names: list):
+    await agent4.open()
+    try:
+        api = await agent4.microledgers.batched()
+        try:
+            await api.open(['missing-ledger-name'])
+        except SiriusPromiseContextException as e:
+            exc = e
+        else:
+            exc = None
+        assert exc is not None
     finally:
         await agent4.close()

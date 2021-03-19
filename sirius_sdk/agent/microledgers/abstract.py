@@ -1,11 +1,12 @@
 import json
 from abc import ABC, abstractmethod
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Optional
 
 # from sirius_sdk import acquire as resources_acquire, release as resources_release
 from sirius_sdk.errors.exceptions import *
 
 METADATA_ATTR = 'txnMetadata'
+ATTR_TIME = 'txnTime'
 
 
 def serialize_ordering(value: dict) -> bytes:
@@ -26,6 +27,16 @@ class Transaction(dict):
             return len(meta.keys()) > 0
         else:
             return False
+
+    @property
+    def time(self) -> Optional[str]:
+        return self.get(METADATA_ATTR, {}).get(ATTR_TIME)
+
+    @time.setter
+    def time(self, value: str):
+        metadata = self.get(METADATA_ATTR, {})
+        metadata[ATTR_TIME] = value
+        self[METADATA_ATTR] = metadata
 
     @staticmethod
     def create(*args, **kwargs):
@@ -186,6 +197,35 @@ class AbstractMicroledger(ABC):
         pass
 
 
+class AbstractBatchedAPI(ABC):
+
+    @abstractmethod
+    async def open(self, ledgers: Union[List[str], List[AbstractMicroledger]]) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def close(self):
+        pass
+
+    @abstractmethod
+    async def states(self) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def append(
+            self, transactions: Union[List[Transaction], List[dict]], txn_time: Union[str, int] = None
+    ) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def commit(self) -> List[AbstractMicroledger]:
+        pass
+
+    @abstractmethod
+    async def reset_uncommitted(self) -> List[AbstractMicroledger]:
+        pass
+
+
 class AbstractMicroledgerList(ABC):
 
     @abstractmethod
@@ -211,3 +251,6 @@ class AbstractMicroledgerList(ABC):
     @abstractmethod
     async def list(self) -> List[LedgerMeta]:
         pass
+
+    async def batched(self) -> Optional[AbstractBatchedAPI]:
+        return None
