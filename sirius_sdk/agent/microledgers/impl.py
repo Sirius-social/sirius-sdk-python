@@ -79,8 +79,11 @@ class BatchedAPI(AbstractBatchedAPI):
         for name in self.__names:
             state = states[name]
             ledger = Microledger(name, self.__api, state)
-            if self.__external and name in self.__external:
-                ledger.assign_to(self.__external[name])
+            if self.__external is not None:
+                if name in self.__external:
+                    ledger.assign_to(self.__external[name])
+                else:
+                    self.__external[name] = ledger
             resp.append(ledger)
         return resp
 

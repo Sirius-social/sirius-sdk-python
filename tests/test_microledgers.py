@@ -462,7 +462,7 @@ async def test_batched_ops_performance(agent4: Agent):
 
 
 @pytest.mark.asyncio
-async def test_microledgers_in_same_context_space(agent4: Agent, ledger_name: str):
+async def test_microledgers_in_same_context_space_1(agent4: Agent, ledger_name: str):
     genesis_txns = [
         {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
     ]
@@ -472,6 +472,42 @@ async def test_microledgers_in_same_context_space(agent4: Agent, ledger_name: st
     await agent4.open()
     try:
         await agent4.microledgers.create(ledger_name, genesis_txns)
+        batched = await agent4.microledgers.batched()
+        await batched.open([ledger_name])
+        try:
+            ledgers = await batched.append(commit_txns)
+            ledger_from_batched = ledgers[0]
+
+            ledger_from_local = await agent4.microledgers.ledger(ledger_name)
+
+            assert 2 == ledger_from_batched.uncommitted_size == ledger_from_local.uncommitted_size
+
+            await batched.append(commit_txns)
+            assert ledger_from_local.uncommitted_size == 3
+
+        finally:
+            await batched.close()
+    finally:
+        await agent4.close()
+
+
+@pytest.mark.asyncio
+async def test_microledgers_in_same_context_space_2(agent4: Agent, ledger_name: str):
+    genesis_txns = [
+        {"reqId": 1, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op1", 'txnMetadata': {}}
+    ]
+    commit_txns = [
+        {"reqId": 2, "identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC", "op": "op3", 'txnMetadata': {}}
+    ]
+    await agent4.open()
+    try:
+        await agent4.microledgers.create(ledger_name, genesis_txns)
+    finally:
+        await agent4.close()
+
+    # Next open iteration refresh Agent context
+    await agent4.open()
+    try:
         batched = await agent4.microledgers.batched()
         await batched.open([ledger_name])
         try:
