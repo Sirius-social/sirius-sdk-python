@@ -129,6 +129,8 @@ class AgentRPC(BaseAgentConnection):
     Proactive form of Smart-Contract design
     """
 
+    EXPIRATION_OFF = True
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__tunnel_rpc = None
@@ -161,7 +163,7 @@ class AgentRPC(BaseAgentConnection):
         try:
             if not self._connector.is_open:
                 raise SiriusConnectionClosed('Open agent connection at first')
-            if self._timeout:
+            if self._timeout and not self.EXPIRATION_OFF:
                 expiration_time = datetime.datetime.now() + datetime.timedelta(seconds=self._timeout)
             else:
                 expiration_time = None
