@@ -2,7 +2,7 @@ version: '2'
 services:
 
   indy_pool:
-    image: socialsirius/hub:indy_pool
+    image: socialsirius/dev:sdk_indy_pool
     container_name: indy_pool
     working_dir: /home/indy
     networks:
