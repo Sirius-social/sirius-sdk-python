@@ -405,7 +405,17 @@ class Airport:
                     request: sirius_sdk.aries_rfc.ConnRequest = event.message
                     did, verkey = await sirius_sdk.DID.create_and_store_my_did()
                     inviter = sirius_sdk.aries_rfc.Inviter(sirius_sdk.Pairwise.Me(did, verkey), connection_key, simple_endpoint)
-                    pw = await inviter.create_connection(request)
+                    ok, pw = await inviter.create_connection(request)
+
+                    if not ok:
+                        print("connection failed")
+                        break
+
+                    message = sirius_sdk.aries_rfc.Message(
+                        content="Welcome to the airport!",
+                        locale="en"
+                    )
+                    await sirius_sdk.send_to(message, pw)
 
                     proof_request = {
                         "nonce": await sirius_sdk.AnonCreds.generate_nonce(),
@@ -429,9 +439,9 @@ class Airport:
 
                     ver_ledger = await sirius_sdk.ledger(DKMS_NAME)
                     verifier = sirius_sdk.aries_rfc.Verifier(pw, ver_ledger)
-                    ok = await verifier.verify(proof_request=proof_request, comment="Verify covid test and boarding pass", proto_version="1.0")
+                    ok = await verifier.verify(proof_request=proof_request, comment="Verify covid test and boarding pass")
                     if ok:
-                        has_covid = verifier.requested_proof["revealed_attrs"]["attr1_referent"]["raw"]
+                        has_covid = bool(verifier.requested_proof["revealed_attrs"]["attr1_referent"]["raw"])
                         if has_covid:
                             msg = sirius_sdk.aries_rfc.Message(
                                 content="Sorry, but we can't let your go to the terminal. Please, get rid of covid first!",
