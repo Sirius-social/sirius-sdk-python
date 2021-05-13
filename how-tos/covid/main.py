@@ -12,6 +12,12 @@ from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.listener import Event
 
 
+class Logger:
+
+    async def __call__(self, *args, **kwargs):
+        print(dict(**kwargs))
+
+
 STEWARD = {
     'sdk': {
         'server_uri': 'https://demo.socialsirius.com',
@@ -399,7 +405,8 @@ class Airport:
             print("Scan this QR by Sirius App to enter to the terminal " + qr_url)
 
             listener = await sirius_sdk.subscribe()
-            async for event in listener:
+            while True:
+                event = await listener.get_one()
                 if event.recipient_verkey == connection_key and isinstance(event.message,
                                                                            sirius_sdk.aries_rfc.ConnRequest):
                     request: sirius_sdk.aries_rfc.ConnRequest = event.message
@@ -438,7 +445,7 @@ class Airport:
                     }
 
                     ver_ledger = await sirius_sdk.ledger(DKMS_NAME)
-                    verifier = sirius_sdk.aries_rfc.Verifier(pw, ver_ledger)
+                    verifier = sirius_sdk.aries_rfc.Verifier(pw, ver_ledger, logger=Logger())
                     ok = await verifier.verify(proof_request=proof_request, comment="Verify covid test and boarding pass")
                     if ok:
                         has_covid = bool(verifier.requested_proof["revealed_attrs"]["attr1_referent"]["raw"])
