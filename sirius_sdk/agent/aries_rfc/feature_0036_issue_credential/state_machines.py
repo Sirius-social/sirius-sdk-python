@@ -1,3 +1,5 @@
+import json
+import logging
 import contextlib
 from abc import abstractmethod
 from typing import Union
@@ -55,30 +57,37 @@ class BaseIssuingStateMachine(AbstractStateMachine):
         finally:
             self._unregister_for_aborting(self.__coprotocol)
 
-    async def switch(self, request: BaseIssueCredentialMessage) -> Union[BaseIssueCredentialMessage, Ack]:
-        ok, resp = await self.__coprotocol.switch(request)
-        if ok:
-            if isinstance(resp, BaseIssueCredentialMessage) or isinstance(resp, Ack):
-                try:
-                    resp.validate()
-                except SiriusValidationError as e:
+    async def switch(self, request: BaseIssueCredentialMessage, response_classes: list = None) -> Union[BaseIssueCredentialMessage, Ack]:
+        while True:
+            ok, resp = await self.__coprotocol.switch(request)
+            if ok:
+                if isinstance(resp, BaseIssueCredentialMessage) or isinstance(resp, Ack):
+                    try:
+                        resp.validate()
+                    except SiriusValidationError as e:
+                        raise StateMachineTerminatedWithError(
+                            ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
+                            e.message
+                        )
+                    if response_classes:
+                        if any([isinstance(resp, cls) for cls in response_classes]):
+                            return resp
+                        else:
+                            logging.warning('Unexpected @type: %s\n%s' % (str(resp.type), json.dumps(resp, indent=2)))
+                    else:
+                        return resp
+                elif isinstance(resp, IssueProblemReport):
+                    raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
+                else:
                     raise StateMachineTerminatedWithError(
                         ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
-                        e.message
+                        'Unexpected response @type: %s' % str(resp.type)
                     )
-                return resp
-            elif isinstance(resp, IssueProblemReport):
-                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
             else:
                 raise StateMachineTerminatedWithError(
                     ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
-                    'Unexpected response @type: %s' % str(resp.type)
+                    'Response awaiting terminated by timeout'
                 )
-        else:
-            raise StateMachineTerminatedWithError(
-                ISSUE_PROCESSING_ERROR if self._is_leader() else REQUEST_NOT_ACCEPTED,
-                'Response awaiting terminated by timeout'
-            )
 
     async def send(self, msg: Union[BaseIssueCredentialMessage, Ack, IssueProblemReport]):
         await self.__coprotocol.send(msg)
@@ -137,7 +146,7 @@ class Issuer(BaseIssuingStateMachine):
                 await self.log(progress=20, message='Send offer', payload=dict(offer_msg))
 
                 # Switch to await participant action
-                resp = await self.switch(offer_msg)
+                resp = await self.switch(offer_msg, [RequestCredentialMessage])
                 if not isinstance(resp, RequestCredentialMessage):
                     raise StateMachineTerminatedWithError(
                         OFFER_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type)
@@ -169,7 +178,7 @@ class Issuer(BaseIssuingStateMachine):
                 )
                 await self.log(progress=90, message='Send Issue message', payload=dict(issue_msg))
 
-                ack = await self.switch(issue_msg)
+                ack = await self.switch(issue_msg, [Ack])
                 if not isinstance(ack, Ack):
                     raise StateMachineTerminatedWithError(
                         ISSUE_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type)
@@ -245,7 +254,7 @@ class Holder(BaseIssuingStateMachine):
                 )
 
                 # Switch to await participant action
-                resp = await self.switch(request_msg)
+                resp = await self.switch(request_msg, [IssueCredentialMessage])
                 if not isinstance(resp, IssueCredentialMessage):
                     raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, 'Unexpected @type: %s' % str(resp.type))
 
