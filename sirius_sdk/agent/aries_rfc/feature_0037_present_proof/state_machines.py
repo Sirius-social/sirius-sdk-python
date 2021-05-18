@@ -1,3 +1,4 @@
+import logging
 from abc import abstractmethod
 import contextlib
 from typing import Union
@@ -56,30 +57,37 @@ class BaseVerifyStateMachine(AbstractStateMachine):
         finally:
             self._unregister_for_aborting(self.__coprotocol)
 
-    async def switch(self, request: BasePresentProofMessage) -> Union[BasePresentProofMessage, Ack]:
-        ok, resp = await self.__coprotocol.switch(request)
-        if ok:
-            if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
-                try:
-                    resp.validate()
-                except SiriusValidationError as e:
+    async def switch(self, request: BasePresentProofMessage, response_classes: list = None) -> Union[BasePresentProofMessage, Ack]:
+        while True:
+            ok, resp = await self.__coprotocol.switch(request)
+            if ok:
+                if isinstance(resp, BasePresentProofMessage) or isinstance(resp, Ack):
+                    try:
+                        resp.validate()
+                    except SiriusValidationError as e:
+                        raise StateMachineTerminatedWithError(
+                            RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
+                            e.message
+                        )
+                    if response_classes:
+                        if any([isinstance(resp, cls) for cls in response_classes]):
+                            return resp
+                        else:
+                            logging.warning('Unexpected @type: %s\n%s' % (str(resp.type), json.dumps(resp, indent=2)))
+                    else:
+                        return resp
+                elif isinstance(resp, PresentProofProblemReport):
+                    raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
+                else:
                     raise StateMachineTerminatedWithError(
                         RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
-                        e.message
+                        'Unexpected response @type: %s' % str(resp.type)
                     )
-                return resp
-            elif isinstance(resp, PresentProofProblemReport):
-                raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
             else:
                 raise StateMachineTerminatedWithError(
                     RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
-                    'Unexpected response @type: %s' % str(resp.type)
+                    'Response awaiting terminated by timeout'
                 )
-        else:
-            raise StateMachineTerminatedWithError(
-                RESPONSE_PROCESSING_ERROR if self._is_leader() else REQUEST_PROCESSING_ERROR,
-                'Response awaiting terminated by timeout'
-            )
 
     async def send(self, msg: Union[BasePresentProofMessage, Ack, PresentProofProblemReport]):
         await self.__coprotocol.send(msg)
@@ -139,7 +147,7 @@ class Verifier(BaseVerifyStateMachine):
                 await self.log(progress=30, message='Send request', payload=dict(request_msg))
 
                 # Switch to await participant action
-                presentation = await self.switch(request_msg)
+                presentation = await self.switch(request_msg, [PresentationMessage])
                 if not isinstance(presentation, PresentationMessage):
                     raise StateMachineTerminatedWithError(
                         RESPONSE_NOT_ACCEPTED, 'Unexpected @type: %s' % str(presentation.type)
@@ -256,7 +264,7 @@ class Prover(BaseVerifyStateMachine):
                     await self.log(progress=50, message='Send presentation')
 
                     # Switch to await participant action
-                    ack = await self.switch(presentation_msg)
+                    ack = await self.switch(presentation_msg, [Ack, PresentProofProblemReport])
 
                     if isinstance(ack, Ack):
                         await self.log(progress=100, message='Verify OK!')
