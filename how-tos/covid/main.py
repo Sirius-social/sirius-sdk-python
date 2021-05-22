@@ -68,7 +68,7 @@ AIRPORT = {
 # имя публичного распределенного реестра
 DKMS_NAME = 'test_network'
 
-# имя миктореестра, созданного между лабораторией, авиакомпанией и аэропортом для хранения положительных ковид тестов
+# имя децентрализованного миктореестра, созданного между лабораторией, авиакомпанией и аэропортом для хранения положительных ковид тестов
 COVID_MICROLEDGER_NAME = "covid_ledger_test3"
 
 
@@ -104,7 +104,7 @@ class Laboratory:
         async with sirius_sdk.context(**self.hub_credentials): # работаем от имени агента лабы
             connection_key = await sirius_sdk.Crypto.create_key() # создаем случайный уникальный ключ соединения между агентом лабы и сириус коммуникатором пользователя
             endpoints = await sirius_sdk.endpoints()
-            simple_endpoint = [e for e in endpoints if e.routing_keys == []][0]
+            simple_endpoint = [e for e in endpoints if e.routing_keys == []][0]  # точка подключения к агенту лабы (интернет адрес)
             invitation = sirius_sdk.aries_rfc.Invitation(  # Создаем приглашение пользователю подключиться к лабе
                 label="Invitation to connect with medical organization",
                 recipient_keys=[connection_key],
@@ -120,8 +120,9 @@ class Laboratory:
             listener = await sirius_sdk.subscribe()
             async for event in listener:
                 if event.recipient_verkey == connection_key and isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
-                    # агент лабы получает запрос от пользователя на подключение (запрос соответствкет ранее сгенерированному уникальному ключу соединения)
+                    #  агент лабы получает запрос от пользователя на подключение (запрос соответствкет ранее сгенерированному уникальному ключу соединения)
                     request: sirius_sdk.aries_rfc.ConnRequest = event.message
+                    #  агент лабы создает уникальный децентрализованный идентификатор (did) для связи с пользователем (который тоже создает уникальный did для этого соединения)
                     my_did, my_verkey = await sirius_sdk.DID.create_and_store_my_did()
                     sm = sirius_sdk.aries_rfc.Inviter(
                         me=sirius_sdk.Pairwise.Me(
@@ -262,7 +263,7 @@ class AirCompany:
         async with sirius_sdk.context(**self.hub_credentials):  # работаем от имени агента авиакомпании
             connection_key = await sirius_sdk.Crypto.create_key()  # создаем случайный уникальный ключ соединения между агентом авиакомпании и сириус коммуникатором пользователя
             endpoints = await sirius_sdk.endpoints()
-            simple_endpoint = [e for e in endpoints if e.routing_keys == []][0]
+            simple_endpoint = [e for e in endpoints if e.routing_keys == []][0]  # точка подключения к агенту авиакомпании (интернет адрес)
             invitation = sirius_sdk.aries_rfc.Invitation(  # Создаем приглашение пользователю подключиться к авиакомпании
                 label="Getting the boarding pass",
                 recipient_keys=[connection_key],
@@ -281,6 +282,7 @@ class AirCompany:
                                                                            sirius_sdk.aries_rfc.ConnRequest):
                     # агент авиакомпании получает запрос от пользователя на подключение (запрос соответствкет ранее сгенерированному уникальному ключу соединения)
                     request: sirius_sdk.aries_rfc.ConnRequest = event.message
+                    #  агент авиакомпании создает уникальный децентрализованный идентификатор (did) для связи с пользователем (который тоже создает уникальный did для этого соединения)
                     my_did, my_verkey = await sirius_sdk.DID.create_and_store_my_did()
                     sm = sirius_sdk.aries_rfc.Inviter(
                         me=sirius_sdk.Pairwise.Me(
@@ -427,6 +429,7 @@ class Airport:
                                                                            sirius_sdk.aries_rfc.ConnRequest):
                     # агент аэропорта получает запрос от пользователя на подключение (запрос соответствкет ранее сгенерированному уникальному ключу соединения)
                     request: sirius_sdk.aries_rfc.ConnRequest = event.message
+                    #  агент аэропорта создает уникальный децентрализованный идентификатор (did) для связи с пользователем (который тоже создает уникальный did для этого соединения)
                     did, verkey = await sirius_sdk.DID.create_and_store_my_did()
                     inviter = sirius_sdk.aries_rfc.Inviter(sirius_sdk.Pairwise.Me(did, verkey), connection_key, simple_endpoint)
                     # Запускается процесс установки соединения в соответствии с открытым протоколом Aries 0160
@@ -509,7 +512,7 @@ if __name__ == '__main__':
 
     asyncio.get_event_loop().run_until_complete(init_creds())
 
-    # для создания микрореестра положительных ковид тестов необходимо установить соединение между лабораторией и авиакомпанией
+    # для создания децентрализованного микрореестра положительных ковид тестов необходимо установить соединение между участниками (лабораторией и авиакомпанией)
     lab_to_ac = establish_connection(LABORATORY['sdk'], LABORATORY["did"], AIR_COMPANY['sdk'], AIR_COMPANY["did"])
     ac_to_lab = establish_connection(AIR_COMPANY['sdk'], AIR_COMPANY["did"], LABORATORY['sdk'], LABORATORY["did"])
 
