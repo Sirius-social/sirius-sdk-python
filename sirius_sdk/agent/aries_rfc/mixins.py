@@ -44,7 +44,7 @@ class Attach(dict):
         if id is not None:
             self["@id"] = id
         if mime_type is not None:
-            self["mime_type"] = mime_type
+            self["mime-type"] = mime_type
         if filename is not None:
             self["filename"] = filename
         if lastmod_time is not None:
@@ -62,7 +62,7 @@ class Attach(dict):
 
     @property
     def mime_type(self) -> Optional[str]:
-        return self['mime_type']
+        return self['mime-type']
 
     @property
     def filename(self) -> Optional[str]:

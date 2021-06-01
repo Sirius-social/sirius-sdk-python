@@ -88,7 +88,7 @@ async def test_sane(
         did_issuer, verkey_issuer = i2h.me.did, i2h.me.verkey
         schema_name = 'schema_' + uuid.uuid4().hex
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
-            did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
+            did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3', 'attr4']
         )
         ledger = issuer.ledger('default')
         ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
@@ -117,7 +117,9 @@ async def test_sane(
     coro_issuer = run_issuer(
         issuer['server_address'], issuer['credentials'], issuer['p2p'],
         holder=i2h,
-        values={'attr1': 'Value-1', 'attr2': 567, 'attr3': 5.7},
+        values={'attr1': 'Value-1', 'attr2': 567, 'attr3': 5.7, 'attr4': 'base64'},
+        preview=[ProposedAttrib(name="attr1", value="Value-1", mime_type="text/plain"),
+                 ProposedAttrib(name="attr4", value="base64", mime_type="image/png")],
         schema=schema, cred_def=cred_def, cred_id=cred_id
     )
     coro_holder = run_holder(
@@ -138,7 +140,11 @@ async def test_sane(
     assert cred_id is not None
     async with sirius_sdk.context(holder['server_address'], holder['credentials'], holder['p2p']):
         cred = await sirius_sdk.AnonCreds.prover_get_credential(cred_id)
-    assert cred
+        assert cred
+        mime_types = await Holder.get_mime_types(cred_id)
+        assert len(mime_types) == 2
+        assert mime_types["attr1"] == "text/plain"
+        assert mime_types["attr4"] == "image/png"
 
 
 @pytest.mark.asyncio

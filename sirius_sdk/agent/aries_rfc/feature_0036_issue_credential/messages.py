@@ -140,7 +140,6 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
         if comment:
             self['comment'] = comment
         if preview:
-            preview = [ProposedAttrib(**item) for item in preview] if preview else None
             self["credential_preview"] = {
                 "@type": CREDENTIAL_PREVIEW_TYPE,
                 "attributes": [attrib.to_json() for attrib in preview]
@@ -197,7 +196,7 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
         preview = self.get('credential_preview', None)
         if (type(preview) is dict) and (preview.get('@type', None) == CREDENTIAL_PREVIEW_TYPE):
             attribs = preview.get('attributes', [])
-            return [ProposedAttrib(**item) for item in attribs]
+            return [ProposedAttrib(name=item["name"], value=item["value"], mime_type=item["mime-type"]) for item in attribs]
         else:
             return None
 
