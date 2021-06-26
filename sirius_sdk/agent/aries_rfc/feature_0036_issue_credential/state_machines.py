@@ -15,6 +15,7 @@ from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import *
+from sirius_sdk.agent.wallet.abstract.non_secrets import RetrieveRecordOptions
 
 
 PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
@@ -268,6 +269,7 @@ class Holder(BaseIssuingStateMachine):
                 cred_id = await self._store_credential(
                     cred_metadata, issue_msg.cred, offer.cred_def, None, issue_msg.cred_id
                 )
+                await self._store_mime_types(cred_id, offer.preview)
                 ack = Ack(
                     thread_id=issue_msg.ack_message_id if issue_msg.please_ack else issue_msg.id,
                     status=Status.OK,
@@ -313,3 +315,18 @@ class Holder(BaseIssuingStateMachine):
             cred_id=cred_id
         )
         return cred_id
+
+    @staticmethod
+    async def _store_mime_types(cred_id: str, preview: List[ProposedAttrib]):
+        if preview is not None:
+            mime_types = {prop_attrib["name"]: prop_attrib["mime-type"] for prop_attrib in preview if "mime-type" in prop_attrib.keys()}
+            if len(mime_types) > 0:
+                await sirius_sdk.NonSecrets.add_wallet_record("mime-types", cred_id, base64.b64encode(json.dumps(mime_types).encode()).decode())
+
+    @staticmethod
+    async def get_mime_types(cred_id: str) -> dict:
+        record = await sirius_sdk.NonSecrets.get_wallet_record("mime-types", cred_id, RetrieveRecordOptions(True, True, False))
+        if record is not None:
+            return json.loads(base64.b64decode(record["value"]).decode())
+        else:
+            return {}

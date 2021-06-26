@@ -1,11 +1,11 @@
 import datetime
 from typing import Optional
 
-from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin, PleaseAckMixin
+from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin, PleaseAckMixin, AttachesMixin, Attach
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage
 
 
-class Message(ThreadMixin, PleaseAckMixin, AriesProtocolMessage, metaclass=RegisterMessage):
+class Message(ThreadMixin, PleaseAckMixin, AttachesMixin, AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of BasicMessage protocol
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0095-basic-message
