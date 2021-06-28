@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from sirius_sdk import Agent
+from sirius_sdk.encryption.custom import bytes_to_b58
 from sirius_sdk.messaging import Message, register_message_class
 from .helpers import ServerTestSuite
 

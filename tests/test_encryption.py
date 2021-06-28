@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from sirius_sdk.encryption import create_keypair, pack_message, unpack_message, bytes_to_b58, P2PConnection
+from sirius_sdk.encryption import create_keypair, pack_message, unpack_message, bytes_to_b58, sign_message, \
+    verify_signed_message, did_from_verkey
 
 
 @pytest.mark.asyncio
@@ -61,3 +62,26 @@ def test_fixture():
     assert message == unpacked
     assert sender_vk, verkey_sender
     assert recip_vk, verkey_recipient
+
+
+def test_crypto_sign():
+    verkey, sigkey = create_keypair(b'0000000000000000000000000000SEED')
+    msg = b'message'
+    signature = sign_message(message=msg, secret=sigkey)
+    assert bytes_to_b58(signature) == '3tfqJYZ8ME8gTFUSHcH4uVTUx5kV7S1qPJJ65k2VtSocMfXvnzR1sbbfq6F2RcXrFtaufjEr4KQVu7aeyirYrcRm'
+
+    success = verify_signed_message(verkey=verkey, msg=msg, signature=signature)
+    assert success is True
+
+    verkey2, sigkey2 = create_keypair(b'000000000000000000000000000SEED2')
+    assert verkey2 != verkey
+    signature = sign_message(message=msg, secret=sigkey2)
+    success = verify_signed_message(verkey=verkey, msg=msg, signature=signature)
+    assert success is False
+
+
+def test_did_from_verkey():
+    verkey, sigkey = create_keypair(b'0000000000000000000000000000SEED')
+    assert bytes_to_b58(verkey) == 'GXhjv2jGf2oT1sqMyvJtgJxNYPMHmTsdZ3c2ZYQLJExj'
+    did = did_from_verkey(verkey)
+    assert bytes_to_b58(did) == 'VVZbGvuFqBdoVNY1Jh4j9Q'

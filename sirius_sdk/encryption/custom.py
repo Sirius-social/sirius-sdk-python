@@ -105,3 +105,39 @@ def validate_seed(seed: Union[str, bytes]) -> Optional[bytes]:
     if len(seed) != 32:
         raise SiriusCryptoError("Seed value must be 32 bytes in length")
     return seed
+
+
+def sign_message(message: bytes, secret: bytes) -> bytes:
+    """
+    Sign a message using a private signing key.
+    Args:
+        message: The message to sign
+        secret: The private signing key
+    Returns:
+        The signature
+    """
+    result = nacl.bindings.crypto_sign(message, secret)
+    sig = result[: nacl.bindings.crypto_sign_BYTES]
+    return sig
+
+
+def verify_signed_message(verkey: bytes, msg: bytes, signature: bytes) -> bool:
+    """
+    Verify a signed message according to a public verification key.
+    Args:
+        msg: original message
+        signature: The signed message
+        verkey: The verkey to use in verification
+    Returns:
+        True if verified, else False
+    """
+    signed = signature + msg
+    try:
+        nacl.bindings.crypto_sign_open(signed, verkey)
+    except nacl.exceptions.BadSignatureError:
+        return False
+    return True
+
+
+def did_from_verkey(verkey: bytes) -> bytes:
+    return verkey[:16]
