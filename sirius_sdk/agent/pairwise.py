@@ -147,9 +147,11 @@ class WalletPairwiseList(AbstractPairwiseList):
         )
 
     async def update(self, pairwise: Pairwise):
+        metadata = pairwise.metadata or {}
+        metadata.update(self._build_metadata(pairwise))
         await self._api_pairwise.set_pairwise_metadata(
             their_did=pairwise.their.did,
-            metadata=pairwise.metadata,
+            metadata=metadata,
             tags=self._build_tags(pairwise)
         )
 
