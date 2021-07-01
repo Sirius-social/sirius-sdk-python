@@ -75,7 +75,7 @@ class Inviter(BaseConnectionStateMachine):
 
     def __init__(
             self, me: Pairwise.Me, connection_key: str, my_endpoint: Endpoint,
-            coprotocol: AbstractP2PCoProtocol, time_to_live: int = 60, logger=None, *args, **kwargs
+            coprotocol: AbstractP2PCoProtocol = None, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         super().__init__(
             me=me, my_endpoint=my_endpoint, coprotocol=coprotocol,
@@ -206,7 +206,7 @@ class Invitee(BaseConnectionStateMachine):
 
     def __init__(
             self, me: Pairwise.Me, my_endpoint: Endpoint,
-            coprotocol: AbstractP2PCoProtocol, time_to_live: int = 60, logger=None, *args, **kwargs
+            coprotocol: AbstractP2PCoProtocol = None, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         super().__init__(
             me=me, my_endpoint=my_endpoint, coprotocol=coprotocol,
