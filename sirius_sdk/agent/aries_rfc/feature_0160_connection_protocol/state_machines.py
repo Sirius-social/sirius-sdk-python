@@ -23,7 +23,7 @@ class BaseConnectionStateMachine(AbstractStateMachine):
 
     def __init__(
             self, me: Pairwise.Me, my_endpoint: Endpoint,
-            coprotocol: AbstractP2PCoProtocol, time_to_live: int = 60, logger=None, *args, **kwargs
+            coprotocol: AbstractP2PCoProtocol = None, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self._problem_report = None
