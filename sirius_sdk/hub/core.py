@@ -53,7 +53,7 @@ class Hub:
         self.__create_agent_instance()
 
     def __del__(self):
-        if self.__agent.is_open and self.__loop.is_running():
+        if self.__allocate_agent and self.__agent.is_open and self.__loop.is_running():
             asyncio.ensure_future(self.__agent.close(), loop=self.__loop)
 
     def copy(self):
