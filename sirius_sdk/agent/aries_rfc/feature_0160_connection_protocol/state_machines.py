@@ -4,6 +4,7 @@ import contextlib
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.errors.exceptions import SiriusValidationError, StateMachineAborted, StateMachineTerminatedWithError
+from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.agent import Endpoint
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
@@ -20,12 +21,16 @@ RESPONSE_PROCESSING_ERROR = 'response_processing_error'
 
 class BaseConnectionStateMachine(AbstractStateMachine):
 
-    def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
+    def __init__(
+            self, me: Pairwise.Me, my_endpoint: Endpoint,
+            coprotocol: AbstractP2PCoProtocol, time_to_live: int = 60, logger=None, *args, **kwargs
+    ):
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self._problem_report = None
         self.__time_to_live = time_to_live
         self.__me = me
         self.__my_endpoint = my_endpoint
+        self.__coprotocol = coprotocol
 
     @property
     def me(self) -> Pairwise.Me:
@@ -45,7 +50,7 @@ class BaseConnectionStateMachine(AbstractStateMachine):
 
     @contextlib.asynccontextmanager
     async def coprotocol(self, endpoint: TheirEndpoint):
-        co = sirius_sdk.CoProtocolP2PAnon(
+        co = self.__coprotocol or sirius_sdk.CoProtocolP2PAnon(
             my_verkey=self.me.verkey,
             endpoint=endpoint,
             protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
@@ -70,9 +75,12 @@ class Inviter(BaseConnectionStateMachine):
 
     def __init__(
             self, me: Pairwise.Me, connection_key: str, my_endpoint: Endpoint,
-            time_to_live: int = 60, logger=None, *args, **kwargs
+            coprotocol: AbstractP2PCoProtocol, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
-        super().__init__(me=me, my_endpoint=my_endpoint, time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        super().__init__(
+            me=me, my_endpoint=my_endpoint, coprotocol=coprotocol,
+            time_to_live=time_to_live, logger=logger, *args, **kwargs
+        )
         self.__connection_key = connection_key
 
     @property
@@ -196,8 +204,14 @@ class Invitee(BaseConnectionStateMachine):
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
     """
 
-    def __init__(self, me: Pairwise.Me, my_endpoint: Endpoint, time_to_live: int = 60, logger=None, *args, **kwargs):
-        super().__init__(me=me, my_endpoint=my_endpoint, time_to_live=time_to_live, logger=logger, *args, **kwargs)
+    def __init__(
+            self, me: Pairwise.Me, my_endpoint: Endpoint,
+            coprotocol: AbstractP2PCoProtocol, time_to_live: int = 60, logger=None, *args, **kwargs
+    ):
+        super().__init__(
+            me=me, my_endpoint=my_endpoint, coprotocol=coprotocol,
+            time_to_live=time_to_live, logger=logger, *args, **kwargs
+        )
 
     async def create_connection(
             self, invitation: Invitation, my_label: str, did_doc: dict = None
