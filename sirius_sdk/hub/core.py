@@ -24,18 +24,26 @@ __THREAD_LOCAL_HUB = threading.local()
 class Hub:
 
     def __init__(
-            self, server_uri: str, credentials: bytes, p2p: P2PConnection, io_timeout: int = None,
+            self, server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
             storage: AbstractImmutableCollection = None, crypto: AbstractCrypto = None,
             microledgers: AbstractMicroledgerList = None, pairwise_storage: AbstractPairwiseList = None,
             did: AbstractDID = None, anoncreds: AbstractAnonCreds = None, non_secrets: AbstractNonSecrets = None,
-            loop: asyncio.AbstractEventLoop = None
+            cache: AbstractCache = None, loop: asyncio.AbstractEventLoop = None
     ):
+        if server_uri or credentials or p2p:
+            if server_uri and credentials and p2p:
+                self.__allocate_agent = True
+            else:
+                raise RuntimeError('You must specify server_uri, credentials, p2p')
+        else:
+            self.__allocate_agent = False
         self.__crypto = crypto
         self.__microledgers = microledgers
         self.__pairwise_storage = pairwise_storage
         self.__did = did
         self.__anoncreds = anoncreds
         self.__non_secrets = non_secrets
+        self.__cache = cache
         self.__server_uri = server_uri
         self.__credentials = credentials
         self.__p2p = p2p
@@ -56,9 +64,15 @@ class Hub:
         inst.__microledgers = self.__microledgers
         inst.__pairwise_storage = self.__pairwise_storage
         inst.__did = self.__did
+        inst.__anoncreds = self.__anoncreds
+        inst.__non_secrets = self.__non_secrets
+        inst.__storage = self.__storage
+        inst.__cache = self.__cache
         return inst
 
     async def abort(self):
+        if not self.__allocate_agent:
+            return
         if self.__loop.is_running():
             if self.__loop == asyncio.get_event_loop():
                 old_agent = self.__agent
@@ -75,59 +89,87 @@ class Hub:
 
     @asynccontextmanager
     async def get_agent_connection_lazy(self):
+        if not self.__allocate_agent:
+            yield None
         if not self.__agent.is_open:
             await self.__agent.open()
         yield self.__agent
 
     async def open(self):
+        if not self.__allocate_agent:
+            return
         async with self.get_agent_connection_lazy() as agent:
             pass
 
     async def close(self):
+        if not self.__allocate_agent:
+            return
         if self.__agent.is_open:
             await self.__agent.close()
 
     async def get_crypto(self) -> AbstractCrypto:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__crypto or agent.wallet.crypto
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__crypto or agent.wallet.crypto
+        else:
+            return self.__crypto
 
     async def get_microledgers(self) -> AbstractMicroledgerList:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__microledgers or agent.microledgers
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__microledgers or agent.microledgers
+        else:
+            return self.__microledgers
 
     async def get_pairwise_list(self) -> AbstractPairwiseList:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__pairwise_storage or agent.pairwise_list
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__pairwise_storage or agent.pairwise_list
+        else:
+            return self.__pairwise_storage
 
     async def get_did(self) -> AbstractDID:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__did or agent.wallet.did
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__did or agent.wallet.did
+        else:
+            return self.__did
 
     async def get_anoncreds(self) -> AbstractAnonCreds:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__anoncreds or agent.wallet.anoncreds
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__anoncreds or agent.wallet.anoncreds
+        else:
+            return self.__anoncreds
 
     async def get_cache(self) -> AbstractCache:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__anoncreds or agent.wallet.cache
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__cache or agent.wallet.cache
+        else:
+            return self.__cache
 
     async def get_non_secrets(self) -> AbstractNonSecrets:
-        async with self.get_agent_connection_lazy() as agent:
-            return self.__non_secrets or agent.wallet.non_secrets
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__non_secrets or agent.wallet.non_secrets
+        else:
+            return self.__non_secrets
 
     def __create_agent_instance(self):
-        self.__agent = Agent(
-            server_address=self.__server_uri,
-            credentials=self.__credentials,
-            p2p=self.__p2p,
-            timeout=self.__timeout,
-            loop=self.__loop,
-            storage=self.__storage,
-            spawn_strategy=SpawnStrategy.CONCURRENT
-        )
+        if self.__allocate_agent:
+            self.__agent = Agent(
+                server_address=self.__server_uri,
+                credentials=self.__credentials,
+                p2p=self.__p2p,
+                timeout=self.__timeout,
+                loop=self.__loop,
+                storage=self.__storage,
+                spawn_strategy=SpawnStrategy.CONCURRENT
+            )
 
 
-def init(server_uri: str, credentials: bytes, p2p: P2PConnection, io_timeout: int = None,
+def init(server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
          storage: AbstractImmutableCollection = None,
          crypto: AbstractCrypto = None, microledgers: AbstractMicroledgerList = None,
          did: AbstractDID = None, pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None
@@ -147,7 +189,7 @@ def init(server_uri: str, credentials: bytes, p2p: P2PConnection, io_timeout: in
 
 @asynccontextmanager
 async def context(
-          server_uri: str, credentials: bytes, p2p: P2PConnection, io_timeout: int = None,
+          server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
           storage: AbstractImmutableCollection = None,
           crypto: AbstractCrypto = None, microledgers: AbstractMicroledgerList = None,
           did: AbstractDID = None, pairwise_storage: AbstractPairwiseList = None,
