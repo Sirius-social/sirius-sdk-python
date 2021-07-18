@@ -88,6 +88,7 @@ class Keylist(CoordinateMediationMessage, metaclass=RegisterMessage):
 
     def __init__(self, keys: List[str], count: int = None, offset: int = None, remaining: int = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self["keys"] = [{"recipient_key": key} for key in keys]
         if count is not None and offset is not None and remaining is not None:
             self['pagination'] = {}
             self['pagination']['count'] = count
