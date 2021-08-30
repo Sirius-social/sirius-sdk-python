@@ -32,7 +32,7 @@ class DIDDoc(dict):
             check_for_attributes(
                 serviceBlock,
                 [
-                    ('type', 'IndyAgent'),
+                    'type',
                     'recipientKeys',
                     'serviceEndpoint'
                 ]

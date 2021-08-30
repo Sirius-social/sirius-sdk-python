@@ -258,3 +258,40 @@ async def test_agents_trust_ping(test_suite: ServerTestSuite):
     finally:
         await agent1.close()
         await agent2.close()
+
+
+@pytest.mark.asyncio
+async def test_agents_crypto(test_suite: ServerTestSuite):
+    agent1_params = test_suite.get_agent_params('agent1')
+    agent2_params = test_suite.get_agent_params('agent2')
+    agent1 = Agent(
+        server_address=agent1_params['server_address'],
+        credentials=agent1_params['credentials'],
+        p2p=agent1_params['p2p'],
+        timeout=5,
+    )
+    agent2 = Agent(
+        server_address=agent2_params['server_address'],
+        credentials=agent2_params['credentials'],
+        p2p=agent2_params['p2p'],
+        timeout=5,
+    )
+    await agent1.open()
+    await agent2.open()
+    try:
+        did_signer = 'Th7MpTaRZVRYnPiabds81Y'
+        verkey_signer = 'FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4'
+        msg = b'message'
+        # 1. Check sign
+        signature = await agent1.wallet.crypto.crypto_sign(verkey_signer, msg)
+        assert bytes_to_b58(signature) == 'QRHbNQxHLEhBuYKbe3ReTUCNRDnGDYMJvABJFEuUSFU8EzS6orRzWjMf3fR4PSgM2Z5gqfsc1kg6vYpQCCb4bjB'
+        # 2. Check verify
+        success = await agent2.wallet.crypto.crypto_verify(signer_vk=verkey_signer, msg=msg, signature=signature)
+        assert success is True
+        # 3. check verify with error
+        other_msg = b'other-message'
+        success = await agent2.wallet.crypto.crypto_verify(signer_vk=verkey_signer, msg=other_msg, signature=signature)
+        assert success is False
+    finally:
+        await agent1.close()
+        await agent2.close()
