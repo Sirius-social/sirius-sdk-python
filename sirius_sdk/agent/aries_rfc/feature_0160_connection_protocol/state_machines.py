@@ -272,47 +272,52 @@ class Invitee(BaseConnectionStateMachine):
                             their_did, their_vk, their_endpoint_address, their_routing_keys = response.extract_their_info()
                             await sirius_sdk.DID.store_their_did(their_did, their_vk)
 
-                            # Step 4: Send ack to Inviter
-                            if response.please_ack:
-                                ack = Ack(thread_id=response.ack_message_id, status=Status.OK)
-                                await co.send(ack)
-                                await self.log(progress=90, message='Step-4: Send ack to Inviter')
-                            else:
-                                ping = Ping(comment='Connection established', response_requested=False)
-                                await co.send(ping)
-                                await self.log(progress=90, message='Step-4: Send ping to Inviter')
-                            # Step 5: Make Pairwise instance
-                            their = Pairwise.Their(
-                                did=their_did,
-                                label=invitation.label,
+                            actual_endpoint = TheirEndpoint(
                                 endpoint=their_endpoint_address,
-                                verkey=their_vk,
-                                routing_keys=their_routing_keys
+                                verkey=their_vk
                             )
-                            my_did_doc = dict(request.did_doc)
-                            their_did_doc = dict(response.did_doc)
-                            metadata = {
-                                'me': {
-                                    'did': self.me.did,
-                                    'verkey': self.me.verkey,
-                                    'did_doc': my_did_doc
-                                },
-                                'their': {
-                                    'did': their_did,
-                                    'verkey': their_vk,
-                                    'label': invitation.label,
-                                    'endpoint': {
-                                        'address': their_endpoint_address,
-                                        'routing_keys': their_routing_keys
+                            async with self.coprotocol(endpoint=actual_endpoint) as co:
+                                # Step 4: Send ack to Inviter
+                                if response.please_ack:
+                                    ack = Ack(thread_id=response.ack_message_id, status=Status.OK)
+                                    await co.send(ack)
+                                    await self.log(progress=90, message='Step-4: Send ack to Inviter')
+                                else:
+                                    ping = Ping(comment='Connection established', response_requested=False)
+                                    await co.send(ping)
+                                    await self.log(progress=90, message='Step-4: Send ping to Inviter')
+                                # Step 5: Make Pairwise instance
+                                their = Pairwise.Their(
+                                    did=their_did,
+                                    label=invitation.label,
+                                    endpoint=their_endpoint_address,
+                                    verkey=their_vk,
+                                    routing_keys=their_routing_keys
+                                )
+                                my_did_doc = dict(request.did_doc)
+                                their_did_doc = dict(response.did_doc)
+                                metadata = {
+                                    'me': {
+                                        'did': self.me.did,
+                                        'verkey': self.me.verkey,
+                                        'did_doc': my_did_doc
                                     },
-                                    'did_doc': their_did_doc
+                                    'their': {
+                                        'did': their_did,
+                                        'verkey': their_vk,
+                                        'label': invitation.label,
+                                        'endpoint': {
+                                            'address': their_endpoint_address,
+                                            'routing_keys': their_routing_keys
+                                        },
+                                        'did_doc': their_did_doc
+                                    }
                                 }
-                            }
-                            pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
-                            pairwise.me.did_doc = my_did_doc
-                            pairwise.their.did_doc = their_did_doc
-                            await self.log(progress=100, message='Pairwise established', payload=metadata)
-                            return True, pairwise
+                                pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
+                                pairwise.me.did_doc = my_did_doc
+                                pairwise.their.did_doc = their_did_doc
+                                await self.log(progress=100, message='Pairwise established', payload=metadata)
+                                return True, pairwise
                         else:
                             raise StateMachineTerminatedWithError(
                                 problem_code=RESPONSE_NOT_ACCEPTED,
