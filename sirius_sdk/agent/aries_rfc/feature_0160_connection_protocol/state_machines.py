@@ -8,7 +8,7 @@ from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.agent import Endpoint
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
-from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping import Ping
+from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping import Ping, Pong
 from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.messages import *
 
 
@@ -93,11 +93,11 @@ class Inviter(BaseConnectionStateMachine):
         try:
             request.validate()
         except SiriusValidationError as e:
-            await self.log(
-                progress=100, message=f'Terminated with error',
-                problem_code=REQUEST_NOT_ACCEPTED, explain=e.message
+            raise StateMachineTerminatedWithError(
+                problem_code=REQUEST_PROCESSING_ERROR,
+                explain=e.message,
+                notify=True
             )
-            raise
         else:
             await self.log(progress=20, message='Request validation OK')
 
@@ -124,6 +124,8 @@ class Inviter(BaseConnectionStateMachine):
                 )
                 if request.please_ack:
                     response.thread_id = request.ack_message_id
+                else:
+                    response.thread_id = request.id
                 my_did_doc = response.did_doc
                 await response.sign_connection(sirius_sdk.Crypto, self.connection_key)
 
@@ -163,11 +165,14 @@ class Inviter(BaseConnectionStateMachine):
                         pairwise = Pairwise(me=self.me, their=their, metadata=metadata)
                         pairwise.me.did_doc = my_did_doc
                         pairwise.their.did_doc = their_did_doc
+                        if isinstance(ack, Ping):
+                            if ack.response_requested:
+                                await co.send(Pong(ping_id=ack.id))
                         await self.log(progress=100, message='Pairwise established', payload=metadata)
                         return True, pairwise
-                    elif isinstance(response, ConnProblemReport):
-                        self._problem_report = response
-                        logging.error('Code: %s; Explain: %s' % (response.problem_code, response.explain))
+                    elif isinstance(ack, ConnProblemReport):
+                        self._problem_report = ack
+                        logging.error('Code: %s; Explain: %s' % (ack.problem_code, ack.explain))
                         await self.log(
                             progress=100, message=f'Terminated with error',
                             problem_code=self._problem_report.problem_code, explain=self._problem_report.explain
@@ -221,11 +226,11 @@ class Invitee(BaseConnectionStateMachine):
         try:
             invitation.validate()
         except SiriusValidationError as e:
-            await self.log(
-                progress=100, message=f'Terminated with error',
-                problem_code=REQUEST_NOT_ACCEPTED, explain=e.message
+            raise StateMachineTerminatedWithError(
+                problem_code=REQUEST_PROCESSING_ERROR,
+                explain='Invitation error: ' + e.message,
+                notify=True
             )
-            raise
         else:
             await self.log(progress=20, message='Request validation OK')
         await self.log(progress=20, message='Invitation validation OK')
@@ -264,7 +269,8 @@ class Invitee(BaseConnectionStateMachine):
                         except SiriusValidationError as e:
                             raise StateMachineTerminatedWithError(
                                 problem_code=RESPONSE_NOT_ACCEPTED,
-                                explain=e.message
+                                explain=e.message,
+                                notify=True
                             )
                         if success and (response['connection~sig']['signer'] == connection_key):
                             # Step 3: extract Inviter info and store did
