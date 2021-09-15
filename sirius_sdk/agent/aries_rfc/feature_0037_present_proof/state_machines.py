@@ -115,10 +115,15 @@ class Verifier(BaseVerifyStateMachine):
         self.__prover = prover
         self.__pool_name = ledger.name
         self.__requested_proof = None
+        self.__revealed_attrs = None
 
     @property
     def requested_proof(self) -> Optional[dict]:
         return self.__requested_proof
+
+    @property
+    def revealed_attrs(self) -> Optional[dict]:
+        return self.__revealed_attrs
 
     async def verify(
             self, proof_request: dict, translation: List[AttribTranslation] = None,
@@ -183,6 +188,23 @@ class Verifier(BaseVerifyStateMachine):
                 )
                 if success:
                     self.__requested_proof = presentation.proof['requested_proof']
+
+                    # Parse response and fill revealed attrs
+                    revealed_attrs = {}
+                    for ref_id, value in self.__requested_proof['self_attested_attrs'].items():
+                        if ref_id in proof_request['requested_attributes']:
+                            if 'name' in proof_request['requested_attributes'][ref_id]:
+                                attr_name = proof_request['requested_attributes'][ref_id]['name']
+                                revealed_attrs[attr_name] = value
+                    for ref_id, data in self.__requested_proof['revealed_attrs'].items():
+                        if ref_id in proof_request['requested_attributes']:
+                            if 'name' in proof_request['requested_attributes'][ref_id]:
+                                attr_name = proof_request['requested_attributes'][ref_id]['name']
+                                revealed_attrs[attr_name] = data['raw']
+                    if revealed_attrs:
+                        self.__revealed_attrs = revealed_attrs
+
+                    # Send Ack
                     ack = Ack(
                         thread_id=presentation.ack_message_id if presentation.please_ack else presentation.id,
                         status=Status.OK
@@ -215,17 +237,22 @@ class Prover(BaseVerifyStateMachine):
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
     """
 
-    def __init__(self, verifier: Pairwise, ledger: Ledger, time_to_live: int = 60, logger=None, *args, **kwargs):
+    def __init__(
+            self, verifier: Pairwise, ledger: Ledger,
+            time_to_live: int = 60, logger=None, self_attested_attributes: dict = None, *args, **kwargs
+    ):
         """
         :param verifier: Verifier described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
         :param ledger: network (DKMS) name that is used to verify credentials presented by prover
           (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
+        :param portfolio: attributes dictionary to fill self_attested_attributes for requested attribs with no restrictions
         """
 
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__verifier = verifier
         self.__pool_name = ledger.name
+        self.__self_attested_attributes = self_attested_attributes or {}
 
     async def prove(self, request: RequestPresentationMessage, master_secret_id: str) -> bool:
         """
@@ -236,6 +263,7 @@ class Prover(BaseVerifyStateMachine):
             try:
                 # Step-1: Process proof-request
                 await self.log(progress=10, message='Received proof request', payload=dict(request))
+                await self.log(message='proof_request', payload=dict(request.proof_request))
                 try:
                     request.validate()
                 except SiriusValidationError as e:
@@ -244,7 +272,7 @@ class Prover(BaseVerifyStateMachine):
                     request.proof_request, self.__pool_name
                 )
 
-                if cred_infos.get('requested_attributes', None) or cred_infos.get('requested_predicates', None):
+                if cred_infos.get('requested_attributes', None) or cred_infos.get('requested_predicates', None) or cred_infos.get('self_attested_attributes', None):
                     # Step-2: Build proof
                     proof = await sirius_sdk.AnonCreds.prover_create_proof(
                         proof_req=request.proof_request,
@@ -306,22 +334,41 @@ class Prover(BaseVerifyStateMachine):
             'requested_attributes': {},
             'requested_predicates': {}
         }
+        requested_attributes_with_no_restrictions = {}
+        for referent_id, data in proof_request.get('requested_attributes', {}).items():
+            restrictions = data.get('restrictions', None)
+            if not restrictions:
+                if 'names' in data:
+                    requested_attributes_with_no_restrictions[referent_id] = data['names']
+                if 'name' in data:
+                    requested_attributes_with_no_restrictions[referent_id] = [data['name']]
         all_infos = []
         for referent_id, cred_infos in proof_response['requested_attributes'].items():
-            cred_info = cred_infos[0]['cred_info']  # Get first
-            info = {
-                'cred_id': cred_info['referent'],
-                'revealed': True
-            }
-            requested_credentials['requested_attributes'][referent_id] = info
-            all_infos.append(cred_info)
+            if referent_id in requested_attributes_with_no_restrictions:
+                attr_names = requested_attributes_with_no_restrictions[referent_id]
+                for attr_name in attr_names:
+                    if attr_name in self.__self_attested_attributes:
+                        requested_credentials['self_attested_attributes'][referent_id] = self.__self_attested_attributes[attr_name]
+                    else:
+                        # set to empty str by default
+                        requested_credentials['self_attested_attributes'][referent_id] = ''
+            else:
+                if cred_infos:
+                    cred_info = cred_infos[0]['cred_info']  # Get first
+                    info = {
+                        'cred_id': cred_info['referent'],
+                        'revealed': True
+                    }
+                    requested_credentials['requested_attributes'][referent_id] = info
+                    all_infos.append(cred_info)
         for referent_id, predicates in proof_response['requested_predicates'].items():
-            pred_info = predicates[0]['cred_info']  # Get first
-            info = {
-                'cred_id': pred_info['referent']
-            }
-            requested_credentials['requested_predicates'][referent_id] = info
-            all_infos.append(pred_info)
+            if predicates:
+                pred_info = predicates[0]['cred_info']  # Get first
+                info = {
+                    'cred_id': pred_info['referent']
+                }
+                requested_credentials['requested_predicates'][referent_id] = info
+                all_infos.append(pred_info)
         for cred_info in all_infos:
             schema_id = cred_info['schema_id']
             cred_def_id = cred_info['cred_def_id']
