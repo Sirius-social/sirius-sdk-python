@@ -239,20 +239,20 @@ class Prover(BaseVerifyStateMachine):
 
     def __init__(
             self, verifier: Pairwise, ledger: Ledger,
-            time_to_live: int = 60, logger=None, self_attested_attributes: dict = None, *args, **kwargs
+            time_to_live: int = 60, logger=None, self_attested_identity: dict = None, *args, **kwargs
     ):
         """
         :param verifier: Verifier described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
         :param ledger: network (DKMS) name that is used to verify credentials presented by prover
           (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
-        :param portfolio: attributes dictionary to fill self_attested_attributes for requested attribs with no restrictions
+        :param self_attested_identity: attributes dictionary {attr_name: value} to fill self_attested_attributes for requested attribs with no restrictions
         """
 
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__verifier = verifier
         self.__pool_name = ledger.name
-        self.__self_attested_attributes = self_attested_attributes or {}
+        self.__self_attested_identity = self_attested_identity or {}
 
     async def prove(self, request: RequestPresentationMessage, master_secret_id: str) -> bool:
         """
@@ -347,8 +347,8 @@ class Prover(BaseVerifyStateMachine):
             if referent_id in requested_attributes_with_no_restrictions:
                 attr_names = requested_attributes_with_no_restrictions[referent_id]
                 for attr_name in attr_names:
-                    if attr_name in self.__self_attested_attributes:
-                        requested_credentials['self_attested_attributes'][referent_id] = self.__self_attested_attributes[attr_name]
+                    if attr_name in self.__self_attested_identity:
+                        requested_credentials['self_attested_attributes'][referent_id] = self.__self_attested_identity[attr_name]
                     else:
                         # set to empty str by default
                         requested_credentials['self_attested_attributes'][referent_id] = ''
