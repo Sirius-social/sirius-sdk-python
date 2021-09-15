@@ -13,15 +13,7 @@ from sirius_sdk.agent.wallet.abstract.cache import CacheOptions
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.messages import *
-
-
-PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
-RESPONSE_NOT_ACCEPTED = "response_not_accepted"
-RESPONSE_PROCESSING_ERROR = "response_processing_error"
-REQUEST_NOT_ACCEPTED = "request_not_accepted"
-RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
-REQUEST_PROCESSING_ERROR = 'request_processing_error'
-VERIFY_ERROR = 'verify_error'
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.error_codes import *
 
 
 class BaseVerifyStateMachine(AbstractStateMachine):
