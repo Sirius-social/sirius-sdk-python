@@ -230,7 +230,9 @@ class PresentProverInteractiveMode:
 
     async def prove(self, identity: SelfIdentity) -> (bool, Optional[PresentProofProblemReport]):
         if not identity.is_filled:
-            problem_report = PresentProofProblemReport(REQUEST_PROCESSING_ERROR, 'No proof correspondent to proof-request')
+            problem_report = PresentProofProblemReport(
+                REQUEST_PROCESSING_ERROR, 'No proof correspondent to proof-request'
+            )
             await self.__coprotocol.send(problem_report)
             return False, problem_report
         schemas = {}
@@ -299,6 +301,8 @@ class PresentProverInteractiveMode:
         elif isinstance(resp, PresentProofProblemReport):
             return False, resp
         else:
-            return False, PresentProofProblemReport(
+            problem_report = PresentProofProblemReport(
                 RESPONSE_FOR_UNKNOWN_REQUEST, 'Unexpected response @type: %s' % str(resp.type)
             )
+            await self.__coprotocol.send(problem_report)
+            return False, problem_report

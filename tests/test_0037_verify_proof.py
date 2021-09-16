@@ -485,8 +485,6 @@ async def test_self_identity(
         print('Establish pairwises')
         i2p = await get_pairwise(issuer, prover)
         p2i = await get_pairwise(prover, issuer)
-        v2p = await get_pairwise(verifier, prover)
-        p2v = await get_pairwise(prover, verifier)
         print('Register schema')
         did_issuer, verkey_issuer = i2p.me.did, i2p.me.verkey
         schema_name = 'schema_' + uuid.uuid4().hex
@@ -615,3 +613,119 @@ async def test_self_identity(
         await prover.close()
         await verifier.close()
 
+
+@pytest.mark.asyncio
+async def test_prove_interactive(
+        test_suite: ServerTestSuite,
+        agent1: Agent, agent2: Agent, agent3: Agent, prover_master_secret_name: str
+):
+    issuer = agent1
+    prover = agent2
+    verifier = agent3
+    await issuer.open()
+    await prover.open()
+    await verifier.open()
+    try:
+        print('Establish pairwises')
+        i2p = await get_pairwise(issuer, prover)
+        p2i = await get_pairwise(prover, issuer)
+        print('Register schema')
+        did_issuer, verkey_issuer = i2p.me.did, i2p.me.verkey
+        schema_name = 'schema_' + uuid.uuid4().hex
+        schema_id, anoncred_schema = await issuer.wallet.anoncreds.issuer_create_schema(
+            did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
+        )
+        ledger = issuer.ledger('default')
+        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        assert ok is True
+        print('Register credential def')
+        ok, cred_def = await ledger.register_cred_def(
+            cred_def=CredentialDefinition(tag='TAG', schema=schema),
+            submitter_did=did_issuer
+        )
+        assert ok is True
+        print('Prepare Prover')
+        try:
+            await prover.wallet.anoncreds.prover_create_master_secret(prover_master_secret_name)
+        except AnoncredsMasterSecretDuplicateNameError:
+            pass
+        prover_secret_id = prover_master_secret_name
+
+        # Issue credential
+        cred_values = {'attr1': f'Value', 'attr2': 123, 'attr3': 100.5}
+        cred_id = f'cred-id-{uuid.uuid4().hex}'
+
+        offer = await issuer.wallet.anoncreds.issuer_create_credential_offer(cred_def_id=cred_def.id)
+        cred_request, cred_metadata = await prover.wallet.anoncreds.prover_create_credential_req(
+            prover_did=p2i.me.did, cred_offer=offer, cred_def=cred_def.body, master_secret_id=prover_secret_id
+        )
+        encoded_cred_values = dict()
+        for key, value in cred_values.items():
+            encoded_cred_values[key] = dict(raw=str(value), encoded=encode(value))
+        ret = await issuer.wallet.anoncreds.issuer_create_credential(
+            cred_offer=offer,
+            cred_req=cred_request,
+            cred_values=encoded_cred_values,
+            rev_reg_id=None,
+            blob_storage_reader_handle=None
+        )
+        cred, cred_revoc_id, revoc_reg_delta = ret
+        await prover.wallet.anoncreds.prover_store_credential(
+            cred_req_metadata=cred_metadata,
+            cred=cred,
+            cred_def=cred_def.body,
+            rev_reg_def=None,
+            cred_id=cred_id
+        )
+
+        prover_sdk = test_suite.get_agent_params('agent2')
+        verifier_sdk = test_suite.get_agent_params('agent3')
+
+        # FIRE !!!
+        attr1_referent_id = 'attr1_referent'
+        attr2_referent_id = 'attr2_referent'
+        attr3_referent_id = 'attr3_referent'
+        pred_referent_id = 'pred1_referent'
+        async with sirius_sdk.context(verifier_sdk['server_address'], verifier_sdk['credentials'], verifier_sdk['p2p']):
+            proof_request = {
+                "nonce": await sirius_sdk.AnonCreds.generate_nonce(),
+                "name": "Test ProofRequest",
+                "version": "0.1",
+                "requested_attributes": {
+                    attr1_referent_id: {
+                        "name": "attr1",
+                        "restrictions": [{
+                            "issuer_did": did_issuer,
+                            'cred_def_id': cred_def.id
+                        }]
+                    },
+                    attr2_referent_id: {
+                        "name": "attr2",
+                        "restrictions": [{
+                            "issuer_did": did_issuer,
+                            'cred_def_id': cred_def.id
+                        }]
+                    },
+                    attr3_referent_id: {
+                        "name": "email"
+                    }
+                },
+                "requested_predicates": {
+                    pred_referent_id: {
+                        'name': 'age',
+                        'p_type': '>=',
+                        'p_value': 0,
+                        "restrictions": {
+                            "issuer_did": did_issuer,
+                            'cred_def_id': cred_def.id
+                        }
+                    }
+                }
+            }
+        print('')
+        async with sirius_sdk.context(prover_sdk['server_address'], prover_sdk['credentials'], prover_sdk['p2p']):
+            assert 0, 'TODO'
+    finally:
+        await issuer.close()
+        await prover.close()
+        await verifier.close()
