@@ -51,11 +51,12 @@ class BaseIssuingStateMachine(AbstractStateMachine):
         self._register_for_aborting(self.__coprotocol)
         try:
             try:
-                yield
+                yield self.__coprotocol
             except OperationAbortedManually:
                 await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
+            await self.__coprotocol.clean()
             self._unregister_for_aborting(self.__coprotocol)
 
     async def switch(self, request: BaseIssueCredentialMessage, response_classes: list = None) -> Union[BaseIssueCredentialMessage, Ack]:

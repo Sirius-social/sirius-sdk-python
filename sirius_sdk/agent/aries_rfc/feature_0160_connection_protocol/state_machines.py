@@ -64,6 +64,7 @@ class BaseConnectionStateMachine(AbstractStateMachine):
                 await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
+            await co.clean()
             self._unregister_for_aborting(co)
 
 

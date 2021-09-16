@@ -14,6 +14,7 @@ from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.messages import *
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.error_codes import *
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.interactive import ProverInteractiveMode
 
 
 class BaseVerifyStateMachine(AbstractStateMachine):
@@ -42,11 +43,12 @@ class BaseVerifyStateMachine(AbstractStateMachine):
         self._register_for_aborting(self.__coprotocol)
         try:
             try:
-                yield
+                yield self.__coprotocol
             except OperationAbortedManually:
                 await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
+            await self.__coprotocol.clean()
             self._unregister_for_aborting(self.__coprotocol)
 
     async def switch(self, request: BasePresentProofMessage, response_classes: list = None) -> Union[BasePresentProofMessage, Ack]:
@@ -245,9 +247,18 @@ class Prover(BaseVerifyStateMachine):
         self.__verifier = verifier
         self.__pool_name = ledger.name
         self.__self_attested_identity = self_attested_identity or {}
+        self.__interactive: Optional[ProverInteractiveMode] = None
+
+    @property
+    def interactive(self) -> Optional[ProverInteractiveMode]:
+        """Return Interactive mode wrapper when prove_interactive was called"""
+        if self.__interactive is None:
+            logging.warning('Run code in prove_interactive context to allocate property!')
+        return self.__interactive
 
     async def prove(self, request: RequestPresentationMessage, master_secret_id: str) -> bool:
-        """
+        """Prove in automate mode
+
         :param request: Verifier request
         :param master_secret_id: prover secret id
         """
@@ -311,6 +322,26 @@ class Prover(BaseVerifyStateMachine):
                 if e.notify:
                     await self.send(self._problem_report)
                 return False
+
+    @contextlib.asynccontextmanager
+    async def prove_interactive(self, master_secret_id: str):
+        """Prove in interactive mode: user may select actual cred from multiple variants or propose proof_request to Verifier
+
+        :param master_secret_id: prover secret id
+        """
+        async with self.coprotocol(pairwise=self.__verifier) as co:
+            self.__interactive = ProverInteractiveMode(
+                my_did=self.__verifier.me.did,
+                pool_name=self.__pool_name,
+                master_secret_id=master_secret_id,
+                co=co,
+                self_attested_identity=self.__self_attested_identity
+            )
+            try:
+                yield self.__interactive
+            finally:
+                # clean ref
+                self.__interactive = None
 
     async def _extract_credentials_info(self, proof_request, pool_name: str) -> (dict, dict, dict, dict):
         # Extract credentials from wallet that satisfy to request
