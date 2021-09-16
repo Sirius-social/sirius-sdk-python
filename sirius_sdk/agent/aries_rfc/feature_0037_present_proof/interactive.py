@@ -188,7 +188,7 @@ class SelfIdentity:
         self.__proof_request = None
 
 
-class PresentProverInteractiveMode:
+class ProverInteractiveMode:
     """Wrap Prover->Verifier inter-communication in single interface
     """
 
@@ -247,13 +247,13 @@ class PresentProverInteractiveMode:
         }
         # Stage-1: self attested attributes
         for referent_id, self_attest_attr in identity.self_attested_attributes.items():
-            requested_credentials[referent_id] = self_attest_attr.value
+            requested_credentials['self_attested_attributes'][referent_id] = self_attest_attr.value
         # Stage-2: requested attributes
         for referent_id, attr_variants in identity.requested_attributes.items():
             selected_variants = [var for var in attr_variants if var.is_selected] or [attr_variants[0]]
             selected_variant = selected_variants[0]
             info = {
-                'cred_id': selected_variant.cred_info['referent_id'],
+                'cred_id': selected_variant.cred_info['referent'],
                 'revealed': selected_variant.revealed
             }
             requested_credentials['requested_attributes'][referent_id] = info
@@ -295,14 +295,21 @@ class PresentProverInteractiveMode:
         presentation_msg = PresentationMessage(proof, version=self.__version)
         presentation_msg.please_ack = True
         # Switch to Verifier
-        resp = await self.__coprotocol.switch(presentation_msg)
-        if isinstance(resp, Ack):
-            return True, None
-        elif isinstance(resp, PresentProofProblemReport):
-            return False, resp
+        ok, resp = await self.__coprotocol.switch(presentation_msg)
+        if ok:
+            if isinstance(resp, Ack):
+                return True, None
+            elif isinstance(resp, PresentProofProblemReport):
+                return False, resp
+            else:
+                problem_report = PresentProofProblemReport(
+                    RESPONSE_FOR_UNKNOWN_REQUEST, 'Unexpected response @type: %s' % str(resp.type)
+                )
+                await self.__coprotocol.send(problem_report)
+                return False, problem_report
         else:
             problem_report = PresentProofProblemReport(
-                RESPONSE_FOR_UNKNOWN_REQUEST, 'Unexpected response @type: %s' % str(resp.type)
+                RESPONSE_PROCESSING_ERROR, 'Response awaiting terminated by timeout'
             )
             await self.__coprotocol.send(problem_report)
             return False, problem_report

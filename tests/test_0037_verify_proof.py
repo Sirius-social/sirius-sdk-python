@@ -74,6 +74,37 @@ async def run_prover(
             raise
 
 
+async def run_prover_interactive(
+        uri: str, credentials: bytes, p2p: sirius_sdk.P2PConnection,
+        verifier: Pairwise, master_secret_id: str, self_attested_identity: dict = None
+):
+    async with sirius_sdk.context(uri, credentials, p2p):
+        listener = await sirius_sdk.subscribe()
+        event = await listener.get_one()
+        assert event.pairwise is not None
+        assert event.pairwise.their.did == verifier.their.did
+        request = event.message
+        assert isinstance(request, RequestPresentationMessage)
+        ttl = 60
+        try:
+            ledger = await sirius_sdk.ledger('default')
+            machine = Prover(verifier=verifier, ledger=ledger, time_to_live=ttl, self_attested_identity=self_attested_identity)
+            async with machine.prove_interactive(master_secret_id):
+                print('')
+                identity = await machine.interactive.fetch(request)
+                print('')
+                success, problem_report = await machine.interactive.prove(identity)
+                if not success:
+                    print('===================== Prover terminated with error ====================')
+                    if problem_report:
+                        print(json.dumps(problem_report, indent=2, sort_keys=True))
+                    print('=======================================================================')
+                return success, problem_report
+        except Exception as e:
+            print('==== Prover routine Exception: ' + repr(e))
+            raise
+
+
 @pytest.mark.asyncio
 async def test_sane(
         test_suite: ServerTestSuite, agent1: Agent, agent2: Agent, agent3: Agent, prover_master_secret_name: str
@@ -629,6 +660,8 @@ async def test_prove_interactive(
         print('Establish pairwises')
         i2p = await get_pairwise(issuer, prover)
         p2i = await get_pairwise(prover, issuer)
+        v2p = await get_pairwise(verifier, prover)
+        p2v = await get_pairwise(prover, verifier)
         print('Register schema')
         did_issuer, verkey_issuer = i2p.me.did, i2p.me.verkey
         schema_name = 'schema_' + uuid.uuid4().hex
@@ -684,8 +717,6 @@ async def test_prove_interactive(
         # FIRE !!!
         attr1_referent_id = 'attr1_referent'
         attr2_referent_id = 'attr2_referent'
-        attr3_referent_id = 'attr3_referent'
-        pred_referent_id = 'pred1_referent'
         async with sirius_sdk.context(verifier_sdk['server_address'], verifier_sdk['credentials'], verifier_sdk['p2p']):
             proof_request = {
                 "nonce": await sirius_sdk.AnonCreds.generate_nonce(),
@@ -700,31 +731,35 @@ async def test_prove_interactive(
                         }]
                     },
                     attr2_referent_id: {
-                        "name": "attr2",
-                        "restrictions": [{
-                            "issuer_did": did_issuer,
-                            'cred_def_id': cred_def.id
-                        }]
-                    },
-                    attr3_referent_id: {
                         "name": "email"
-                    }
-                },
-                "requested_predicates": {
-                    pred_referent_id: {
-                        'name': 'age',
-                        'p_type': '>=',
-                        'p_value': 0,
-                        "restrictions": {
-                            "issuer_did": did_issuer,
-                            'cred_def_id': cred_def.id
-                        }
                     }
                 }
             }
-        print('')
-        async with sirius_sdk.context(prover_sdk['server_address'], prover_sdk['credentials'], prover_sdk['p2p']):
-            assert 0, 'TODO'
+
+        prover_sdk = test_suite.get_agent_params('agent2')
+        verifier_sdk = test_suite.get_agent_params('agent3')
+
+        coro_verifier = run_verifier(
+            verifier_sdk['server_address'], verifier_sdk['credentials'], verifier_sdk['p2p'],
+            prover=v2p,
+            proof_request=proof_request
+        )
+        coro_prover = run_prover_interactive(
+            prover_sdk['server_address'], prover_sdk['credentials'], prover_sdk['p2p'],
+            verifier=p2v,
+            master_secret_id=prover_secret_id,
+            self_attested_identity={'email': 'test@gmail.com'}
+        )
+        print('Run state machines')
+        results = await run_coroutines(coro_verifier, coro_prover, timeout=60)
+        print('Finish state machines')
+        print(str(results))
+        assert len(results) == 2
+        for res, data in results:
+            assert res is True
+        revealed_attrs = [d for _, d in results if d][0]
+        assert revealed_attrs['email'] == 'test@gmail.com'
+        assert revealed_attrs['attr1'] == 'Value'
     finally:
         await issuer.close()
         await prover.close()
