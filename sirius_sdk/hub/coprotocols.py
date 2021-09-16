@@ -39,13 +39,13 @@ class AbstractCoProtocol(ABC):
 
     async def abort(self):
         if self._hub:
-            self._hub.run_soon(self.__clean())
+            self._hub.run_soon(self.clean())
             if not self.__is_aborted:
                 self.__is_aborted = True
                 await self._hub.abort()
                 self._hub = None
 
-    async def __clean(self):
+    async def clean(self):
         if self._is_start:
             await self._transport.stop()
             self._is_start = False
