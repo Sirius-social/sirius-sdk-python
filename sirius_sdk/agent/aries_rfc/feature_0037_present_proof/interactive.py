@@ -297,7 +297,7 @@ class ProverInteractiveMode:
         # Switch to Verifier
         ok, resp = await self.__coprotocol.switch(presentation_msg)
         if ok:
-            if isinstance(resp, Ack):
+            if isinstance(resp, Ack) or isinstance(resp, PresentationAck):
                 return True, None
             elif isinstance(resp, PresentProofProblemReport):
                 return False, resp
