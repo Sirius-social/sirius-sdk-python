@@ -290,6 +290,8 @@ class Prover(BaseVerifyStateMachine):
                     presentation_msg.please_ack = True
                     if request.please_ack:
                         presentation_msg.thread_id = request.ack_message_id
+                    else:
+                        presentation_msg.thread_id = request.id
 
                     # Step-3: Wait ACK
                     await self.log(progress=50, message='Send presentation')
@@ -297,7 +299,7 @@ class Prover(BaseVerifyStateMachine):
                     # Switch to await participant action
                     ack = await self.switch(presentation_msg, [Ack, PresentProofProblemReport])
 
-                    if isinstance(ack, Ack):
+                    if isinstance(ack, Ack) or isinstance(ack, PresentationAck):
                         await self.log(progress=100, message='Verify OK!')
                         return True
                     elif isinstance(ack, PresentProofProblemReport):
@@ -359,7 +361,7 @@ class Prover(BaseVerifyStateMachine):
         }
         requested_attributes_with_no_restrictions = {}
         for referent_id, data in proof_request.get('requested_attributes', {}).items():
-            restrictions = data.get('restrictions', None)
+            restrictions = data.get('restrictions', [])
             if not restrictions:
                 if 'names' in data:
                     requested_attributes_with_no_restrictions[referent_id] = data['names']

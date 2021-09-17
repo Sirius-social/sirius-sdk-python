@@ -596,7 +596,8 @@ async def test_self_identity(
                         }]
                     },
                     attr3_referent_id: {
-                        "name": "email"
+                        "name": "email",
+                        "restrictions": []
                     }
                 },
                 "requested_predicates": {
