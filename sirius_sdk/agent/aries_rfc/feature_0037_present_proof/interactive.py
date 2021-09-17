@@ -224,7 +224,7 @@ class ProverInteractiveMode:
         if request.please_ack:
             self.__thread_id = request.ack_message_id
         else:
-            self.__thread_id = None
+            self.__thread_id = request.id
         self.__version = request.version
         return self_identity
 
@@ -294,6 +294,8 @@ class ProverInteractiveMode:
         )
         presentation_msg = PresentationMessage(proof, version=self.__version)
         presentation_msg.please_ack = True
+        if self.__thread_id:
+            presentation_msg.thread_id = self.__thread_id
         # Switch to Verifier
         ok, resp = await self.__coprotocol.switch(presentation_msg)
         if ok:
