@@ -199,7 +199,7 @@ class Verifier(BaseVerifyStateMachine):
                         self.__revealed_attrs = revealed_attrs
 
                     # Send Ack
-                    ack = Ack(
+                    ack = PresentationAck(
                         thread_id=presentation.ack_message_id if presentation.please_ack else presentation.id,
                         status=Status.OK
                     )
