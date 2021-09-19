@@ -182,12 +182,13 @@ class Issuer(BaseIssuingStateMachine):
                 await self.log(progress=90, message='Send Issue message', payload=dict(issue_msg))
 
                 ack = await self.switch(issue_msg, [Ack])
-                if not isinstance(ack, Ack):
+                if isinstance(ack, Ack) or isinstance(ack, CredentialAck):
+                    await self.log(progress=100, message='Issuing was terminated successfully')
+                    return True
+                else:
                     raise StateMachineTerminatedWithError(
                         ISSUE_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type)
                     )
-                await self.log(progress=100, message='Issuing was terminated successfully')
-                return True
             except StateMachineTerminatedWithError as e:
                 self._problem_report = IssueProblemReport(
                     problem_code=e.problem_code,
@@ -345,14 +346,17 @@ class Holder(BaseIssuingStateMachine):
         if preview is not None:
             mime_types = {prop_attrib["name"]: prop_attrib["mime-type"] for prop_attrib in preview if "mime-type" in prop_attrib.keys()}
             if len(mime_types) > 0:
-                record = await sirius_sdk.NonSecrets.get_wallet_record("mime-types", cred_id, RetrieveRecordOptions(True, True, False))
+                record = await Holder.get_mime_types(cred_id)
                 if record:
                     await sirius_sdk.NonSecrets.delete_wallet_record("mime-types", cred_id)
                 await sirius_sdk.NonSecrets.add_wallet_record("mime-types", cred_id, base64.b64encode(json.dumps(mime_types).encode()).decode())
 
     @staticmethod
     async def get_mime_types(cred_id: str) -> dict:
-        record = await sirius_sdk.NonSecrets.get_wallet_record("mime-types", cred_id, RetrieveRecordOptions(True, True, False))
+        try:
+            record = await sirius_sdk.NonSecrets.get_wallet_record("mime-types", cred_id, RetrieveRecordOptions(True, True, False))
+        except WalletItemNotFound:
+            record = None
         if record is not None:
             return json.loads(base64.b64decode(record["value"]).decode())
         else:
