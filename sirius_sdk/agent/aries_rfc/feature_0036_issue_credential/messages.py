@@ -5,6 +5,7 @@ from collections import UserDict
 
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
+from sirius_sdk.agent.aries_rfc.feature_0015_acks.messages import Ack
 
 
 CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
@@ -80,6 +81,11 @@ class BaseIssueCredentialMessage(AriesProtocolMessage, metaclass=RegisterMessage
 
 
 class IssueProblemReport(AriesProblemReport, metaclass=RegisterMessage):
+
+    PROTOCOL = BaseIssueCredentialMessage.PROTOCOL
+
+
+class CredentialAck(Ack):
 
     PROTOCOL = BaseIssueCredentialMessage.PROTOCOL
 
@@ -196,7 +202,7 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
         preview = self.get('credential_preview', None)
         if (type(preview) is dict) and (preview.get('@type', None) == CREDENTIAL_PREVIEW_TYPE):
             attribs = preview.get('attributes', [])
-            return [ProposedAttrib(name=item["name"], value=item["value"], mime_type=item["mime-type"]) for item in attribs]
+            return [ProposedAttrib(name=item["name"], value=item["value"], mime_type=item.get("mime-type", 'text/plain')) for item in attribs]
         else:
             return None
 
@@ -249,7 +255,7 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
     def expires_time(self) -> Optional[str]:
         return self.get('~timing', {}).get('expires_time', None)
 
-    def parse(self) -> (dict, dict, dict):
+    def parse(self, mute_errors: bool = False) -> (dict, dict, dict):
         offer_attaches = self.get('offers~attach', None)
         if isinstance(offer_attaches, dict):
             offer_attaches = [offer_attaches]
@@ -271,10 +277,12 @@ class OfferCredentialMessage(BaseIssueCredentialMessage):
                     cred_def_body = {attr: val for attr, val in payload.items() if attr in cred_def_fields}
 
         if not offer_body:
-            raise SiriusValidationError('Expected offer~attach must contains Payload with offer')
+            if not mute_errors:
+                raise SiriusValidationError('Expected offer~attach must contains Payload with offer')
 
         if not cred_def_body:
-            raise SiriusValidationError('Expected offer~attach must contains Payload with cred_def data')
+            if not mute_errors:
+                raise SiriusValidationError('Expected offer~attach must contains Payload with cred_def data')
 
         return offer, offer_body, cred_def_body
 

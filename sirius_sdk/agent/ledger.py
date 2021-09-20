@@ -2,11 +2,12 @@ import json
 import copy
 import logging
 from typing import List, Optional, Union
+from datetime import datetime
 
 from sirius_sdk.base import JsonSerializable
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.errors.indy_exceptions import LedgerNotFound
-from sirius_sdk.errors.exceptions import SiriusInvalidPayloadStructure
+from sirius_sdk.errors.exceptions import SiriusInvalidPayloadStructure, SiriusValidationError
 from sirius_sdk.agent.wallet.abstract.ledger import AbstractLedger, NYMRole
 from sirius_sdk.agent.wallet.abstract.anoncreds import AnonCredSchema, AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache, CacheOptions
@@ -275,10 +276,19 @@ class Ledger:
         self._issuer = issuer
         self._storage = storage
         self.__db = 'ledger_storage_%s' % name
+        self.__acceptance_mechanism = ""
 
     @property
     def name(self) -> str:
         return self.__name
+
+    @property
+    def acceptance_mechanism(self) -> str:
+        return self.__acceptance_mechanism
+
+    @acceptance_mechanism.setter
+    def acceptance_mechanism(self, value: str):
+        self.__acceptance_mechanism = value
 
     async def read_nym(self, submitter_did: str, target_did: str) -> (bool, dict):
         resp = await self._api.read_nym(
@@ -383,6 +393,8 @@ class Ledger:
             submitter_did=submitter_did,
             data=body
         )
+        if self.acceptance_mechanism:
+            build_request = await self._append_author_agreement_acceptance(build_request)
         signed_request = await self._api.sign_request(
             submitter_did=submitter_did,
             request=build_request
@@ -506,3 +518,24 @@ class Ledger:
                     value=cred_def.serialize(),
                     tags=tags
                 )
+
+    async def get_acceptance_mechanisms(self) -> dict:
+        am_request = await self._api.build_get_acceptance_mechanisms_request(None, None, None)
+        am_response = await self._api.submit_request(self.name, am_request)
+        return am_response["result"]["data"]["aml"]
+
+    async def _append_author_agreement_acceptance(self, txn: dict) -> dict:
+        if not self.acceptance_mechanism:
+            raise SiriusValidationError(message="Acceptance mechanism not specified")
+
+        if self.acceptance_mechanism not in await self.get_acceptance_mechanisms():
+            raise SiriusValidationError(message="Unsupported acceptance mechanism")
+
+        aaa_request = await self._api.build_get_txn_author_agreement_request(None)
+        aaa_response = await self._api.submit_request(self.name, aaa_request)
+
+        digest = aaa_response["result"]["data"]["digest"]
+        return await self._api.append_txn_author_agreement_acceptance_to_request(request=txn, text=None, version=None,
+                                                                                 taa_digest=digest,
+                                                                                 mechanism=self.acceptance_mechanism,
+                                                                                 time=int(datetime.now().timestamp()))

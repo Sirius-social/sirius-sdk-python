@@ -9,6 +9,7 @@ import sirius_sdk
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.hub import CoProtocolP2P
 from sirius_sdk.agent.codec import encode
+from sirius_sdk.agent.ledger import Ledger
 from sirius_sdk.agent.aries_rfc.utils import utc_to_str
 from sirius_sdk.agent.ledger import Schema, CredentialDefinition
 from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
@@ -51,11 +52,12 @@ class BaseIssuingStateMachine(AbstractStateMachine):
         self._register_for_aborting(self.__coprotocol)
         try:
             try:
-                yield
+                yield self.__coprotocol
             except OperationAbortedManually:
                 await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
+            await self.__coprotocol.clean()
             self._unregister_for_aborting(self.__coprotocol)
 
     async def switch(self, request: BaseIssueCredentialMessage, response_classes: list = None) -> Union[BaseIssueCredentialMessage, Ack]:
@@ -180,12 +182,13 @@ class Issuer(BaseIssuingStateMachine):
                 await self.log(progress=90, message='Send Issue message', payload=dict(issue_msg))
 
                 ack = await self.switch(issue_msg, [Ack])
-                if not isinstance(ack, Ack):
+                if isinstance(ack, Ack) or isinstance(ack, CredentialAck):
+                    await self.log(progress=100, message='Issuing was terminated successfully')
+                    return True
+                else:
                     raise StateMachineTerminatedWithError(
                         ISSUE_PROCESSING_ERROR, 'Unexpected @type: %s' % str(resp.type)
                     )
-                await self.log(progress=100, message='Issuing was terminated successfully')
-                return True
             except StateMachineTerminatedWithError as e:
                 self._problem_report = IssueProblemReport(
                     problem_code=e.problem_code,
@@ -221,13 +224,14 @@ class Holder(BaseIssuingStateMachine):
 
     async def accept(
             self, offer: OfferCredentialMessage, master_secret_id: str,
-            comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE,
+            comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE, ledger: Ledger = None
     ) -> (bool, Optional[str]):
         """
         :param offer: credential offer
         :param master_secret_id: prover master secret ID
         :param comment: human readable comment
         :param locale: locale, for example "en" or "ru"
+        :param ledger: DKMS to retrieve actual schema and cred_def bodies if this not contains in Offer
         """
         doc_uri = offer.doc_uri
         async with self.coprotocol(pairwise=self.__issuer):
@@ -236,13 +240,29 @@ class Holder(BaseIssuingStateMachine):
                 try:
                     offer_msg.validate()
                 except SiriusValidationError as e:
-                    raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
+                    logging.warning(e.message)
+                    # raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
 
                 # Step-1: Process Issuer Offer
+                _, offer_body, cred_def_body = offer_msg.parse(mute_errors=True)
+                if not offer_body:
+                    raise StateMachineTerminatedWithError(
+                        OFFER_PROCESSING_ERROR, 'Error while parsing cred_offer', notify=True
+                    )
+                if not cred_def_body:
+                    if ledger:
+                        cred_def = await ledger.load_cred_def(
+                            offer_body['cred_def_id'], submitter_did=self.__issuer.me.did
+                        )
+                        cred_def_body = cred_def.body
+                if not cred_def_body:
+                    raise StateMachineTerminatedWithError(
+                        OFFER_PROCESSING_ERROR, 'Error while parsing cred_def', notify=True
+                    )
                 cred_request, cred_metadata = await sirius_sdk.AnonCreds.prover_create_credential_req(
                     prover_did=self.__issuer.me.did,
-                    cred_offer=offer_msg.offer,
-                    cred_def=offer_msg.cred_def,
+                    cred_offer=offer_body,
+                    cred_def=cred_def_body,
                     master_secret_id=master_secret_id
                 )
 
@@ -251,9 +271,14 @@ class Holder(BaseIssuingStateMachine):
                     comment=comment,
                     locale=locale,
                     cred_request=cred_request,
-                    doc_uri=doc_uri
+                    doc_uri=doc_uri,
+                    version=offer.version
                 )
 
+                if offer.please_ack:
+                    request_msg.thread_id = offer.ack_message_id
+                else:
+                    request_msg.thread_id = offer.id
                 # Switch to await participant action
                 resp = await self.switch(request_msg, [IssueCredentialMessage])
                 if not isinstance(resp, IssueCredentialMessage):
@@ -267,10 +292,10 @@ class Holder(BaseIssuingStateMachine):
 
                 # Step-3: Store credential
                 cred_id = await self._store_credential(
-                    cred_metadata, issue_msg.cred, offer.cred_def, None, issue_msg.cred_id
+                    cred_metadata, issue_msg.cred, cred_def_body, None, issue_msg.cred_id
                 )
                 await self._store_mime_types(cred_id, offer.preview)
-                ack = Ack(
+                ack = CredentialAck(
                     thread_id=issue_msg.ack_message_id if issue_msg.please_ack else issue_msg.id,
                     status=Status.OK,
                     doc_uri=doc_uri
@@ -321,11 +346,17 @@ class Holder(BaseIssuingStateMachine):
         if preview is not None:
             mime_types = {prop_attrib["name"]: prop_attrib["mime-type"] for prop_attrib in preview if "mime-type" in prop_attrib.keys()}
             if len(mime_types) > 0:
+                record = await Holder.get_mime_types(cred_id)
+                if record:
+                    await sirius_sdk.NonSecrets.delete_wallet_record("mime-types", cred_id)
                 await sirius_sdk.NonSecrets.add_wallet_record("mime-types", cred_id, base64.b64encode(json.dumps(mime_types).encode()).decode())
 
     @staticmethod
     async def get_mime_types(cred_id: str) -> dict:
-        record = await sirius_sdk.NonSecrets.get_wallet_record("mime-types", cred_id, RetrieveRecordOptions(True, True, False))
+        try:
+            record = await sirius_sdk.NonSecrets.get_wallet_record("mime-types", cred_id, RetrieveRecordOptions(True, True, False))
+        except WalletItemNotFound:
+            record = None
         if record is not None:
             return json.loads(base64.b64decode(record["value"]).decode())
         else:

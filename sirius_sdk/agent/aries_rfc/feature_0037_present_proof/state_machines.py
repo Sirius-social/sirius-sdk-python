@@ -13,15 +13,8 @@ from sirius_sdk.agent.wallet.abstract.cache import CacheOptions
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.messages import *
-
-
-PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
-RESPONSE_NOT_ACCEPTED = "response_not_accepted"
-RESPONSE_PROCESSING_ERROR = "response_processing_error"
-REQUEST_NOT_ACCEPTED = "request_not_accepted"
-RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
-REQUEST_PROCESSING_ERROR = 'request_processing_error'
-VERIFY_ERROR = 'verify_error'
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.error_codes import *
+from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.interactive import ProverInteractiveMode
 
 
 class BaseVerifyStateMachine(AbstractStateMachine):
@@ -50,11 +43,12 @@ class BaseVerifyStateMachine(AbstractStateMachine):
         self._register_for_aborting(self.__coprotocol)
         try:
             try:
-                yield
+                yield self.__coprotocol
             except OperationAbortedManually:
                 await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
+            await self.__coprotocol.clean()
             self._unregister_for_aborting(self.__coprotocol)
 
     async def switch(self, request: BasePresentProofMessage, response_classes: list = None) -> Union[BasePresentProofMessage, Ack]:
@@ -115,10 +109,15 @@ class Verifier(BaseVerifyStateMachine):
         self.__prover = prover
         self.__pool_name = ledger.name
         self.__requested_proof = None
+        self.__revealed_attrs = None
 
     @property
     def requested_proof(self) -> Optional[dict]:
         return self.__requested_proof
+
+    @property
+    def revealed_attrs(self) -> Optional[dict]:
+        return self.__revealed_attrs
 
     async def verify(
             self, proof_request: dict, translation: List[AttribTranslation] = None,
@@ -183,7 +182,24 @@ class Verifier(BaseVerifyStateMachine):
                 )
                 if success:
                     self.__requested_proof = presentation.proof['requested_proof']
-                    ack = Ack(
+
+                    # Parse response and fill revealed attrs
+                    revealed_attrs = {}
+                    for ref_id, value in self.__requested_proof['self_attested_attrs'].items():
+                        if ref_id in proof_request['requested_attributes']:
+                            if 'name' in proof_request['requested_attributes'][ref_id]:
+                                attr_name = proof_request['requested_attributes'][ref_id]['name']
+                                revealed_attrs[attr_name] = value
+                    for ref_id, data in self.__requested_proof['revealed_attrs'].items():
+                        if ref_id in proof_request['requested_attributes']:
+                            if 'name' in proof_request['requested_attributes'][ref_id]:
+                                attr_name = proof_request['requested_attributes'][ref_id]['name']
+                                revealed_attrs[attr_name] = data['raw']
+                    if revealed_attrs:
+                        self.__revealed_attrs = revealed_attrs
+
+                    # Send Ack
+                    ack = PresentationAck(
                         thread_id=presentation.ack_message_id if presentation.please_ack else presentation.id,
                         status=Status.OK
                     )
@@ -215,20 +231,34 @@ class Prover(BaseVerifyStateMachine):
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
     """
 
-    def __init__(self, verifier: Pairwise, ledger: Ledger, time_to_live: int = 60, logger=None, *args, **kwargs):
+    def __init__(
+            self, verifier: Pairwise, ledger: Ledger,
+            time_to_live: int = 60, logger=None, self_attested_identity: dict = None, *args, **kwargs
+    ):
         """
         :param verifier: Verifier described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
         :param ledger: network (DKMS) name that is used to verify credentials presented by prover
           (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
+        :param self_attested_identity: attributes dictionary {attr_name: value} to fill self_attested_attributes for requested attribs with no restrictions
         """
 
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__verifier = verifier
         self.__pool_name = ledger.name
+        self.__self_attested_identity = self_attested_identity or {}
+        self.__interactive: Optional[ProverInteractiveMode] = None
+
+    @property
+    def interactive(self) -> Optional[ProverInteractiveMode]:
+        """Return Interactive mode wrapper when prove_interactive was called"""
+        if self.__interactive is None:
+            logging.warning('Run code in prove_interactive context to allocate property!')
+        return self.__interactive
 
     async def prove(self, request: RequestPresentationMessage, master_secret_id: str) -> bool:
-        """
+        """Prove in automate mode
+
         :param request: Verifier request
         :param master_secret_id: prover secret id
         """
@@ -236,6 +266,7 @@ class Prover(BaseVerifyStateMachine):
             try:
                 # Step-1: Process proof-request
                 await self.log(progress=10, message='Received proof request', payload=dict(request))
+                await self.log(message='proof_request', payload=dict(request.proof_request))
                 try:
                     request.validate()
                 except SiriusValidationError as e:
@@ -244,7 +275,7 @@ class Prover(BaseVerifyStateMachine):
                     request.proof_request, self.__pool_name
                 )
 
-                if cred_infos.get('requested_attributes', None) or cred_infos.get('requested_predicates', None):
+                if cred_infos.get('requested_attributes', None) or cred_infos.get('requested_predicates', None) or cred_infos.get('self_attested_attributes', None):
                     # Step-2: Build proof
                     proof = await sirius_sdk.AnonCreds.prover_create_proof(
                         proof_req=request.proof_request,
@@ -259,6 +290,8 @@ class Prover(BaseVerifyStateMachine):
                     presentation_msg.please_ack = True
                     if request.please_ack:
                         presentation_msg.thread_id = request.ack_message_id
+                    else:
+                        presentation_msg.thread_id = request.id
 
                     # Step-3: Wait ACK
                     await self.log(progress=50, message='Send presentation')
@@ -266,7 +299,7 @@ class Prover(BaseVerifyStateMachine):
                     # Switch to await participant action
                     ack = await self.switch(presentation_msg, [Ack, PresentProofProblemReport])
 
-                    if isinstance(ack, Ack):
+                    if isinstance(ack, Ack) or isinstance(ack, PresentationAck):
                         await self.log(progress=100, message='Verify OK!')
                         return True
                     elif isinstance(ack, PresentProofProblemReport):
@@ -292,6 +325,26 @@ class Prover(BaseVerifyStateMachine):
                     await self.send(self._problem_report)
                 return False
 
+    @contextlib.asynccontextmanager
+    async def prove_interactive(self, master_secret_id: str):
+        """Prove in interactive mode: user may select actual cred from multiple variants or propose proof_request to Verifier
+
+        :param master_secret_id: prover secret id
+        """
+        async with self.coprotocol(pairwise=self.__verifier) as co:
+            self.__interactive = ProverInteractiveMode(
+                my_did=self.__verifier.me.did,
+                pool_name=self.__pool_name,
+                master_secret_id=master_secret_id,
+                co=co,
+                self_attested_identity=self.__self_attested_identity
+            )
+            try:
+                yield self.__interactive
+            finally:
+                # clean ref
+                self.__interactive = None
+
     async def _extract_credentials_info(self, proof_request, pool_name: str) -> (dict, dict, dict, dict):
         # Extract credentials from wallet that satisfy to request
         proof_response = await sirius_sdk.AnonCreds.prover_search_credentials_for_proof_req(
@@ -306,22 +359,41 @@ class Prover(BaseVerifyStateMachine):
             'requested_attributes': {},
             'requested_predicates': {}
         }
+        requested_attributes_with_no_restrictions = {}
+        for referent_id, data in proof_request.get('requested_attributes', {}).items():
+            restrictions = data.get('restrictions', [])
+            if not restrictions:
+                if 'names' in data:
+                    requested_attributes_with_no_restrictions[referent_id] = data['names']
+                if 'name' in data:
+                    requested_attributes_with_no_restrictions[referent_id] = [data['name']]
         all_infos = []
         for referent_id, cred_infos in proof_response['requested_attributes'].items():
-            cred_info = cred_infos[0]['cred_info']  # Get first
-            info = {
-                'cred_id': cred_info['referent'],
-                'revealed': True
-            }
-            requested_credentials['requested_attributes'][referent_id] = info
-            all_infos.append(cred_info)
+            if referent_id in requested_attributes_with_no_restrictions:
+                attr_names = requested_attributes_with_no_restrictions[referent_id]
+                for attr_name in attr_names:
+                    if attr_name in self.__self_attested_identity:
+                        requested_credentials['self_attested_attributes'][referent_id] = self.__self_attested_identity[attr_name]
+                    else:
+                        # set to empty str by default
+                        requested_credentials['self_attested_attributes'][referent_id] = ''
+            else:
+                if cred_infos:
+                    cred_info = cred_infos[0]['cred_info']  # Get first
+                    info = {
+                        'cred_id': cred_info['referent'],
+                        'revealed': True
+                    }
+                    requested_credentials['requested_attributes'][referent_id] = info
+                    all_infos.append(cred_info)
         for referent_id, predicates in proof_response['requested_predicates'].items():
-            pred_info = predicates[0]['cred_info']  # Get first
-            info = {
-                'cred_id': pred_info['referent']
-            }
-            requested_credentials['requested_predicates'][referent_id] = info
-            all_infos.append(pred_info)
+            if predicates:
+                pred_info = predicates[0]['cred_info']  # Get first
+                info = {
+                    'cred_id': pred_info['referent']
+                }
+                requested_credentials['requested_predicates'][referent_id] = info
+                all_infos.append(pred_info)
         for cred_info in all_infos:
             schema_id = cred_info['schema_id']
             cred_def_id = cred_info['cred_def_id']
