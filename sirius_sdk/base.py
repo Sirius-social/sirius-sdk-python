@@ -81,7 +81,7 @@ class WebSocketConnector(BaseConnector):
     ):
         self.__session = aiohttp.ClientSession(
             loop=loop,
-            timeout=aiohttp.ClientTimeout(total=timeout),
+            timeout=aiohttp.ClientTimeout(total=timeout, sock_read=timeout),
             headers={
                 'origin': server_address,
                 'credentials': credentials.decode('ascii')
