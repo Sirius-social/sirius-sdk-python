@@ -85,7 +85,7 @@ class WebSocketConnector(BaseConnector):
             headers={
                 'origin': server_address,
                 'credentials': credentials.decode('ascii')
-            }
+            },
         )
         self._url = urljoin(server_address, path)
         self._ws = None
@@ -99,7 +99,7 @@ class WebSocketConnector(BaseConnector):
 
     async def open(self):
         if not self.is_open:
-            self._ws = await self.__session.ws_connect(url=self._url)
+            self._ws = await self.__session.ws_connect(url=self._url, ssl=False)
 
     async def close(self):
         if self.is_open:
