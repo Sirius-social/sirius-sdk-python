@@ -52,7 +52,11 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
                 "id": 'did:peer:' + did + ";indy",
                 "type": "IndyAgent",
                 "priority": 0,
-                "recipientKeys": [key_id],
+                # >>>>>>>
+                # not all Frameworks supports DID reference
+                # "recipientKeys": [key_id],
+                "recipientKeys": [verkey],
+                # <<<<<<
                 "serviceEndpoint": endpoint,
             }],
         }
