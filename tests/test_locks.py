@@ -15,13 +15,13 @@ async def test_same_account(test_suite: ServerTestSuite):
         server_address=params['server_address'],
         credentials=params['credentials'],
         p2p=params['p2p'],
-        timeout=5,
+        timeout=30,
     )
     session2 = Agent(
         server_address=params['server_address'],
         credentials=params['credentials'],
         p2p=params['p2p'],
-        timeout=5,
+        timeout=30,
     )
     await session1.open()
     await session2.open()
