@@ -147,7 +147,6 @@ async def test_sane(
         assert mime_types["attr4"] == "image/png"
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_issuer_back_compatibility(indy_agent: IndyAgent, test_suite: ServerTestSuite, agent1: sirius_sdk.Agent):
     issuer = agent1
@@ -203,7 +202,6 @@ async def test_issuer_back_compatibility(indy_agent: IndyAgent, test_suite: Serv
     assert results[0] is True
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_holder_back_compatibility(
         indy_agent: IndyAgent, agent1: sirius_sdk.Agent,

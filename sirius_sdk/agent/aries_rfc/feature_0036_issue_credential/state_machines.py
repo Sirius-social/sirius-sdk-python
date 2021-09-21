@@ -298,7 +298,8 @@ class Holder(BaseIssuingStateMachine):
                 ack = CredentialAck(
                     thread_id=issue_msg.ack_message_id if issue_msg.please_ack else issue_msg.id,
                     status=Status.OK,
-                    doc_uri=doc_uri
+                    doc_uri=doc_uri,
+                    version=offer.version
                 )
                 await self.send(ack)
 
