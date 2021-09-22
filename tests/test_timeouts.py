@@ -164,64 +164,6 @@ async def test_state_machines_timeout(test_suite: ServerTestSuite):
     assert 4 <= stamps_delta.total_seconds() <= 6, f'Timeout {stamps_delta.total_seconds()}'
 
 
-@pytest.mark.skip('TODO')
-@pytest.mark.asyncio
-async def test_issue_big_cred(agent1: Agent, agent2: Agent, prover_master_secret_name: str):
-    issuer = agent1
-    holder = agent2
-    await issuer.open()
-    await holder.open()
-    try:
-        async with fix_timeout('Issuer create [did, verkey]'):
-            did_issuer, verkey_issuer = await issuer.wallet.did.create_and_store_my_did()
-        async with fix_timeout('Holder create [did, verkey]'):
-            did_holder, verkey_holder = await holder.wallet.did.create_and_store_my_did()
-        schema_name = 'schema_' + uuid.uuid4().hex
-
-        attrs = BIG_SCHEMA_ATTRS
-        async with fix_timeout('Issuer Create schema'):
-            schema_id, schema = await issuer.wallet.anoncreds.issuer_create_schema(
-                did_issuer, schema_name, '1.0', attrs
-            )
-        async with fix_timeout('Issuer register cred-def'):
-            cred_def_id, cred_def = await issuer.wallet.anoncreds.issuer_create_and_store_credential_def(
-                did_issuer, schema.body, 'TAG'
-            )
-        try:
-            await holder.wallet.anoncreds.prover_create_master_secret(prover_master_secret_name)
-        except AnoncredsMasterSecretDuplicateNameError:
-            pass
-        async with fix_timeout('Issuer build offer'):
-            offer = await issuer.wallet.anoncreds.issuer_create_credential_offer(cred_def_id)
-            with open('C:\\Temp\\offer.bin', 'w+b') as f:
-                f.write(json.dumps(offer).encode())
-            with open('C:\\Temp\\cred_def.bin', 'w+b') as f:
-                f.write(json.dumps(cred_def).encode())
-        print(f'Offer size: {len(str(offer))}')
-        async with fix_timeout('Holder create cred-request]'):
-            request, req_meta = await holder.wallet.anoncreds.prover_create_credential_req(
-                did_holder, offer, cred_def, prover_master_secret_name
-            )
-        print(f'Request size: {len(str(request))}')
-
-        encoded_cred_values = dict()
-        for attr in attrs:
-            value = uuid.uuid4().hex
-            encoded_cred_values[attr] = dict(raw=str(value), encoded=value_encode(value))
-        async with fix_timeout('Issuer create credential'):
-            cred, cred_revoc_id, revoc_reg_delta = await issuer.wallet.anoncreds.issuer_create_credential(
-                offer, request, encoded_cred_values
-            )
-        print(f'Cred size: {len(str(request))}')
-        async with fix_timeout('Holder store cred'):
-            cred_id = await holder.wallet.anoncreds.prover_store_credential(
-                'cred-id-%s' % uuid.uuid4().hex, req_meta, cred, cred_def
-            )
-    finally:
-        await issuer.close()
-        await holder.close()
-
-
 @pytest.mark.asyncio
 async def test_echo_big_message(agent4: Agent):
     await agent4.open()
