@@ -357,7 +357,7 @@ class Agent(TransportLayers):
         if data:
             params['data'] = data
         ret = await self.__rpc.remote_call(
-            msg_type='did: sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/echo',
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/echo',
             params=params
         )
         return ret

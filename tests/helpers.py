@@ -1,11 +1,14 @@
 import os
 import json
 import asyncio
+import datetime
 from typing import List, Any
+from contextlib import asynccontextmanager
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
 import pytest
+import sirius_sdk
 
 from sirius_sdk import Agent, Pairwise
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
@@ -372,3 +375,34 @@ async def run_coroutines(*args, timeout: int = 15):
     for f in pending:
         f.cancel()
     return results
+
+
+async def ensure_cred_def_exists_in_dkms(
+        network_name: str, did_issuer: str, schema_name: str, schema_ver: str, attrs: list, tag: str
+) -> (sirius_sdk.Schema, sirius_sdk.CredentialDefinition):
+    dkms = await sirius_sdk.ledger(network_name)  # Test network is prepared for Demo purposes
+    schema_id, anon_schema = await sirius_sdk.AnonCreds.issuer_create_schema(
+        did_issuer, schema_name, schema_ver, attrs
+    )
+    # Ensure schema exists on DKMS
+    schema_ = await dkms.ensure_schema_exists(anon_schema, did_issuer)
+    # Ensure CredDefs is stored to DKMS
+    cred_def_fetched = await dkms.fetch_cred_defs(tag=tag, schema_id=schema_.id)
+    if cred_def_fetched:
+        cred_def_ = cred_def_fetched[0]
+    else:
+        ok, cred_def_ = await dkms.register_cred_def(
+            cred_def=sirius_sdk.CredentialDefinition(tag=tag, schema=schema_),
+            submitter_did=did_issuer
+        )
+        assert ok is True
+    return schema_, cred_def_
+
+
+@asynccontextmanager
+async def fix_timeout(caption: str):
+    stamp1 = datetime.datetime.utcnow()
+    yield
+    stamp2 = datetime.datetime.utcnow()
+    delta = stamp2 - stamp1
+    print(f'Timeout for {caption}: {delta.total_seconds()} secs, utc1: {stamp1} utc2: {stamp2}')

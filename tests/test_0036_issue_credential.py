@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from typing import List, Any
 from datetime import datetime, timedelta
@@ -13,7 +14,8 @@ from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines imp
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 
 from .conftest import get_pairwise
-from .helpers import run_coroutines, IndyAgent, ServerTestSuite
+from .defs import BIG_SCHEMA_ATTRS
+from .helpers import run_coroutines, IndyAgent, ServerTestSuite, ensure_cred_def_exists_in_dkms
 
 
 async def run_issuer(
@@ -275,3 +277,58 @@ async def test_holder_back_compatibility(
     async with sirius_sdk.context(holder['server_address'], holder['credentials'], holder['p2p']):
         cred = await sirius_sdk.AnonCreds.prover_get_credential(cred_id)
     assert cred
+
+
+@pytest.mark.skip('TODO')
+@pytest.mark.asyncio
+async def test_large_cred(
+        test_suite: ServerTestSuite, agent1: sirius_sdk.Agent, agent3: sirius_sdk.Agent, prover_master_secret_name: str
+):
+    """Regress test for back-compatibility with Cardea Vaccinate certificates"""
+
+    await agent1.open()
+    await agent3.open()
+    try:
+        i2h = await get_pairwise(agent1, agent3)
+        h2i = await get_pairwise(agent3, agent1)
+    finally:
+        await agent1.close()
+        await agent3.close()
+    sdk_issuer = test_suite.get_agent_params('agent1')
+    did_issuer = test_suite.get_agent_params('agent1')['entities']['steward']['did']
+    sdk_holder = test_suite.get_agent_params('agent3')
+    async with sirius_sdk.context(sdk_issuer['server_address'], sdk_issuer['credentials'], sdk_issuer['p2p']):
+        schema, cred_def = await ensure_cred_def_exists_in_dkms(
+            network_name='default',
+            did_issuer=did_issuer,
+            schema_name='Live_demo_schema',
+            schema_ver='1.4',
+            tag='TAG',
+            attrs=BIG_SCHEMA_ATTRS
+        )
+
+    async with sirius_sdk.context(sdk_holder['server_address'], sdk_holder['credentials'], sdk_holder['p2p']):
+        print('Prepare Holder')
+        try:
+            await sirius_sdk.AnonCreds.prover_create_master_secret(prover_master_secret_name)
+        except AnoncredsMasterSecretDuplicateNameError:
+            pass
+
+    coro_holder = run_holder(
+        sdk_holder['server_address'], sdk_holder['credentials'], sdk_holder['p2p'],
+        issuer=h2i,
+        master_secret_id=prover_master_secret_name
+    )
+    fut = asyncio.ensure_future(coro_holder)
+
+    async with sirius_sdk.context(sdk_issuer['server_address'], sdk_issuer['credentials'], sdk_issuer['p2p']):
+        feature_0036 = sirius_sdk.aries_rfc.Issuer(holder=i2h)
+        values = {attr: uuid.uuid4().hex for attr in BIG_SCHEMA_ATTRS}
+        success = await feature_0036.issue(
+            values=values,
+            schema=schema,
+            cred_def=cred_def,
+            comment='Hello, it is your Transcript',
+            cred_id=uuid.uuid4().hex
+        )
+        assert success

@@ -81,7 +81,7 @@ class WebSocketConnector(BaseConnector):
     ):
         self.__session = aiohttp.ClientSession(
             loop=loop,
-            timeout=aiohttp.ClientTimeout(total=timeout, sock_read=timeout),
+            timeout=aiohttp.ClientTimeout(total=timeout),
             headers={
                 'origin': server_address,
                 'credentials': credentials.decode('ascii')
@@ -89,6 +89,7 @@ class WebSocketConnector(BaseConnector):
         )
         self._url = urljoin(server_address, path)
         self._ws = None
+        self.__timeout = timeout
 
     def __del__(self):
         asyncio.ensure_future(self.__session.close())
@@ -112,7 +113,7 @@ class WebSocketConnector(BaseConnector):
 
     async def read(self, timeout: int=None) -> bytes:
         try:
-            msg = await self._ws.receive(timeout=timeout)
+            msg = await self._ws.receive(timeout=timeout or self.__timeout)
         except asyncio.TimeoutError as e:
             raise SiriusTimeoutIO() from e
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
