@@ -2,7 +2,7 @@ import asyncio
 import logging
 from enum import IntEnum
 from abc import ABC, abstractmethod
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Any
 from urllib.parse import urlparse
 
 from multipledispatch import dispatch
@@ -348,6 +348,19 @@ class Agent(TransportLayers):
                 'kill_tasks': kill_tasks
             }
         )
+
+    async def echo(self, message: Any, data: Optional[Any] = None) -> Any:
+        self.__check_is_open()
+        params = {
+            'message': message
+        }
+        if data:
+            params['data'] = data
+        ret = await self.__rpc.remote_call(
+            msg_type='did: sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/echo',
+            params=params
+        )
+        return ret
 
     def __check_is_open(self):
         if self.__rpc and self.__rpc.is_open:
