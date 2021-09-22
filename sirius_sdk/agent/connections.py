@@ -38,7 +38,7 @@ class Endpoint:
 
 class BaseAgentConnection(ABC):
 
-    IO_TIMEOUT = 30
+    IO_TIMEOUT = 60
     MSG_TYPE_CONTEXT = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/context'
 
     def __init__(

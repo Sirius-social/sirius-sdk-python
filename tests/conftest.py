@@ -83,7 +83,6 @@ def get_agent(name: str) -> Agent:
         server_address=params['server_address'],
         credentials=params['credentials'],
         p2p=params['p2p'],
-        timeout=30,
         name=name
     )
     return agent

@@ -72,7 +72,7 @@ class BaseConnector(ReadOnlyChannel, WriteOnlyChannel):
 
 class WebSocketConnector(BaseConnector):
 
-    DEF_TIMEOUT = 30.0
+    DEF_TIMEOUT = 60.0
     ENC = 'utf-8'
 
     def __init__(
