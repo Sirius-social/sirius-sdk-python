@@ -113,6 +113,7 @@ services:
       - KAFKA_REST_ADDRESS=http://kafkarest:8000
       - DOWNLOAD_DIR=/tmp
       - TEST_SUITE=/test_suite/test_suite.json
+      - LOGLEVEL=DEBUG
     working_dir: /home/indy
     volumes:
        - sandbox:/var/sandbox
