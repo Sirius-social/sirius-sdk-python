@@ -132,6 +132,14 @@ class ProposeCredentialMessage(BaseIssueCredentialMessage):
                     }
                 ]
 
+    @property
+    def schema_id(self) -> Optional[str]:
+        return self.get('schema_id', None)
+
+    @property
+    def cred_def_id(self) -> Optional[str]:
+        return self.get('cred_def_id', None)
+
 
 class OfferCredentialMessage(BaseIssueCredentialMessage):
 
