@@ -7,13 +7,10 @@ import pytest
 import sirius_sdk
 from sirius_sdk import Agent
 from sirius_sdk.base import WebSocketConnector, Message
-from sirius_sdk.agent.codec import encode as value_encode
 from sirius_sdk.agent.coprotocols import ThreadBasedCoProtocolTransport
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
-from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
-from .helpers import ServerTestSuite, fix_timeout
+from .helpers import ServerTestSuite
 from .conftest import get_pairwise
-from .defs import BIG_SCHEMA_ATTRS
 
 
 @pytest.mark.asyncio
