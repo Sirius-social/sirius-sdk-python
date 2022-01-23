@@ -12,6 +12,7 @@ from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from sirius_sdk.agent.aries_rfc.did_doc import DIDDoc
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
+from sirius_sdk.agent.aries_rfc.feature_0015_acks.messages import Ack
 
 
 class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
@@ -286,3 +287,8 @@ class ConnResponse(ConnProtocolMessage, metaclass=RegisterMessage):
         if success:
             self['connection'] = connection
         return success
+
+
+class ConnectionAck(Ack):
+
+    PROTOCOL = ConnProtocolMessage.PROTOCOL
