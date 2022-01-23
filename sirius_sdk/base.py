@@ -1,4 +1,5 @@
 import asyncio
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Union, List
 from urllib.parse import urljoin
@@ -77,15 +78,19 @@ class WebSocketConnector(BaseConnector):
 
     def __init__(
             self, server_address: str, path: str, credentials: bytes,
-            timeout: float=DEF_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+            timeout: float = DEF_TIMEOUT, loop: asyncio.AbstractEventLoop = None,
+            extra: dict = None
     ):
+        headers = {
+            'origin': server_address,
+            'credentials': credentials.decode('ascii')
+        }
+        if extra:
+            headers['extra'] = json.dumps(extra)
         self.__session = aiohttp.ClientSession(
             loop=loop,
             timeout=aiohttp.ClientTimeout(total=timeout),
-            headers={
-                'origin': server_address,
-                'credentials': credentials.decode('ascii')
-            },
+            headers=headers
         )
         self._url = urljoin(server_address, path)
         self._ws = None

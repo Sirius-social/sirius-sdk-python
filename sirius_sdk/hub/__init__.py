@@ -37,9 +37,9 @@ async def endpoints() -> List[Endpoint]:
         return agent.endpoints
 
 
-async def subscribe() -> Listener:
+async def subscribe(group_id: str = None) -> Listener:
     async with _current_hub().get_agent_connection_lazy() as agent:
-        return await agent.subscribe()
+        return await agent.subscribe(group_id=group_id)
 
 
 async def ping() -> bool:
