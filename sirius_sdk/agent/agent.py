@@ -2,7 +2,7 @@ import asyncio
 import logging
 from enum import IntEnum
 from abc import ABC, abstractmethod
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Any
 from urllib.parse import urlparse
 
 from multipledispatch import dispatch
@@ -13,6 +13,7 @@ from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
+from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from sirius_sdk.agent.ledger import Ledger
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
@@ -73,7 +74,8 @@ class Agent(TransportLayers):
             self, server_address: str, credentials: bytes,
             p2p: P2PConnection, timeout: int = BaseAgentConnection.IO_TIMEOUT,
             loop: asyncio.AbstractEventLoop = None, storage: AbstractImmutableCollection = None,
-            name: str = None, spawn_strategy: SpawnStrategy = SpawnStrategy.PARALLEL
+            name: str = None, spawn_strategy: SpawnStrategy = SpawnStrategy.PARALLEL,
+            external_crypto: AbstractCrypto = None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -99,6 +101,7 @@ class Agent(TransportLayers):
         self.__microledgers = None
         self.__name = name
         self.__spawn_strategy = spawn_strategy
+        self.__external_crypto_service = external_crypto
 
     @property
     def name(self) -> Optional[str]:
@@ -137,7 +140,8 @@ class Agent(TransportLayers):
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
@@ -151,7 +155,8 @@ class Agent(TransportLayers):
     async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
@@ -164,7 +169,8 @@ class Agent(TransportLayers):
     async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
@@ -179,7 +185,8 @@ class Agent(TransportLayers):
     async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
@@ -193,7 +200,8 @@ class Agent(TransportLayers):
     async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
@@ -209,7 +217,8 @@ class Agent(TransportLayers):
     async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
@@ -222,7 +231,8 @@ class Agent(TransportLayers):
 
     async def open(self):
         self.__rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            self.__server_address, self.__credentials, self.__p2p,
+            self.__timeout, self.__loop, self.__external_crypto_service
         )
         self.__endpoints = self.__rpc.endpoints
         self.__wallet = DynamicWallet(rpc=self.__rpc)
@@ -236,10 +246,15 @@ class Agent(TransportLayers):
         self.__pairwise_list = WalletPairwiseList(api=(self.__wallet.pairwise, self.__wallet.did))
         self.__microledgers = MicroledgerList(api=self.__rpc)
 
-    async def subscribe(self) -> Listener:
+    async def subscribe(self, group_id: str = None) -> Listener:
         self.__check_is_open()
+        if group_id:
+            extra = {'group_id': group_id}
+        else:
+            extra = None
         self.__events = await AgentEvents.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            self.__server_address, self.__credentials, self.__p2p,
+            self.__timeout, self.__loop, self.__external_crypto_service, extra
         )
         return Listener(self.__events, self.pairwise_list)
 
@@ -348,6 +363,19 @@ class Agent(TransportLayers):
                 'kill_tasks': kill_tasks
             }
         )
+
+    async def echo(self, message: Any, data: Optional[Any] = None) -> Any:
+        self.__check_is_open()
+        params = {
+            'message': message
+        }
+        if data:
+            params['data'] = data
+        ret = await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/echo',
+            params=params
+        )
+        return ret
 
     def __check_is_open(self):
         if self.__rpc and self.__rpc.is_open:

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from typing import List, Any
 from datetime import datetime, timedelta
@@ -13,7 +14,8 @@ from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines imp
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 
 from .conftest import get_pairwise
-from .helpers import run_coroutines, IndyAgent, ServerTestSuite
+from .defs import BIG_SCHEMA_ATTRS
+from .helpers import run_coroutines, IndyAgent, ServerTestSuite, ensure_cred_def_exists_in_dkms
 
 
 async def run_issuer(

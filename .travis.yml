@@ -41,3 +41,4 @@ script:
   - pytest tests/test_non_secrets.py
   - pytest tests/test_locks.py
   - pytest tests/test_timeouts.py
+  - pytest tests/test_forwarding.py

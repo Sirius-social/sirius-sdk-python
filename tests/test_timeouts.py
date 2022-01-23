@@ -1,4 +1,5 @@
 import datetime
+import json
 import uuid
 
 import pytest
@@ -37,7 +38,7 @@ async def test_agent_rcv_timeout(test_suite: ServerTestSuite):
         server_address=params['server_address'],
         path='/rpc',
         credentials=params['credentials'],
-        timeout=10000,
+        timeout=10000,  # infinite
     )
     await conn_with_local_setting.open()
     try:
@@ -47,6 +48,26 @@ async def test_agent_rcv_timeout(test_suite: ServerTestSuite):
             await conn_with_local_setting.read(timeout)
     finally:
         await conn_with_local_setting.close()
+
+    # Check-3: check timeout for ttl was set greater than global setting
+    conn_with_little_global_timeout = WebSocketConnector(
+        server_address=params['server_address'],
+        path='/rpc',
+        credentials=params['credentials'],
+        timeout=1,  # low value
+    )
+    await conn_with_little_global_timeout.open()
+    try:
+        context = await conn_with_little_global_timeout.read()
+        assert context
+        stamp1 = datetime.datetime.utcnow()
+        with pytest.raises(SiriusTimeoutIO):
+            await conn_with_little_global_timeout.read(timeout=5)
+        stamp2 = datetime.datetime.utcnow()
+        stamps_delta = stamp2 - stamp1
+        assert 4 <= stamps_delta.total_seconds() <= 6, f'Timeout {stamps_delta.total_seconds()}'
+    finally:
+        await conn_with_little_global_timeout.close()
 
 
 @pytest.mark.asyncio
@@ -133,6 +154,24 @@ async def test_state_machines_timeout(test_suite: ServerTestSuite):
             ),
             my_label='Me'
         )
+        assert success is False
+        assert rfc_0160.problem_report is not None
     stamp2 = datetime.datetime.utcnow()
     stamps_delta = stamp2 - stamp1
     assert 4 <= stamps_delta.total_seconds() <= 6, f'Timeout {stamps_delta.total_seconds()}'
+
+
+@pytest.mark.asyncio
+async def test_echo_big_message(agent4: Agent):
+    await agent4.open()
+    try:
+        lst = [str(x) for x in range(100000)]
+        big_data = ''.join(lst)
+        stamp1 = datetime.datetime.utcnow()
+        ret = await agent4.echo(message=big_data)
+        stamp2 = datetime.datetime.utcnow()
+        stamps_delta = stamp2 - stamp1
+        stamps_delta_sec = stamps_delta.total_seconds()
+        assert stamps_delta_sec < 1, f'Timeout {stamps_delta.total_seconds()}'
+    finally:
+        await agent4.close()

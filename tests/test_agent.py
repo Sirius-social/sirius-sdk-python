@@ -52,6 +52,24 @@ async def test_agents_wallet(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_with_group_id(test_suite: ServerTestSuite):
+    params = test_suite.get_agent_params('agent1')
+    agent = Agent(
+        server_address=params['server_address'],
+        credentials=params['credentials'],
+        p2p=params['p2p'],
+        timeout=5,
+    )
+    await agent.open()
+    try:
+        await agent.subscribe(group_id='test-group')
+        group_id = agent.__getattribute__('_Agent__events').balancing_group
+        assert group_id == 'test-group'
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
 async def test_agents_communications(test_suite: ServerTestSuite):
     agent1_params = test_suite.get_agent_params('agent1')
     agent2_params = test_suite.get_agent_params('agent2')

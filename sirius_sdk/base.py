@@ -1,4 +1,5 @@
 import asyncio
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Union, List
 from urllib.parse import urljoin
@@ -72,23 +73,28 @@ class BaseConnector(ReadOnlyChannel, WriteOnlyChannel):
 
 class WebSocketConnector(BaseConnector):
 
-    DEF_TIMEOUT = 30.0
+    DEF_TIMEOUT = 60.0
     ENC = 'utf-8'
 
     def __init__(
             self, server_address: str, path: str, credentials: bytes,
-            timeout: float=DEF_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+            timeout: float = DEF_TIMEOUT, loop: asyncio.AbstractEventLoop = None,
+            extra: dict = None
     ):
+        headers = {
+            'origin': server_address,
+            'credentials': credentials.decode('ascii')
+        }
+        if extra:
+            headers['extra'] = json.dumps(extra)
         self.__session = aiohttp.ClientSession(
             loop=loop,
-            timeout=aiohttp.ClientTimeout(total=timeout, sock_read=timeout),
-            headers={
-                'origin': server_address,
-                'credentials': credentials.decode('ascii')
-            },
+            timeout=aiohttp.ClientTimeout(total=timeout),
+            headers=headers
         )
         self._url = urljoin(server_address, path)
         self._ws = None
+        self.__timeout = timeout
 
     def __del__(self):
         asyncio.ensure_future(self.__session.close())
@@ -112,7 +118,7 @@ class WebSocketConnector(BaseConnector):
 
     async def read(self, timeout: int=None) -> bytes:
         try:
-            msg = await self._ws.receive(timeout=timeout)
+            msg = await self._ws.receive(timeout=timeout or self.__timeout)
         except asyncio.TimeoutError as e:
             raise SiriusTimeoutIO() from e
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:

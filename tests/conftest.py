@@ -1,9 +1,11 @@
 import os
 import uuid
 import asyncio
+from typing import Tuple, Dict
 
 import pytest
 
+import sirius_sdk
 from sirius_sdk import Agent, Pairwise
 from sirius_sdk.rpc import AddressedTunnel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
@@ -83,7 +85,6 @@ def get_agent(name: str) -> Agent:
         server_address=params['server_address'],
         credentials=params['credentials'],
         p2p=params['p2p'],
-        timeout=30,
         name=name
     )
     return agent
@@ -159,7 +160,7 @@ def default_network() -> str:
     return 'default'
 
 
-async def get_pairwise(me: Agent, their: Agent):
+async def get_pairwise(me: Agent, their: Agent) -> sirius_sdk.Pairwise:
     suite = get_suite_singleton()
     me_params = suite.get_agent_params(me.name)
     their_params = suite.get_agent_params(their.name)
@@ -199,3 +200,26 @@ async def get_pairwise(me: Agent, their: Agent):
             await agent.pairwise_list.ensure_exists(pairwise)
     pairwise = await self.pairwise_list.load_for_did(their_did=their_entity['did'])
     return pairwise
+
+
+async def get_pairwise2(me: Tuple[Dict, str], their: Tuple[Dict, str]) -> sirius_sdk.Pairwise:
+    agent_me = Agent(
+        server_address=me[0]['server_address'],
+        credentials=me[0]['credentials'],
+        p2p=me[0]['p2p'],
+        name=me[1]
+    )
+    agent_their = Agent(
+        server_address=their[0]['server_address'],
+        credentials=their[0]['credentials'],
+        p2p=their[0]['p2p'],
+        name=their[1]
+    )
+    await agent_me.open()
+    await agent_their.open()
+    try:
+        p2p = await get_pairwise(agent_me, agent_their)
+        return p2p
+    finally:
+        await agent_me.close()
+        await agent_their.close()
