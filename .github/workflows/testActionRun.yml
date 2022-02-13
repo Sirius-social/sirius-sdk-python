@@ -12,7 +12,6 @@ jobs:
 
       - run: |
           pwd
-          cd test_suite
 
       - name: Start containers
         run: docker-compose up -d
