@@ -1,0 +1,11 @@
+name: run test
+on: [push]
+jobs:
+  run_python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+          architecture: 'x64'
+      - run: python tests/test_messages.py
