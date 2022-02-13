@@ -7,10 +7,10 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: '3.8'
-      - run: cd /test_suite
 
       - name: Start containers
-        run: docker-compose 'docker-compose.yml' up -d
+        working-directory: ./test_suite
+        run: docker-compose up -d
 
       - run: sleep 60
       - run: pip install -r requirements.txt
