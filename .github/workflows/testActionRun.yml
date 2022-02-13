@@ -11,8 +11,7 @@ jobs:
       - uses: docker/setup-buildx-action@v1.6.0
 
       - name: Start containers
-        working-directory: test_suite
-        run: docker-compose up -d
+        run: docker-compose 'docker-compose.yml' up -d
 
       - run: sleep 60
       - run: pip install -r requirements.txt
