@@ -9,7 +9,7 @@ jobs:
           python-version: '3.8'
 
       - name: Start containers
-        working-directory: ./test_suite
+        working-directory: /test_suite
         run: docker-compose up -d
 
       - run: sleep 60
