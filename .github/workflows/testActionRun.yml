@@ -10,7 +10,9 @@ jobs:
 
       - uses: docker/setup-buildx-action@v1.6.0
 
-      - run: cd test_suite
+      - run: |
+          pwd
+          cd test_suite
 
       - name: Start containers
         run: docker-compose up -d
