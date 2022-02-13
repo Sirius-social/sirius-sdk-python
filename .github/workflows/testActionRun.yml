@@ -10,8 +10,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v1.6.0
 
-      - uses: actions/checkout
-      - uses: /Users/valentin/sirius-sdk-python/test_suite
+      - uses: actions/checkout@v1
       - run: |
           pwd
 
