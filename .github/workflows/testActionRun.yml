@@ -8,4 +8,4 @@ jobs:
         with:
           python-version: '3.8'
           architecture: 'x64'
-      - run: python test_messages.py
+      - run: pytest tests/test_messages.py
