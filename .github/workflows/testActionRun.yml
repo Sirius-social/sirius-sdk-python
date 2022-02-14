@@ -15,6 +15,8 @@ jobs:
         working-directory: ./test_suite
         run: docker-compose up -d
 
+      - run: sleep 60
+
       - run: pip install -r requirements.txt
 
       - name: Run tests
