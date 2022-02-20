@@ -1,4 +1,4 @@
-name: run test
+name: run tests
 on: [push]
 jobs:
   run_python_test:
@@ -15,6 +15,7 @@ jobs:
         working-directory: ./test_suite
         run: docker-compose up -d
 
+      - name: Pip install requirements
       - run: pip install -r requirements.txt
 
       - name: Run tests
