@@ -20,11 +20,10 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest tests
+        run: pytest --junitxml=tests/test_results/result.xml tests
 
-      - name: Archive Test Results
-        uses: actions/upload-artifact@v1
+      - name: Publish Unit Test Results
+        uses: EnricoMi/publish-unit-test-result-action/composite@v1
         if: always()
         with:
-          name: test-results
-          path: app/build
+          files: tests/test_results/result.xml
