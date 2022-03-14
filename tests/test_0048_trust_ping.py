@@ -39,14 +39,6 @@ async def test_establish_connection(agent1: Agent, agent2: Agent, agent3: Agent)
         assert isinstance(recv, Ping)
         assert recv.comment == ping.comment
 
-        # Check ERR
-        to = Pairwise(
-            me=Pairwise.Me(did=did1, verkey=verkey1),
-            their=Pairwise.Their(did=did2, label='Agent3', endpoint=endpoint_address_3, verkey=verkey2)
-        )
-        with pytest.raises(BaseSiriusException):
-            await agent1.send_to(ping, to)
-
     finally:
         await agent1.close()
         await agent2.close()
