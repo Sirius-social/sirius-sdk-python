@@ -12,6 +12,7 @@ from sirius_sdk.agent.listener import Listener
 from sirius_sdk.agent.connections import Endpoint
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 
+from .config import Config
 from .core import _current_hub, init, context
 from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy, AnonCredsProxy, \
     CacheProxy, NonSecretsProxy

@@ -1,6 +1,6 @@
 import sys
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, Generator
 
 from sirius_sdk.agent.connections import AgentEvents
 from sirius_sdk.errors.exceptions import SiriusConnectionClosed
@@ -71,24 +71,12 @@ class Listener:
             pairwise = None
         return Event(pairwise=pairwise, **event)
 
-    if PY_35:
-        def __aiter__(self):
-            if not self.__source.is_open:
-                raise SiriusConnectionClosed()
-            return self
+    def __aiter__(self) -> Generator[Event, None, None]:
+        if not self.__source.is_open:
+            raise SiriusConnectionClosed()
+        return self
 
-        # Old 3.5 versions require a coroutine
-        if not PY_352:
-            __aiter__ = asyncio.coroutine(__aiter__)
-
-        @asyncio.coroutine
-        def __anext__(self):
-            """Asyncio iterator interface for listener
-
-            Note:
-                TopicAuthorizationFailedError and OffsetOutOfRangeError
-                exceptions can be raised in iterator.
-                All other KafkaError exceptions will be logged and not raised
-            """
-            while True:
-                return (yield from self.get_one())
+    async def __anext__(self):
+        while True:
+            e = await self.get_one()
+            return e

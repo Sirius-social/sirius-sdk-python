@@ -1,4 +1,6 @@
 import asyncio
+import warnings
+import functools
 import threading
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -15,6 +17,7 @@ from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
 from .context import get as context_get, set as context_set, clear as context_clear
+from .config import Config
 
 
 __ROOT_HUB = None
@@ -169,17 +172,39 @@ class Hub:
             )
 
 
-def init(server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
-         storage: AbstractImmutableCollection = None,
-         crypto: AbstractCrypto = None, microledgers: AbstractMicroledgerList = None,
-         did: AbstractDID = None, pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None
-         ):
+def deprecated_init_params(f):
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if args:
+            first_arg = args[0]
+            if type(first_arg) is not Config:
+                warnings.warn('Use sirius_sdk.Config to configure SDK', DeprecationWarning)
+        if kwargs:
+            for arg in kwargs.keys():
+                warnings.warn(f'{arg} param is Deprecated. Use sirius_sdk.Config to configure SDK', DeprecationWarning)
+        if args:
+            first = args[0]
+            if type(first) is Config:
+                cfg = first
+            else:
+                cfg = Config()
+            if len(args) >= 3:
+                opts = list(args)[:3]
+                cfg.setup_cloud(*opts)
+        else:
+            cfg = Config()
+        cfg.override(**kwargs)
+        new_kwargs = cfg.cloud_opts
+        new_kwargs.update(cfg.overrides)
+        return f(**new_kwargs)
+    return wrapper
+
+
+@deprecated_init_params
+def init(*args, **kwargs):
     global __ROOT_HUB
-    root = Hub(
-        server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout,
-        storage=storage, crypto=crypto, microledgers=microledgers,
-        pairwise_storage=pairwise_storage, did=did, non_secrets=non_secrets
-    )
+    root = Hub(**kwargs)
     loop = asyncio.get_event_loop()
     if loop.is_running():
         raise SiriusInitializationError('You must call this method outside coroutine')
@@ -188,18 +213,9 @@ def init(server_uri: str = None, credentials: bytes = None, p2p: P2PConnection =
 
 
 @asynccontextmanager
-async def context(
-          server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
-          storage: AbstractImmutableCollection = None,
-          crypto: AbstractCrypto = None, microledgers: AbstractMicroledgerList = None,
-          did: AbstractDID = None, pairwise_storage: AbstractPairwiseList = None,
-          non_secrets: AbstractNonSecrets = None
-):
-    hub = Hub(
-        server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout,
-        storage=storage, crypto=crypto, microledgers=microledgers,
-        pairwise_storage=pairwise_storage, did=did, non_secrets=non_secrets
-    )
+@deprecated_init_params
+async def context(*args, **kwargs):
+    hub = Hub(**kwargs)
     old_hub = __get_thread_local_gub()
     __THREAD_LOCAL_HUB.instance = hub
     try:
