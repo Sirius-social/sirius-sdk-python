@@ -16,6 +16,7 @@ class Config:
     def __init__(self):
         self.__overrides = {}
         self.__cloud_opts = {}
+        self.__mediator_opts = {}
 
     @property
     def overrides(self) -> Dict[str, Any]:
@@ -24,6 +25,10 @@ class Config:
     @property
     def cloud_opts(self) -> Dict[str, Any]:
         return self.__cloud_opts
+
+    @property
+    def mediator_opts(self) -> Dict[str, Any]:
+        return self.__mediator_opts
 
     def setup_cloud(
             self, server_uri: str, credentials: Union[bytes, str],
@@ -57,6 +62,12 @@ class Config:
             self.__cloud_opts['p2p'] = p2p
         else:
             raise SiriusInitializationError('Unexpected p2p type')
+        if io_timeout:
+            self.__cloud_opts['io_timeout'] = io_timeout
+        return self
+
+    def setup_mediator(self, uri: str, my_verkey: str, mediator_verkey: str) -> "Config":
+        self.__mediator_opts = {'uri': uri, 'my_verkey': my_verkey, 'mediator_verkey': mediator_verkey}
         return self
 
     def override(
