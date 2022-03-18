@@ -17,6 +17,8 @@ jobs:
 
       - name: Pip install requirements
         run: pip install -r requirements.txt
+        
+      - run: sleep 30
 
       - name: Run tests
         run: pytest --junitxml=tests_results/result.xml tests
