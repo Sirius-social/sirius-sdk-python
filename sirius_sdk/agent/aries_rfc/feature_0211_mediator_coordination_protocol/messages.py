@@ -55,10 +55,13 @@ class KeylistUpdate(CoordinateMediationMessage, metaclass=RegisterMessage):
 
     NAME = 'keylist-update'
 
-    def __init__(self, endpoint: str, updates: List[Union[KeylistAddAction, KeylistRemoveAction]], *args, **kwargs):
+    def __init__(self, endpoint: str = None, updates: List[Union[KeylistAddAction, KeylistRemoveAction]] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self['endpoint'] = endpoint
-        self['updates'] = updates
+        if endpoint:
+            self['endpoint'] = endpoint
+        else:
+            self['endpoint'] = None
+        self['updates'] = updates or []
 
 
 class KeylistUpdateResponce(CoordinateMediationMessage, metaclass=RegisterMessage):

@@ -97,6 +97,27 @@ services:
     depends_on:
       - kafka
 
+  mediator:
+    image: "socialsirius/didcomm"
+    environment:
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=postgres
+      - DATABASE_HOST=db
+      - MEMCACHED=cache
+      - REDIS=redis://redis
+      - WEBROOT=http://localhost:8000
+      - SEED=0000000000000000000000000000TEST
+    networks:
+      test_network:
+        ipv4_address: 10.0.0.91
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - cache
+      - redis
+
   test_suite:
     image: "socialsirius/hub:latest"
     environment:
@@ -133,6 +154,7 @@ services:
       - kafka
       - kafkarest
       - old_agent
+      - mediator
 
 networks:
   test_network:

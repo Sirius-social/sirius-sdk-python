@@ -1,8 +1,9 @@
 import os
 import json
+import base64
 import asyncio
 import datetime
-from typing import List, Any
+from typing import List, Any, Optional
 from contextlib import asynccontextmanager
 from urllib.parse import urljoin, urlparse
 
@@ -12,8 +13,11 @@ import sirius_sdk
 
 from sirius_sdk import Agent, Pairwise
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
+from sirius_sdk.agent.wallet.abstract import AbstractCrypto
+from sirius_sdk.agent.wallet.abstract import AbstractDID
+from sirius_sdk.agent.wallet.abstract import AbstractPairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
-from sirius_sdk.encryption import P2PConnection
+from sirius_sdk.encryption import *
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential import ProposedAttrib as IssuingProposedAttrib, \
     AttribTranslation as IssuingAttribTranslation
 
@@ -406,3 +410,157 @@ async def fix_timeout(caption: str):
     stamp2 = datetime.datetime.utcnow()
     delta = stamp2 - stamp1
     print(f'Timeout for {caption}: {delta.total_seconds()} secs, utc1: {stamp1} utc2: {stamp2}')
+
+
+class LocalCryptoManager(AbstractCrypto):
+
+    """Crypto module on device side, for example Indy-Wallet or HSM or smth else
+
+      - you may override this code block with Aries-Askar
+    """
+
+    def __init__(self):
+        self.__keys = []
+
+    async def create_key(self, seed: str = None, crypto_type: str = None) -> str:
+        if seed:
+            seed = seed.encode()
+        else:
+            seed = None
+        vk, sk = create_keypair(seed)
+        self.__keys.append([vk, sk])
+        return bytes_to_b58(vk)
+
+    async def set_key_metadata(self, verkey: str, metadata: dict) -> None:
+        raise NotImplemented
+
+    async def get_key_metadata(self, verkey: str) -> Optional[dict]:
+        raise NotImplemented
+
+    async def crypto_sign(self, signer_vk: str, msg: bytes) -> bytes:
+        vk, sk = self.__check_verkey(signer_vk)
+        signature = sign_message(
+            message=msg,
+            secret=sk
+        )
+        return signature
+
+    async def crypto_verify(self, signer_vk: str, msg: bytes, signature: bytes) -> bool:
+        success = verify_signed_message(
+            verkey=b58_to_bytes(signer_vk),
+            msg=msg,
+            signature=signature
+        )
+        return success
+
+    async def anon_crypt(self, recipient_vk: str, msg: bytes) -> bytes:
+        raise NotImplemented
+
+    async def anon_decrypt(self, recipient_vk: str, encrypted_msg: bytes) -> bytes:
+        raise NotImplemented
+
+    async def pack_message(self, message: Any, recipient_verkeys: list, sender_verkey: str = None) -> bytes:
+        vk, sk = self.__check_verkey(sender_verkey)
+        if isinstance(message, dict):
+            message = json.dumps(message)
+        elif isinstance(message, bytes):
+            message = message.decode()
+        packed = pack_message(
+            message=message,
+            to_verkeys=recipient_verkeys,
+            from_verkey=vk,
+            from_sigkey=sk
+        )
+        return packed
+
+    async def unpack_message(self, jwe: bytes):
+        jwe = json.loads(jwe.decode())
+        protected = jwe['protected']
+        payload = json.loads(base64.b64decode(protected))
+        recipients = payload['recipients']
+        vk, sk = None, None
+        for item in recipients:
+            rcp_vk = b58_to_bytes(item['header']['kid'])
+            for vk_, sk_ in self.__keys:
+                if rcp_vk == vk_:
+                    vk, sk = vk_, sk_
+                    break
+        if not vk:
+            raise RuntimeError('Unknown recipient keys')
+        message, sender_vk, recip_vk = unpack_message(
+            enc_message=jwe,
+            my_verkey=vk,
+            my_sigkey=sk
+        )
+        message = json.loads(message)
+        return message, sender_vk, recip_vk
+
+    def __check_verkey(self, verkey: str) -> (bytes, bytes):
+        verkey_bytes = b58_to_bytes(verkey)
+        for vk, sk in self.__keys:
+            if vk == verkey_bytes:
+                return vk, sk
+        raise RuntimeError('Unknown Verkey')
+
+
+class LocalDIDManager(AbstractDID):
+    """You may override this code block with Aries-Askar"""
+
+    def __init__(self):
+        self._storage = dict()
+
+    async def create_and_store_my_did(self, did: str = None, seed: str = None, cid: bool = None) -> (str, str):
+        raise NotImplemented
+
+    async def store_their_did(self, did: str, verkey: str = None) -> None:
+        descriptor = self._storage.get(did, {})
+        descriptor['verkey'] = verkey
+        self._storage[did] = descriptor
+
+    async def set_did_metadata(self, did: str, metadata: dict = None) -> None:
+        descriptor = self._storage.get(did, {})
+        descriptor['metadata'] = metadata
+        self._storage[did] = descriptor
+
+    async def list_my_dids_with_meta(self) -> List[Any]:
+        raise NotImplemented
+
+    async def get_did_metadata(self, did) -> Optional[dict]:
+        descriptor = self._storage.get(did, {})
+        return descriptor.get('metadata', None)
+
+    async def key_for_local_did(self, did: str) -> str:
+        raise NotImplemented
+
+    async def key_for_did(self, pool_name: str, did: str) -> str:
+        raise NotImplemented
+
+    async def create_key(self, seed: str = None) -> str:
+        raise NotImplemented
+
+    async def replace_keys_start(self, did: str, seed: str = None) -> str:
+        raise NotImplemented
+
+    async def replace_keys_apply(self, did: str) -> None:
+        raise NotImplemented
+
+    async def set_key_metadata(self, verkey: str, metadata: dict) -> None:
+        raise NotImplemented
+
+    async def get_key_metadata(self, verkey: str) -> dict:
+        raise NotImplemented
+
+    async def set_endpoint_for_did(self, did: str, address: str, transport_key: str) -> None:
+        raise NotImplemented
+
+    async def get_endpoint_for_did(self, pool_name: str, did: str) -> (str, Optional[str]):
+        raise NotImplemented
+
+    async def get_my_did_with_meta(self, did: str) -> Any:
+        raise NotImplemented
+
+    async def abbreviate_verkey(self, did: str, full_verkey: str) -> str:
+        raise NotImplemented
+
+    async def qualify_did(self, did: str, method: str) -> str:
+        raise NotImplemented
