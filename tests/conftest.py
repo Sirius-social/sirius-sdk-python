@@ -7,8 +7,10 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent, Pairwise
+from sirius_sdk.hub.mediator import Mediator
 from sirius_sdk.rpc import AddressedTunnel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
+from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from .helpers import InMemoryChannel, ServerTestSuite, IndyAgent
 
 
@@ -160,6 +162,18 @@ def default_network() -> str:
     return 'default'
 
 
+@pytest.fixture()
+def mediator_invitation() -> dict:
+    return {
+        '@type': 'https://didcomm.org/connections/1.0/invitation',
+        '@id': uuid.uuid4().hex,
+        'label': 'Testable-Mediator',
+        'recipientKeys': ['F5BERxEyX6uDhgXCbizxJB1z3SGnjHbjfzwuTytuK4r5'],
+        'serviceEndpoint': 'ws://localhost:8000/ws',
+        'routingKeys': [],
+    }
+
+
 async def get_pairwise(me: Agent, their: Agent) -> sirius_sdk.Pairwise:
     suite = get_suite_singleton()
     me_params = suite.get_agent_params(me.name)
@@ -223,3 +237,13 @@ async def get_pairwise2(me: Tuple[Dict, str], their: Tuple[Dict, str]) -> sirius
     finally:
         await agent_me.close()
         await agent_their.close()
+
+
+def create_mediator_instance(mediator_invitation: dict, my_verkey: str, routing_keys: list = None) -> Mediator:
+    instance = Mediator(
+        uri=mediator_invitation['serviceEndpoint'],
+        my_verkey=my_verkey,
+        mediator_verkey=mediator_invitation['recipientKeys'][0],
+        routing_keys=routing_keys
+    )
+    return instance
