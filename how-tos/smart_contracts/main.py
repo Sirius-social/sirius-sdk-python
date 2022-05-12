@@ -225,7 +225,7 @@ class MarketplaceSmartContract(BaseSmartContract):
                     locale='en'
                 )
                 ask.set_ttl(15)  # Set timeout for answer
-                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                     query=ask,
                     to=p2p
                 )
@@ -281,7 +281,7 @@ class MarketplaceSmartContract(BaseSmartContract):
                 locale='en'
             )
             ask.set_ttl(60)  # Set timeout for answer
-            success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+            success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                 query=ask,
                 to=p2p
             )
