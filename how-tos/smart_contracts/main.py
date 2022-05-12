@@ -6,9 +6,10 @@ import asyncio
 from abc import abstractmethod
 from typing import List, Dict
 
-from sirius_sdk.agent.microledgers_.microledgers import Transaction
+import sirius_sdk
+from sirius_sdk.agent.microledgers import Transaction
 from sirius_sdk.agent.consensus import simple as simple_consensus
-from sirius_sdk.agent.microledgers_.microledgers import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from consts import *
