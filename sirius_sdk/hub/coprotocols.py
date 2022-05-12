@@ -213,6 +213,10 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         self.__to = to
 
     @property
+    def to(self) -> Pairwise:
+        return self.__to
+
+    @property
     def thid(self) -> str:
         return self.__thid
 

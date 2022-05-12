@@ -11,3 +11,4 @@ from .feature_0095_basic_message import *
 from .feature_0113_question_answer import *
 from .feature_0160_connection_protocol import *
 from .feature_0211_mediator_coordination_protocol import *
+from .feature_0482_coprotocol import *
