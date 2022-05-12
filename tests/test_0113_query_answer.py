@@ -3,7 +3,8 @@ import datetime
 import pytest
 
 import sirius_sdk
-from sirius_sdk.agent.aries_rfc.feature_0113_question_answer import make_answer, ask_and_wait_answer
+from sirius_sdk.agent.aries_rfc.feature_0113_question_answer import Question, Answer
+from sirius_sdk.recipes.question_answer import make_answer, ask_and_wait_answer
 
 from .conftest import get_pairwise
 from .helpers import ServerTestSuite, run_coroutines
@@ -27,7 +28,7 @@ async def test_sane(agent1: sirius_sdk.Agent, agent2: sirius_sdk.Agent, test_sui
 
     async def requester(server_address: str, credentials: bytes, p2p: sirius_sdk.P2PConnection, *args, **kwargs):
         async with sirius_sdk.context(server_address, credentials, p2p):
-            q = sirius_sdk.agent.Question(
+            q = Question(
                 valid_responses=['Yes', 'No'],
                 question_text='Test question',
                 question_detail='Question detail'
@@ -40,7 +41,7 @@ async def test_sane(agent1: sirius_sdk.Agent, agent2: sirius_sdk.Agent, test_sui
         async with sirius_sdk.context(server_address, credentials, p2p):
             listener = await sirius_sdk.subscribe()
             async for event in listener:
-                if isinstance(event.message, sirius_sdk.agent.Question):
+                if isinstance(event.message, Question):
                     await make_answer('Yes', event.message, event.pairwise)
                     return True
 
@@ -75,7 +76,7 @@ async def test_timeout(agent1: sirius_sdk.Agent, agent2: sirius_sdk.Agent, test_
         nonlocal results
         nonlocal timeout
         async with sirius_sdk.context(server_address, credentials, p2p):
-            q = sirius_sdk.agent.Question(
+            q = Question(
                 valid_responses=['Yes', 'No'],
                 question_text='Test question',
                 question_detail='Question detail'
