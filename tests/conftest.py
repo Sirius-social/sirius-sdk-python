@@ -2,6 +2,7 @@ import os
 import uuid
 import asyncio
 from typing import Tuple, Dict
+from os.path import abspath, relpath, dirname, join as path_join
 
 import pytest
 
@@ -247,3 +248,9 @@ def create_mediator_instance(mediator_invitation: dict, my_verkey: str, routing_
         routing_keys=routing_keys
     )
     return instance
+
+
+@pytest.fixture()
+def files_dir():
+    cur = abspath(relpath(dirname(__file__)))
+    return path_join(cur, 'files')

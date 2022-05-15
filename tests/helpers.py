@@ -3,6 +3,7 @@ import json
 import base64
 import asyncio
 import datetime
+import hashlib
 from typing import List, Any, Optional
 from contextlib import asynccontextmanager
 from urllib.parse import urljoin, urlparse
@@ -564,3 +565,14 @@ class LocalDIDManager(AbstractDID):
 
     async def qualify_did(self, did: str, method: str) -> str:
         raise NotImplemented
+
+
+def calc_file_hash(path: str) -> str:
+    with open(path, 'rb') as f:
+        raw = f.read()
+    return calc_bytes_hash(raw)
+
+
+def calc_bytes_hash(raw: bytes) -> str:
+    md = hashlib.md5(raw)
+    return md.hexdigest()
