@@ -1,8 +1,8 @@
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, StreamEncryption, \
-    FileSystemReadOnlyStream, FileSystemWriteOnlyStream
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption, StreamEncryption, \
+  StreamDecryption, FileSystemReadOnlyStream, FileSystemWriteOnlyStream
 
 
 __all__ = [
-    "AbstractReadOnlyStream", "AbstractWriteOnlyStream", "StreamEncryption", "FileSystemReadOnlyStream",
-    "FileSystemWriteOnlyStream"
+    "AbstractStreamEncryption", "StreamEncryption", "StreamDecryption", "AbstractReadOnlyStream",
+    "AbstractWriteOnlyStream", "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream"
 ]
