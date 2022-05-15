@@ -9,6 +9,7 @@ from sirius_sdk.agent.aries_rfc.feature_0482_coprotocol import Caller, Called
 from .conftest import get_pairwise
 from .helpers import ServerTestSuite, run_coroutines
 from sirius_sdk.agent.aries_rfc.feature_0482_coprotocol.messages import *
+from sirius_sdk.recipes import as_caller, as_called
 
 
 @pytest.mark.asyncio
@@ -139,4 +140,59 @@ async def test_caller_problem_report(A: Agent, B: Agent, test_suite: ServerTestS
         await caller.close()
         await called.close()
 
+
+@pytest.mark.asyncio
+async def test_resipe_1(A: Agent, B: Agent, test_suite: ServerTestSuite):
+    caller = A
+    called = B
+    caller_params = test_suite.get_agent_params('agent1')
+    called_params = test_suite.get_agent_params('agent2')
+    await caller.open()
+    await called.open()
+    try:
+        caller_2_called = await get_pairwise(caller, called)
+        test_log = {}
+
+        async def run_caller():
+            uri, cred, p2p = caller_params['server_address'], caller_params['credentials'], caller_params['p2p']
+            cfg = sirius_sdk.Config().setup_cloud(uri, cred, p2p)
+            async with sirius_sdk.context(cfg):
+                async with as_caller(called=caller_2_called, thid=uuid.uuid4().hex, cast={'cast-key': 'cast-val'}) as proto:
+                    assert proto.state == Caller.State.ATTACHED
+                    test_log['caller_attached'] = True
+                    await proto.input(data={'key': 'value'}, extra_key='extra-value')
+                    success, data, extra = await proto.wait_output()
+                    test_log['caller_output_1'] = (success, dict(**data), dict(**extra))
+                    await proto.detach()
+                    assert proto.state == Caller.State.DETACHED
+                    test_log['caller_done'] = True
+
+        async def run_called():
+            uri, cred, p2p = called_params['server_address'], called_params['credentials'], called_params['p2p']
+            cfg = sirius_sdk.Config().setup_cloud(uri, cred, p2p)
+            async with sirius_sdk.context(cfg):
+                listener = await sirius_sdk.subscribe()
+                async for event in listener:
+                    request = event.message
+                    if isinstance(request, CoProtocolBind):
+                        async with as_called(caller=event.pairwise, request=request) as proto:
+                            await proto.attach()
+                            success, data, extra = await proto.wait_input()
+                            test_log['called_input_1'] = success, data, extra
+                            await proto.output(data={'key': 'value-from-called'}, extra_key='extra-value-from-called')
+                            try:
+                                await proto.wait_input()
+                            except Called.CoProtocolDetachedByCaller as e:
+                                test_log['called_input_exception'] = str(e)
+                            assert proto.state == Called.State.DONE
+                            test_log['called_done'] = True
+                            return
+        print('> begin')
+        await run_coroutines(run_caller(), run_called(), timeout=5)
+        print('> end')
+        for event in ['caller_attached', 'called_input_1', 'caller_output_1', 'called_input_exception', 'called_done', 'caller_done']:
+            assert event in test_log.keys()
+    finally:
+        await caller.close()
+        await called.close()
 

@@ -3,10 +3,6 @@
     - Feature: https://github.com/hyperledger/aries-rfcs/tree/main/features/0482-coprotocol-protocol
     - Concept: https://github.com/hyperledger/aries-rfcs/blob/main/concepts/0478-coprotocols
 """
-import datetime
-import logging
-import contextlib
-import uuid
 from enum import Enum
 from typing import Optional, Union, List, Dict, Any, Tuple
 
@@ -110,20 +106,25 @@ class Caller(AbstractStateMachine):
         See details:
           - https://github.com/hyperledger/aries-rfcs/tree/main/features/0482-coprotocol-protocol#messages
         """
-        if self.state in [self.State.NULL, self.State.DONE]:
+        if self.state != self.State.ATTACHED:
+            await self.log(comment='create co-protocol')
             await self._create_coprotocol()
             request = self._build_bind_request(cast, co_binding_id, **extra_fields)
+            await self.log(comment='sending bind request', message=request)
             await self._new_state(self.State.DETACHED)
             await self._coprotocol.send(request)
             try:
                 while True:
                     response, _, _ = await self._coprotocol.get_one()
+                    await self.log(comment='received attach response', message=response)
                     if isinstance(response, CoProtocolAttach):
                         self.__context = AttachContext()
                         for fld, value in response.items():
                             if not (fld.startswith('@') or fld.startswith('~')):
                                 self.__context[fld] = value
-                        await self._create_child_coprotocol(thid=response.thid or response.id)
+                        thid = response.thid or response.id
+                        await self.log(comment=f'create child co-protocol with thread-id: "thid"')
+                        await self._create_child_coprotocol(thid=thid)
                         await self._new_state(self.State.ATTACHED)
                         await self._clean_coprotocol()
                         return True, self.__context
@@ -131,8 +132,10 @@ class Caller(AbstractStateMachine):
                         self._problem_report = response
                         return False, None
             except SiriusTimeoutIO:
+                await self.log(comment='IO timeout occurred')
                 return False, None
         else:
+            await self.log(comment='already in attached state: nothing to-do')
             return True, None
 
     async def input(self, data: Any, **extra):
@@ -144,16 +147,20 @@ class Caller(AbstractStateMachine):
         if self.state == self.State.ATTACHED:
             msg = self._build_input_message(data, **extra)
             msg.thid = self._coprotocol_child.thid
+            await self.log(comment='sending input message', message=msg)
             await self._coprotocol_child.send(msg)
         else:
+            await self.log(comment='state error')
             raise RuntimeError('CoProtocol must be attached first! Call bind before operate...')
 
     async def raise_problem(self, problem_code: str, explain: str):
         if self.state == self.State.ATTACHED:
             msg = CoProtocolProblemReport(problem_code=problem_code, explain=explain, thread_id=self.thid)
             msg.thid = self._coprotocol_child.thid
+            await self.log(comment='raising problem-report', message=msg)
             await self._coprotocol_child.send(msg)
         else:
+            await self.log(comment='state error')
             raise RuntimeError('CoProtocol must be attached first! Call bind before operate...')
 
     async def wait_output(self) -> Tuple[bool, Any, Optional[Dict]]:
@@ -165,6 +172,7 @@ class Caller(AbstractStateMachine):
             while True:
                 msg, _, _ = await self._coprotocol_child.get_one()
                 if isinstance(msg, CoProtocolOutput):
+                    await self.log(comment='received output', message=msg)
                     data = msg.pop('data', None)
                     extra_fields = dict()
                     for fld, value in msg.items():
@@ -172,9 +180,11 @@ class Caller(AbstractStateMachine):
                             extra_fields[fld] = value
                     return True, data, extra_fields
                 elif isinstance(msg, CoProtocolProblemReport):
+                    await self.log(comment='received problem-report', message=msg)
                     self._problem_report = msg
                     return False, None, None
         else:
+            await self.log(comment='state error')
             raise RuntimeError('CoProtocol must be attached first! Call bind before operate...')
 
     async def detach(self):
@@ -183,6 +193,7 @@ class Caller(AbstractStateMachine):
            and it advances on its normal state trajectory as if it were a wholly independent protocol:
         """
         if self.state == self.State.ATTACHED:
+            await self.log(comment='detaching...')
             request = self._build_detach_request()
             request.thid = self._coprotocol_child.thid
             await self._coprotocol_child.send(request)
@@ -190,9 +201,11 @@ class Caller(AbstractStateMachine):
             self.__context = None
             await self._clean_coprotocol()
             await self._clean_coprotocol_child()
+            await self.log(comment='detached!')
 
     async def done(self):
         if self.state == self.State.ATTACHED:
+            await self.log(comment='done protocol')
             await self._new_state(self.State.DONE)
             await self._clean_coprotocol()
             await self._clean_coprotocol_child()
@@ -215,6 +228,7 @@ class Caller(AbstractStateMachine):
                 valid_states = [self.State.DETACHED]
                 ignore_states = []
             if new_state in valid_states:
+                await self.log(comment=f'Change status from "{self.__state.value}" to "{new_state.value}"')
                 self.__state = new_state
             elif new_state in ignore_states:
                 return
@@ -333,6 +347,7 @@ class Called(AbstractStateMachine):
         :param logger: external logger
         :return: state-machine instance
         """
+
         inst = Called(
             time_to_live=None,  # called protocol is terminated with caller entity (detach),
             logger=logger,
@@ -343,15 +358,18 @@ class Called(AbstractStateMachine):
         for fld, value in request.items():
             if not (fld.startswith('@') or fld.startswith('~')):
                 inst.__context[fld] = value
+        await inst.log(comment='open', message=request)
         await inst._create_coprotocol(thid=request.thid or request.id)
         return inst
 
     async def attach(self, **fields):
         msg = self._build_attach_message(**fields)
+        await self.log(comment='attach', message=msg)
         await sirius_sdk.send_to(msg, to=self.__caller)
         self.__state = self.State.ATTACHED
 
     async def done(self):
+        await self.log(comment='done')
         await self._clean_coprotocol()
         self.__state = self.State.DONE
 
@@ -365,6 +383,7 @@ class Called(AbstractStateMachine):
             while True:
                 msg, _, _ = await self._coprotocol.get_one()
                 if isinstance(msg, CoProtocolInput):
+                    await self.log(comment='received input', message=msg)
                     data = msg.pop('data', None)
                     extra_fields = dict()
                     for fld, value in msg.items():
@@ -372,12 +391,14 @@ class Called(AbstractStateMachine):
                             extra_fields[fld] = value
                     return True, data, extra_fields
                 elif isinstance(msg, CoProtocolProblemReport):
+                    await self.log(comment='received problem-report', message=msg)
                     self._problem_report = msg
                     return False, None, None
                 elif isinstance(msg, CoProtocolDetach):
                     await self.done()
                     raise self.CoProtocolDetachedByCaller('Called entity received DETACH message from Caller')
         else:
+            await self.log(comment='state error')
             raise RuntimeError('CoProtocol must be attached first! Call bind before operate...')
 
     async def output(self, data: Any, **extra):
@@ -387,8 +408,10 @@ class Called(AbstractStateMachine):
         if self.state == self.State.ATTACHED:
             msg = self._build_output_message(data, **extra)
             msg.thid = self._coprotocol.thid
+            await self.log(comment='sending output message', message=msg)
             await self._coprotocol.send(msg)
         else:
+            await self.log(comment='state error')
             raise RuntimeError('CoProtocol must be attached first! Call bind before operate...')
 
     async def raise_problem(self, problem_code: str, explain: str):
@@ -396,6 +419,7 @@ class Called(AbstractStateMachine):
             msg = CoProtocolProblemReport(problem_code=problem_code, explain=explain, thread_id=self._coprotocol.thid)
             await self._coprotocol.send(msg)
         else:
+            await self.log(comment='state error')
             raise RuntimeError('CoProtocol must be attached first! Call bind before operate...')
 
     def _build_attach_message(self, **fields) -> CoProtocolAttach:

@@ -6,8 +6,7 @@ from sirius_sdk.hub import CoProtocolThreadedP2P
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 
-from ..feature_0015_acks import Ack
-from .messages import Question, Answer
+from sirius_sdk.agent.aries_rfc.feature_0113_question_answer.messages import Question, Answer
 
 
 async def ask_and_wait_answer(query: Question, to: Pairwise) -> (bool, Optional[Answer]):

@@ -6,9 +6,10 @@ import asyncio
 from abc import abstractmethod
 from typing import List, Dict
 
-from sirius_sdk.agent.microledgers_.microledgers import Transaction
+import sirius_sdk
+from sirius_sdk.agent.microledgers import Transaction
 from sirius_sdk.agent.consensus import simple as simple_consensus
-from sirius_sdk.agent.microledgers_.microledgers import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from consts import *
@@ -224,7 +225,7 @@ class MarketplaceSmartContract(BaseSmartContract):
                     locale='en'
                 )
                 ask.set_ttl(15)  # Set timeout for answer
-                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                     query=ask,
                     to=p2p
                 )
@@ -280,7 +281,7 @@ class MarketplaceSmartContract(BaseSmartContract):
                 locale='en'
             )
             ask.set_ttl(60)  # Set timeout for answer
-            success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+            success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                 query=ask,
                 to=p2p
             )

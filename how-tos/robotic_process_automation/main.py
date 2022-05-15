@@ -160,7 +160,7 @@ async def sirius_bank(network_name: str = 'test_network'):
                     locale='en'
                 )
                 ask.set_ttl(60)  # Set timeout for answer
-                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                     query=ask,
                     to=dialog_pairwise
                 )
@@ -274,7 +274,7 @@ async def sirius_employer(network_name: str = 'test_network'):
                     locale='en'
                 )
                 ask.set_ttl(60)  # Set timeout for answer
-                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                     query=ask,
                     to=dialog_pairwise
                 )
