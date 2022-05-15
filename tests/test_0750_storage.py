@@ -75,19 +75,22 @@ async def test_fs_streams_copy(files_dir: str):
         await ro.open()
         try:
             wo_file_path = os.path.join(files_dir, 'big_img_copy_stream.jpeg')
-            wo = FileSystemWriteOnlyStream(wo_file_path, chunk_size)
-            await wo.create(truncate=True)
-            await wo.open()
             try:
-                await wo.copy(ro)
+                wo = FileSystemWriteOnlyStream(wo_file_path, chunk_size)
+                await wo.create(truncate=True)
+                await wo.open()
+                try:
+                    await wo.copy(ro)
+                finally:
+                    await wo.close()
+                with open(wo_file_path, 'rb') as f:
+                    raw = f.read()
+                copied_md5 = calc_bytes_hash(raw)
+                assert copied_md5 == file_under_test_md5
+                assert await ro.eof() is True
+                assert wo.position == len(raw)
             finally:
-                await wo.close()
-            with open(wo_file_path, 'rb') as f:
-                raw = f.read()
-            copied_md5 = calc_bytes_hash(raw)
-            assert copied_md5 == file_under_test_md5
-            assert await ro.eof() is True
-            assert wo.position == len(raw)
+                os.remove(wo_file_path)
         finally:
             await ro.close()
 

@@ -3,10 +3,6 @@
     - Feature: https://github.com/hyperledger/aries-rfcs/tree/main/features/0482-coprotocol-protocol
     - Concept: https://github.com/hyperledger/aries-rfcs/blob/main/concepts/0478-coprotocols
 """
-import datetime
-import logging
-import contextlib
-import uuid
 from enum import Enum
 from typing import Optional, Union, List, Dict, Any, Tuple
 
