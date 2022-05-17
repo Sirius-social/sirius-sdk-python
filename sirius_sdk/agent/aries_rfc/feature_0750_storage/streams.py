@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import struct
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Union
@@ -14,16 +15,14 @@ from sirius_sdk.encryption.ed25519 import prepare_pack_recipient_keys, locate_pa
 
 class AbstractStreamEncryption(ABC):
 
-    def __init__(self, recipients: Dict = None, nonce: str = None, type_: str = 'X25519KeyAgreementKey2019'):
+    def __init__(self, nonce: str = None, type_: str = 'X25519KeyAgreementKey2019'):
         """"Encryption settings for Streams
         :param nonce: (base58 string) nonce bytes
-        :param recipients: JWE.recipients document (example: https://identity.foundation/confidential-storage/#example-4-example-encrypted-document)
-            participants who have access to stream semantic
         """
         if nonce is None:
             nonce = bytes_to_b58(nacl.utils.random(nacl.bindings.crypto_aead_chacha20poly1305_ietf_NPUBBYTES))
         self.__nonce = nonce
-        self._recipients = recipients
+        self._recipients = None
         self.__type = type_
         self._cek = None
 
@@ -37,11 +36,9 @@ class AbstractStreamEncryption(ABC):
 
     @property
     def recipients(self) -> Optional[Dict]:
+        """JWE.recipients document (example: https://identity.foundation/confidential-storage/#example-4-example-encrypted-document)
+        """
         return self._recipients
-
-    @recipients.setter
-    def recipients(self, value: Dict = None):
-        self._recipients = value
 
     @property
     def type(self) -> str:
@@ -71,6 +68,10 @@ class StreamEncryption(AbstractStreamEncryption):
 
 class StreamDecryption(AbstractStreamEncryption):
 
+    def __init__(self, recipients: Dict = None, nonce: str = None, type_: str = 'X25519KeyAgreementKey2019'):
+        super().__init__(nonce, type_)
+        self._recipients = recipients
+
     def setup(self, vk: str, sk: str):
         """Prepare for Decryption
 
@@ -87,22 +88,17 @@ class StreamDecryption(AbstractStreamEncryption):
 
 class AbstractStream(ABC):
 
-    def __init__(self, path: str, chunk_size: int, enc: Optional[AbstractStreamEncryption] = None):
+    def __init__(self, path: str, enc: Optional[AbstractStreamEncryption] = None):
         """Interface for Low-level layers of Vault Storage
 
         :param path: path to resource
-        :param chunk_size: size (in bytes) of chunks that stream was splitted to
-          !!! stream may ignore chunk_size (when stream is encoded for example) !!!
-          Chunks allow:
-            - partially upload/download big data files/streams (control progress)
-            - encrypt/decrypt big data partially
-            - adv. services like upload/download with pause/resume (for cloud providers for example)
         :param enc: (optional) encoding config
         """
         self.__path = path
         self.__enc = enc
-        self._position = 0
-        self.__chunk_size = chunk_size
+        self._current_chunk = 0
+        self._seekable = None
+        self._chunks_num: int = 0
 
     @property
     def path(self) -> str:
@@ -113,12 +109,17 @@ class AbstractStream(ABC):
         return self.__enc
 
     @property
-    def position(self) -> int:
-        return self._position
+    def seekable(self) -> Optional[bool]:
+        return self._seekable
 
     @property
-    def chunk_size(self) -> int:
-        return self.__chunk_size
+    def chunks_num(self) -> int:
+        return self._chunks_num
+
+    @property
+    def current_chunk(self) -> int:
+        """Stream offset"""
+        return self._current_chunk
 
     @abstractmethod
     async def open(self):
@@ -129,7 +130,7 @@ class AbstractStream(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def seek(self, pos: int) -> int:
+    async def seek_to_chunk(self, no: int) -> int:
         raise NotImplemented
 
 
@@ -141,11 +142,27 @@ class AbstractReadOnlyStream(AbstractStream):
       - etc
     """
 
-    def __init__(self, path: str, chunk_size: int, enc: Optional[StreamDecryption] = None):
-        super().__init__(path, chunk_size, enc)
+    def __init__(self, path: str, chunks_num: int, enc: Optional[StreamDecryption] = None):
+        """
+        :param chunks_num: count of chunks that stream was splitted to
+          !!! stream may ignore chunks_num (when stream is encoded for example) !!!
+          Chunks allow:
+            - partially upload/download big data files/streams (control progress)
+            - encrypt/decrypt big data partially
+            - adv. services like upload/download with pause/resume (for cloud providers for example)
+        """
+        super().__init__(path, enc)
+        self._chunks_num = chunks_num
 
     @abstractmethod
-    async def read_chunk(self) -> bytes:
+    async def read_chunk(self, no: int = None) -> (int, bytes):
+        """Read next chunk
+
+        :param no: int (optional) chunk offset, None if reading from current offset
+        :raises EOF if end of stream
+
+        :return (new-chunk-offset, data)
+        """
         raise NotImplemented
 
     @abstractmethod
@@ -159,9 +176,9 @@ class AbstractReadOnlyStream(AbstractStream):
         return raw
 
     async def read_chunked(self):
-        await self.seek(0)
+        await self.seek_to_chunk(0)
         while not await self.eof():
-            raw = await self.read_chunk()
+            _, raw = await self.read_chunk()
             yield raw
 
 
@@ -179,10 +196,24 @@ class AbstractWriteOnlyStream(AbstractStream):
     """
 
     def __init__(self, path: str, chunk_size: int, enc: Optional[StreamEncryption] = None):
-        super().__init__(path, chunk_size, enc)
+        """
+        :param chunk_size: size (in bytes) of chunks that stream was splitted to
+          !!! actual chunks-sizes may be different (when stream is encoded for example) !!!
+          Chunks allow:
+            - partially upload/download big data files/streams (control progress)
+            - encrypt/decrypt big data partially
+            - adv. services like upload/download with pause/resume (for cloud providers for example)"""
+        super().__init__(path, enc)
+        self._chunk_size = chunk_size
 
     @abstractmethod
-    async def write_chunk(self, chunk: bytes):
+    async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
+        """Write new chunk to stream
+
+        :param chunk: data bytes
+        :param no: int (optional) chunk offset, None if writing to end of stream
+        :return: (new-chunk-offset, writen data size)
+        """
         raise NotImplemented
 
     async def write(self, data: bytes):
@@ -190,7 +221,7 @@ class AbstractWriteOnlyStream(AbstractStream):
         stream.seek(0)
         while True:
             try:
-                chunk = stream.read(self.chunk_size)
+                chunk = stream.read(self._chunk_size)
                 if len(chunk) > 0:
                     await self.write_chunk(chunk)
                 else:
@@ -202,9 +233,9 @@ class AbstractWriteOnlyStream(AbstractStream):
         accum = b''
         async for chunk in src.read_chunked():
             accum += chunk
-            while len(accum) >= self.chunk_size:
-                await self.write_chunk(accum[:self.chunk_size])
-                accum = accum[self.chunk_size:]
+            while len(accum) >= self._chunk_size:
+                await self.write_chunk(accum[:self._chunk_size])
+                accum = accum[self._chunk_size:]
             if await src.eof():
                 await self.write_chunk(accum)
                 return
@@ -212,66 +243,111 @@ class AbstractWriteOnlyStream(AbstractStream):
 
 class FileSystemReadOnlyStream(AbstractReadOnlyStream):
 
-    def __init__(self, path: str, chunk_size: int, enc: Optional[StreamDecryption] = None):
-        super().__init__(path, chunk_size, enc)
+    def __init__(self, path: str, chunks_num: int, enc: Optional[StreamDecryption] = None):
+        if chunks_num <= 0:
+            raise RuntimeError('Chunks Num must be greater than 0')
+        super().__init__(path, chunks_num, enc)
         self.__fd = None
         self.__size = 0
         self.__nonce_b = None
+        self.__chunk_size = 0
+        self.__chunk_offsets = []
         if enc:
             if enc.cek is None:
                 raise RuntimeError('You passed "enc" param but not initialized it. Call setup() at first!')
             self.__nonce_b = b58_to_bytes(enc.nonce)
 
     async def open(self):
+        if self.__fd:
+            return
         self.__fd = await aiofiles.open(self.path, 'rb')
         self.__size = await self.__fd.seek(0, io.SEEK_END)
         await self.__fd.seek(0, io.SEEK_SET)
+        if self.enc:
+            await self.__load_enc_chunks()
+            self.__chunk_size = self.__chunk_offsets[0][0]
+        else:
+            self.__chunk_size = math.ceil(self.__size / self.chunks_num)
+        self._seekable = True
 
     async def close(self):
         if self.__fd:
             await self.__fd.close()
             self.__size = 0
             self.__fd = None
+            self._seekable = None
+            self.__chunk_offsets.clear()
 
-    async def seek(self, pos: int) -> int:
-        if self.__fd:
-            self._position = await self.__fd.seek(pos, io.SEEK_SET)
-            return self._position
+    async def seek_to_chunk(self, no: int) -> int:
+        self.__assert_is_open()
+        if not self._seekable:
+            raise RuntimeError('Stream is not seekable')
+        pos = no * self.__chunk_size
+        if pos >= self.__size:
+            raise EOFError()
         else:
-            raise RuntimeError('FileStream is not Opened')
+            new_pos = await self.__fd.seek(pos, io.SEEK_SET)
+            self._current_chunk = math.trunc(new_pos / self.__chunk_size)
+            return self._current_chunk
 
-    async def read_chunk(self) -> bytes:
-        if self.__fd:
-            if self.enc:
-                # For encoded streams passed chunk_size will be ignored
-                # Read header with encoded bytes size
-                b = await self.__fd.read(4)
-                self._position += len(b)
-                if len(b) != 4:
-                    raise RuntimeError('Unexpected encoded file structure')
-                sz = struct.unpack("i", b)[0]
-                # Read chunk
-                encrypted = await self.__fd.read(sz)
-                if len(encrypted) != sz:
-                    raise RuntimeError('Unexpected encoded file structure')
-                # Decode bytes stream
-                decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
-                    ciphertext=encrypted, aad=b'', nonce=self.__nonce_b, key=self.enc.cek
-                )
-                self._position += len(encrypted)
-                return decrypted
-            else:
-                raw = await self.__fd.read(self.chunk_size)
-                self._position += len(raw)
-                return raw
+    async def read_chunk(self, no: int = None) -> (int, bytes):
+        """Read next chunk
+
+        :param no: int (optional) chunk offset, None if reading from current offset
+        :raises EOF if end of stream
+
+        :return (new-chunk-offset, data)
+        """
+        self.__assert_is_open()
+        if no is not None:
+            await self.seek_to_chunk(no)
+        if self._current_chunk >= self.chunks_num:
+            raise EOFError
+        file_pos = self._current_chunk * self.__chunk_size
+        if self.enc:
+            if self._current_chunk >= self.chunks_num:
+                raise EOFError
+            info = self.__chunk_offsets[self._current_chunk]
+            sz_to_read = info[0]
+            seek_to = info[1]
+            await self.__fd.seek(seek_to)
+            encrypted = await self.__fd.read(sz_to_read)
+            if len(encrypted) != sz_to_read:
+                raise RuntimeError('Unexpected encoded file structure')
+            # Decode bytes stream
+            decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
+                ciphertext=encrypted, aad=b'', nonce=self.__nonce_b, key=self.enc.cek
+            )
+            file_pos += len(encrypted)
+            self._current_chunk += 1
+            return self._current_chunk, decrypted
         else:
-            raise RuntimeError('FileStream is not Opened')
+            raw = await self.__fd.read(self.__chunk_size)
+            self._current_chunk += 1
+            return self._current_chunk, raw
 
     async def eof(self) -> bool:
-        if self._position < self.__size:
+        self.__assert_is_open()
+        if self._current_chunk < self.chunks_num:
             return False
         else:
             return True
+
+    async def __load_enc_chunks(self):
+        file_pos = 0
+        self.__chunk_offsets.clear()
+        while file_pos < self.__size:
+            b = await self.__fd.read(4)
+            file_pos += len(b)
+            if len(b) != 4:
+                raise RuntimeError('Unexpected encoded file structure')
+            sz = struct.unpack("i", b)[0]
+            self.__chunk_offsets.append([sz, file_pos])
+            file_pos = await self.__fd.seek(sz, io.SEEK_CUR)
+
+    def __assert_is_open(self):
+        if not self.__fd:
+            raise RuntimeError('FileStream is not Opened')
 
 
 class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
@@ -280,6 +356,8 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         super().__init__(path, chunk_size, enc)
         self.__cek = None
         self.__nonce_b = None
+        self.__file_size = 0
+        self.__file_pos = 0
         if enc:
             if enc.type != 'X25519KeyAgreementKey2019':
                 raise RuntimeError(f'Unsupported key agreement "{enc.type}"')
@@ -296,21 +374,36 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
     async def open(self):
         self.__fd = await aiofiles.open(self.path, 'wb', buffering=0)
         await self.__fd.seek(0, io.SEEK_SET)
+        self._seekable = self.enc is None
+        self.__file_size = 0
+        self.__file_pos = 0
 
     async def close(self):
         if self.__fd:
             await self.__fd.flush()
             await self.__fd.close()
             self.__fd = None
+            self._seekable = None
+            self.__file_size = 0
+            self.__file_pos = 0
 
-    async def seek(self, pos: int) -> int:
-        if self.__fd:
-            self._position = await self.__fd.seek(pos, io.SEEK_SET)
-            return self._position
+    async def seek_to_chunk(self, no: int) -> int:
+        self.__assert_is_open()
+        if not self._seekable:
+            raise RuntimeError('Stream is not seekable')
+        file_pos = no * self._chunk_size
+        if file_pos > self.__file_size:
+            raise EOFError()
         else:
-            raise RuntimeError('FileStream is not Opened')
+            file_pos = await self.__fd.seek(file_pos, io.SEEK_SET)
+            self._current_chunk = math.trunc(file_pos / self._chunk_size)
+            self.__file_pos = file_pos
+            return self._current_chunk
 
-    async def write_chunk(self, chunk: bytes):
+    async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
+        self.__assert_is_open()
+        if no is not None:
+            await self.seek_to_chunk(no)
         if self.enc:
             # encode
             encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
@@ -323,4 +416,13 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             offset = offset1 + offset2
         else:
             offset = await self.__fd.write(chunk)
-        self._position += offset
+        self.__file_pos += offset
+        if self.__file_pos >= self.__file_size:
+            self.__file_size += self.__file_pos - self.__file_size
+            self._chunks_num += 1
+        self._current_chunk += 1
+        return self._current_chunk, len(chunk)
+
+    def __assert_is_open(self):
+        if not self.__fd:
+            raise RuntimeError('FileStream is not Opened')

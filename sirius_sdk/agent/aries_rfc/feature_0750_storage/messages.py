@@ -52,8 +52,8 @@ class StreamOperation(BaseConfidentialStorageMessage):
     class OperationCode(Enum):
         OPEN = 'open'
         CLOSE = 'close'
-        SEEK = 'seek'
-        READ = 'read'
+        SEEK_TO_CHUNK = 'seek_to_chunk'
+        READ_CHUNK = 'read_chunk'
         WRITE = 'write'
 
     def __init__(self, operation: Union[str, OperationCode] = None, params=None, *args, **kwargs):
@@ -65,13 +65,33 @@ class StreamOperation(BaseConfidentialStorageMessage):
         if params:
             self['params'] = params
 
+    @property
+    def operation(self) -> Optional[OperationCode]:
+        op = self.get('operation')
+        for item in self.OperationCode:
+            if op == item.value:
+                return item
+        return None
+
+    @property
+    def params(self) -> Optional[Dict]:
+        return self.get('params', None)
+
+
 
 class StreamOperationResult(BaseConfidentialStorageMessage):
 
     NAME = 'stream-operation-result'
 
-    def __init__(self, operation: str = None, params=None, *args, **kwargs):
+    def __init__(self, operation: Union[str, StreamOperation.OperationCode] = None, params=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self['operation'] = operation
+        if isinstance(operation, StreamOperation.OperationCode):
+            self['operation'] = operation.value
+        else:
+            self['operation'] = operation
         if params:
             self['params'] = params
+
+    @property
+    def params(self) -> Optional[Dict]:
+        return self.get('params', None)
