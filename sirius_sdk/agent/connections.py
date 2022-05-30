@@ -71,7 +71,7 @@ class BaseAgentConnection(ABC):
 
     @timeout.setter
     def timeout(self, value: int):
-        if value is None or value == 0:
+        if value is None:
             self._timeout = None
         elif value > 0:
             self._timeout = value
