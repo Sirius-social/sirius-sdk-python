@@ -109,7 +109,10 @@ class AbstractCoProtocolTransport(ABC):
         if not self.__is_setup:
             raise SiriusPendingOperation('You must Setup protocol instance at first')
         try:
-            self._rpc.timeout = self.__get_io_timeout()
+            timeout = self.__get_io_timeout()
+            if (timeout is not None) and (timeout <= 0):
+                raise SiriusTimeoutIO
+            self._rpc.timeout = timeout
             await self.__setup_context(message)
             try:
                 event = await self._rpc.send_message(
@@ -167,7 +170,7 @@ class AbstractCoProtocolTransport(ABC):
         """
         if not self.__is_setup:
             raise SiriusPendingOperation('You must Setup protocol instance at first')
-        self._rpc.timeout = self.__get_io_timeout()
+        # self._rpc.timeout = self.__get_io_timeout()
         await self.__setup_context(message)
         await self._rpc.send_message(
             message=message,

@@ -12,7 +12,17 @@ from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedMa
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamError, StreamSeekableError, \
+    StreamFormatError, StreamEncryptionError, StreamInitializationError, StreamEOF, StreamTimeoutOccurred
+
+
+PROBLEM_CODE_EOF = 'eof'
+PROBLEM_CODE_ENCRYPTION = 'encryption_error'
+PROBLEM_CODE_INIT = 'initialization_error'
+PROBLEM_CODE_SEEKABLE = 'stream_is_not_seekable'
+PROBLEM_CODE_FORMAT = 'format_error'
+PROBLEM_CODE_INVALID_REQ = 'invalid_request'
+PROBLEM_CODE_TIMEOUT_OCCURRED = 'timeout_occurred'
 
 
 class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream):
@@ -23,23 +33,42 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
     """
 
     def __init__(
-            self, called: Pairwise, uri: str,
-            thid: str = None, time_to_live: int = None, logger=None, *args, **kwargs
+            self, called: Pairwise, uri: str, read_timeout: int, retry_count: int = 1,
+            thid: str = None, logger=None, *args, **kwargs
     ):
         """Stream abstraction for read-only operations provided with [Vault] entity
 
         :param called (required): Called entity who must process requests (Vault/Storage/etc)
         :param uri (required): address of stream resource
+        :param read_timeout (required): time till operation is timeout occurred
         :param thid (optional): co-protocol thread-id
-        :param time_to_live (optional): time the state-machine is alive,
+        :param retry_count (optional): if chunk-read-operation was terminated with timeout
+                                       then protocol will re-try operation from the same seek
         :param logger (optional): state-machine logger
         """
-        super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        super().__init__(time_to_live=read_timeout, logger=logger, *args, **kwargs)
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
         self.__uri = uri
-        self.__time_to_live = time_to_live
         self.__called = called
+        self.__retry_count = retry_count
         self.__thid = thid or uuid.uuid4().hex
+        self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
+
+    @property
+    def called(self) -> Pairwise:
+        return self.__called
+
+    @property
+    def thid(self) -> str:
+        return self.__thid
+
+    @property
+    def read_timeout(self) -> int:
+        return self.time_to_live
+
+    @property
+    def retry_count(self) -> int:
+        return self.__retry_count
 
     async def open(self):
         resp = await self.rpc(
@@ -76,39 +105,40 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
         return no
 
     async def read_chunk(self, no: int = None) -> (int, bytes):
-        resp = await self.rpc(
-            request=StreamOperation(
-                operation=StreamOperation.OperationCode.READ_CHUNK,
-                params={
-                    'no': no
-                }
-            )
-        )
-        no = resp.params['no']
-        chunk = base64.b64decode(resp.params['chunk'])
-        self._current_chunk = no
+        if no is not None:
+            before_no = no
+        else:
+            before_no = self._current_chunk
+        no, chunk = await self.__internal_read_chunk(before_no)
         return no, chunk
 
     async def eof(self) -> bool:
         return self._current_chunk >= self._chunks_num
 
+    async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+        if self.__coprotocol is None:
+            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+                thid=self.thid,
+                to=self.called,
+                time_to_live=self.read_timeout
+            )
+            self._register_for_aborting(self.__coprotocol)
+        return self.__coprotocol
+
+    async def close_coprotocol(self):
+        if self.__coprotocol:
+            await self.__coprotocol.clean()
+            self._unregister_for_aborting(self.__coprotocol)
+            self.__coprotocol = None
+
     @contextlib.asynccontextmanager
     async def coprotocol(self):
-        co = sirius_sdk.CoProtocolThreadedP2P(
-            thid=self.__thid,
-            to=self.__called,
-            time_to_live=self.time_to_live
-        )
-        self._register_for_aborting(co)
+        co = await self.open_coprotocol()
         try:
-            try:
-                yield co
-            except OperationAbortedManually:
-                await self.log(progress=100, message='Aborted')
-                raise StateMachineAborted('Aborted by User')
-        finally:
-            await co.clean()
-            self._unregister_for_aborting(co)
+            yield co
+        except OperationAbortedManually:
+            await self.log(progress=100, message='Aborted')
+            raise StateMachineAborted('Aborted by User')
 
     async def rpc(self, request: StreamOperation) -> StreamOperationResult:
         async with self.coprotocol() as co:
@@ -119,12 +149,58 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
                         return resp
                     elif isinstance(resp, ConfidentialStorageMessageProblemReport):
                         self._problem_report = resp
-                        raise StateMachineTerminatedWithError(problem_code=resp.problem_code, explain=resp.explain)
+                        if resp.problem_code == PROBLEM_CODE_EOF:
+                            raise StreamEOF(resp.explain)
+                        elif resp.problem_code == PROBLEM_CODE_ENCRYPTION:
+                            raise StreamEncryptionError(resp.explain)
+                        elif resp.problem_code == PROBLEM_CODE_INIT:
+                            raise StreamInitializationError(resp.explain)
+                        elif resp.problem_code == PROBLEM_CODE_SEEKABLE:
+                            raise StreamSeekableError(resp.explain)
+                        elif resp.problem_code == PROBLEM_CODE_FORMAT:
+                            raise StreamFormatError(resp.explain)
+                        else:
+                            raise StateMachineTerminatedWithError(problem_code=resp.problem_code, explain=resp.explain)
                     else:
                         # Co-Protocol will terminate if timeout occurred
                         pass
                 else:
-                    raise StateMachineTerminatedWithError(problem_code='1', explain='')
+                    err_message = 'Caller read operation occurred!'
+                    report = ConfidentialStorageMessageProblemReport(
+                        problem_code=PROBLEM_CODE_TIMEOUT_OCCURRED,
+                        explain=err_message
+                    )
+                    await co.send(report)
+                    raise StreamTimeoutOccurred(err_message)
+
+    async def __internal_read_chunk(self, read_chunk: int) -> (int, bytes):
+        before_no = read_chunk
+        after_no = read_chunk + 1
+        for n in range(self.retry_count):
+            try:
+                resp = await self.rpc(
+                    request=StreamOperation(
+                        operation=StreamOperation.OperationCode.READ_CHUNK,
+                        params={
+                            'no': before_no
+                        }
+                    )
+                )
+            except StreamTimeoutOccurred:
+                # Next iteration
+                await self.close_coprotocol()
+                continue
+            no = resp.params['no']
+            if no == after_no:
+                chunk = base64.b64decode(resp.params['chunk'])
+                self._current_chunk = no
+                return no, chunk
+            else:
+                # re-try again
+                pass
+        raise StreamTimeoutOccurred(
+            f'Stream read Timeout occurred for timeout={self.read_timeout} and retry_count={self.retry_count}'
+        )
 
 
 class CalledReadOnlyStreamProtocol(AbstractStateMachine):
@@ -136,68 +212,117 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
     """
 
     def __init__(
-            self, thid: str = None, time_to_live: int = None, logger=None, *args, **kwargs
+            self, caller: Pairwise, thid: str = None, time_to_live: int = None, logger=None, *args, **kwargs
     ):
         """Setup stream proxy environment
 
+        :param caller: Caller of stream resource operations
         :param thid (optional): co-protocol thread-id
         :param time_to_live (optional): time the state-machine is alive,
         :param logger (optional): state-machine logger
         """
         super(CalledReadOnlyStreamProtocol, self).__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        self.__caller: Pairwise = caller
         self.__thid = thid
+        self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
 
-    async def run_forever(self, caller: Pairwise, proxy_to: AbstractReadOnlyStream, exit_on_close: bool = True):
+    @property
+    def caller(self) -> Pairwise:
+        return self.__caller
+
+    @property
+    def thid(self) -> str:
+        return self.__thid
+
+    async def run_forever(self, proxy_to: AbstractReadOnlyStream, exit_on_close: bool = True):
         """Proxy requests in loop
 
-        :param caller: Caller of stream resource operations
         :param proxy_to: stream interface implementation
         :param exit_on_close: (bool) exit loop on close
         :return:
         """
-        async with self.coprotocol(caller) as co:
+        async with self.coprotocol(close_on_exit=True) as co:
             while True:
-                req, sender_verkey, recipient_verkey = await co.get_one()
-                if isinstance(req, ConfidentialStorageMessageProblemReport):
-                    self._problem_report = req
-                    raise StateMachineTerminatedWithError(problem_code=req.problem_code, explain=req.explain)
-                elif isinstance(req, StreamOperation):
-                    if req.operation == StreamOperation.OperationCode.OPEN:
-                        await proxy_to.open()
-                        params = {
-                            'state': {
-                                'seekable': proxy_to.seekable,
-                                'chunks_num': proxy_to.chunks_num,
-                                'current_chunk': proxy_to.current_chunk,
-                            }
-                        }
-                        await co.send(StreamOperationResult(req.operation, params))
-                    elif req.operation == StreamOperation.OperationCode.CLOSE:
-                        await proxy_to.close()
-                        if exit_on_close:
-                            return
-                    elif req.operation == StreamOperation.OperationCode.SEEK_TO_CHUNK:
-                        no = req.params.get('no')
-                        new_no = await proxy_to.seek_to_chunk(no)
-                        params = {'no': new_no}
-                        await co.send(StreamOperationResult(req.operation, params))
-                    elif req.operation == StreamOperation.OperationCode.READ_CHUNK:
-                        no = req.params.get('no')
-                        new_no, chunk = await proxy_to.read_chunk(no)
-                        chunk = base64.b64encode(chunk).decode()
-                        params = {'no': new_no, 'chunk': chunk}
-                        await co.send(StreamOperationResult(req.operation, params))
+                request, sender_verkey, recipient_verkey = await co.get_one()
+                await self.handle(request, proxy_to)
+                if isinstance(request, StreamOperation):
+                    if request.operation == StreamOperation.OperationCode.CLOSE and exit_on_close:
+                        return
         pass
 
+    async def handle(
+            self, request: Union[StreamOperation, ConfidentialStorageMessageProblemReport],
+            proxy_to: AbstractReadOnlyStream
+    ):
+        if isinstance(request, ConfidentialStorageMessageProblemReport):
+            self._problem_report = request
+        elif isinstance(request, StreamOperation):
+            co = await self.open_coprotocol()
+            try:
+                if request.operation == StreamOperation.OperationCode.OPEN:
+                    await proxy_to.open()
+                    params = {
+                        'state': {
+                            'seekable': proxy_to.seekable,
+                            'chunks_num': proxy_to.chunks_num,
+                            'current_chunk': proxy_to.current_chunk,
+                        }
+                    }
+                    await co.send(StreamOperationResult(request.operation, params))
+                elif request.operation == StreamOperation.OperationCode.CLOSE:
+                    await proxy_to.close()
+                elif request.operation == StreamOperation.OperationCode.SEEK_TO_CHUNK:
+                    no = request.params.get('no')
+                    new_no = await proxy_to.seek_to_chunk(no)
+                    params = {'no': new_no}
+                    await co.send(StreamOperationResult(request.operation, params))
+                elif request.operation == StreamOperation.OperationCode.READ_CHUNK:
+                    no = request.params.get('no')
+                    new_no, chunk = await proxy_to.read_chunk(no)
+                    chunk = base64.b64encode(chunk).decode()
+                    params = {'no': new_no, 'chunk': chunk}
+                    await co.send(StreamOperationResult(request.operation, params))
+            except BaseStreamError as e:
+                if isinstance(e, StreamEOF):
+                    problem_code, explain = PROBLEM_CODE_EOF, e.message
+                elif isinstance(e, StreamFormatError):
+                    problem_code, explain = PROBLEM_CODE_FORMAT, e.message
+                elif isinstance(e, StreamInitializationError):
+                    problem_code, explain = PROBLEM_CODE_INIT, e.message
+                elif isinstance(e, StreamEncryptionError):
+                    problem_code, explain = PROBLEM_CODE_ENCRYPTION, e.message
+                elif isinstance(e, StreamSeekableError):
+                    problem_code, explain = PROBLEM_CODE_SEEKABLE, e.message
+                elif isinstance(e, StreamTimeoutOccurred):
+                    problem_code, explain = PROBLEM_CODE_TIMEOUT_OCCURRED, e.message
+                else:
+                    problem_code, explain = PROBLEM_CODE_INVALID_REQ, e.message
+                report = ConfidentialStorageMessageProblemReport(
+                    problem_code=problem_code, explain=explain
+                )
+                # Don't raise any error: give caller to make decision
+                await co.send(report)
+
+    async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+        if self.__coprotocol is None:
+            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+                thid=self.__thid,
+                to=self.caller,
+                time_to_live=self.time_to_live
+            )
+            self._register_for_aborting(self.__coprotocol)
+        return self.__coprotocol
+
+    async def close_coprotocol(self):
+        if self.__coprotocol:
+            await self.__coprotocol.clean()
+            self._unregister_for_aborting(self.__coprotocol)
+            self.__coprotocol = None
+
     @contextlib.asynccontextmanager
-    async def coprotocol(self, caller: Pairwise):
-        co = sirius_sdk.CoProtocolThreadedP2P(
-            thid=self.__thid,
-            to=caller,
-            time_to_live=self.time_to_live
-        )
-        self._register_for_aborting(co)
+    async def coprotocol(self, close_on_exit: bool = False):
+        co = await self.open_coprotocol()
         try:
             try:
                 yield co
@@ -205,16 +330,16 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                 await self.log(progress=100, message='Aborted')
                 raise StateMachineAborted('Aborted by User')
         finally:
-            await co.clean()
-            self._unregister_for_aborting(co)
+            if close_on_exit:
+                await self.close_coprotocol()
 
 
-class WriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStream):
+class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStream):
     """
     """
 
     def __init__(
-            self, vault: Pairwise, uri: str,
+            self, called: Pairwise, uri: str,
             thid: str = None, time_to_live: int = None, logger=None, *args, **kwargs
     ):
         """Stream abstraction for read-only operations provided with [Vault] entity"""
@@ -227,5 +352,8 @@ class WriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStream):
     async def close(self):
         pass
 
-    async def seek(self, pos: int) -> int:
+    async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
+        pass
+
+    async def seek_to_chunk(self, no: int) -> int:
         pass

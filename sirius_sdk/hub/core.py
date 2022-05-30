@@ -200,7 +200,7 @@ def deprecated_init_params(f):
         p2p = kwargs.pop('p2p', None)
         io_timeout = kwargs.pop('io_timeout', None)
         if server_uri and credentials and p2p:
-            cfg.setup_cloud(server_uri, credentials, p2p, io_timeout)
+            cfg.setup_cloud(server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout)
 
         cfg.override(**kwargs)
         new_kwargs = cfg.cloud_opts

@@ -31,19 +31,31 @@ class Config:
         return self.__mediator_opts
 
     def setup_cloud(
-            self, server_uri: str, credentials: Union[bytes, str],
-            p2p: Union[P2PConnection, dict], io_timeout: int = None
+            self, *args, server_uri: str = None, credentials: Union[bytes, str] = None,
+            p2p: Union[P2PConnection, dict] = None, io_timeout: int = None
     ) -> "Config":
+        if args:
+            cfg = args[0]
+            if type(cfg) is dict:
+                return self.setup_cloud(**cfg)
+            else:
+                raise SiriusInitializationError('Expected configuration as dictionary of params')
         # setup cloud agent connection url
+        if server_uri is None:
+            raise SiriusInitializationError('"server_uri" must be set')
         self.__cloud_opts = {'server_uri': server_uri}
         # setup credentials
-        if type(credentials) is str:
+        if credentials is None:
+            raise SiriusInitializationError('"credentials" must be set')
+        elif type(credentials) is str:
             self.__cloud_opts['credentials'] = credentials.encode()
         elif type(credentials) is bytes:
             self.__cloud_opts['credentials'] = credentials
         else:
             raise SiriusInitializationError('Unexpected credentials type. Expected str or bytes')
         # setup p2p connection
+        if p2p is None:
+            raise SiriusInitializationError('"p2p" must be set')
         if type(p2p) is dict:
             their_verkey = p2p.get('their_verkey', None)
             if their_verkey is None:

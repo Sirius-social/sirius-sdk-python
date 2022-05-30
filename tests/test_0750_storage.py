@@ -3,6 +3,7 @@ import math
 import os
 import json
 import uuid
+from typing import Optional
 
 import pytest
 import nacl.bindings
@@ -12,10 +13,36 @@ import nacl.secret
 import sirius_sdk
 from sirius_sdk.encryption import create_keypair, pack_message, unpack_message, bytes_to_b58, sign_message, \
     verify_signed_message, did_from_verkey, b58_to_bytes
-from sirius_sdk.agent.aries_rfc.feature_0750_storage import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, \
-    StreamEncryption, StreamDecryption, CallerReadOnlyStreamProtocol, CalledReadOnlyStreamProtocol
+from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
 from .helpers import calc_file_hash, calc_bytes_hash, calc_file_size, run_coroutines
 from .conftest import get_pairwise3
+
+
+class MockedReadOnlyStream(FileSystemReadOnlyStream):
+    """Mocked stream to test retentions and other stream behaviour"""
+
+    def __init__(self, path: str, chunks_num: int, enc: Optional[StreamDecryption] = None):
+        super().__init__(path, chunks_num, enc)
+        # Set if need to emulate read-ops delays
+        self.retention_delay_sec: Optional[int] = None
+        # Set to limit retention factor
+        self.retention_delay_limit: Optional[int] = None
+        self.__retention_delay_accum = 0
+
+    async def read_chunk(self, no: int = None) -> (int, bytes):
+        if self.retention_delay_sec:
+            self.__retention_delay_accum += 1
+            if self.retention_delay_limit is not None:
+                if self.__retention_delay_accum >= self.retention_delay_limit:
+                    allow_sleeping = False
+                    self.__retention_delay_accum = 0
+                else:
+                    allow_sleeping = True
+            else:
+                allow_sleeping = True
+            if allow_sleeping:
+                await asyncio.sleep(self.retention_delay_sec)
+        return await super().read_chunk(no)
 
 
 @pytest.mark.asyncio
@@ -89,9 +116,9 @@ async def test_fs_streams_seeks(files_dir: str):
                 assert writen == len(chunk)
             assert wo.chunks_num == len(chunks)
             # Check Writer EOF
-            with pytest.raises(EOFError):
+            with pytest.raises(StreamEOF):
                 await wo.seek_to_chunk(1000)
-            with pytest.raises(EOFError):
+            with pytest.raises(StreamEOF):
                 await wo.write_chunk(b'', 1000)
             # Check Reader
             ro = FileSystemReadOnlyStream(file_under_test, chunks_num=len(chunks))
@@ -106,9 +133,9 @@ async def test_fs_streams_seeks(files_dir: str):
                     assert expected_chunk == actual_chunk
                 # Check Reader EOF
                 assert await ro.eof() is True
-                with pytest.raises(EOFError):
+                with pytest.raises(StreamEOF):
                     await ro.seek_to_chunk(1000)
-                with pytest.raises(EOFError):
+                with pytest.raises(StreamEOF):
                     await ro.read_chunk()
             finally:
                 await ro.close()
@@ -261,12 +288,12 @@ async def test_readonly_stream_protocols(files_dir: str, config_c: dict, config_
     async def called():
         async with sirius_sdk.context(**config_d):
             stream = FileSystemReadOnlyStream(path=file_under_test, chunks_num=ro_chunks_num)
-            state_machine = CalledReadOnlyStreamProtocol(thid=testing_thid)
-            await state_machine.run_forever(called_p2p, stream)
+            state_machine = CalledReadOnlyStreamProtocol(called_p2p, thid=testing_thid)
+            await state_machine.run_forever(stream)
 
     async def caller():
         async with sirius_sdk.context(**config_c):
-            ro = CallerReadOnlyStreamProtocol(called=caller_p2p, uri=file_under_test, thid=testing_thid)
+            ro = CallerReadOnlyStreamProtocol(called=caller_p2p, uri=file_under_test, read_timeout=5, thid=testing_thid)
             # open
             await ro.open()
             # checks...
@@ -290,4 +317,91 @@ async def test_readonly_stream_protocols(files_dir: str, config_c: dict, config_
             # close
             await ro.close()
 
-    await run_coroutines(called(), caller(), timeout=5)
+    results = await run_coroutines(called(), caller(), timeout=5)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_readonly_stream_protocols_chunks_and_eof(files_dir: str, config_c: dict, config_d: dict):
+    """
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-readonly-protocol-' + uuid.uuid4().hex
+    file_under_test = os.path.join(files_dir, 'big_img.jpeg')
+    file_under_test_md5 = calc_file_hash(file_under_test)
+    ro_chunks_num = 10
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            stream = FileSystemReadOnlyStream(path=file_under_test, chunks_num=ro_chunks_num)
+            state_machine = CalledReadOnlyStreamProtocol(called_p2p, thid=testing_thid)
+            await state_machine.run_forever(stream)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            ro = CallerReadOnlyStreamProtocol(called=caller_p2p, uri=file_under_test, read_timeout=5, thid=testing_thid)
+            # open
+            await ro.open()
+            # checks read data md5
+            read_data = await ro.read()
+            assert calc_bytes_hash(read_data) == file_under_test_md5
+            # check EOF
+            with pytest.raises(StreamEOF):
+                await ro.seek_to_chunk(1000)
+            await ro.seek_to_chunk(ro_chunks_num)
+            with pytest.raises(StreamEOF):
+                await ro.read_chunk()
+            # close
+            await ro.close()
+
+    results = await run_coroutines(called(), caller(), timeout=5)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_readonly_stream_delays(files_dir: str, config_c: dict, config_d: dict):
+    """Check SWAP mechanism in non-reliable communication channel
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-readonly-protocol-' + uuid.uuid4().hex
+    file_under_test = os.path.join(files_dir, 'big_img.jpeg')
+    file_under_test_md5 = calc_file_hash(file_under_test)
+    ro_chunks_num = 10
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            stream = MockedReadOnlyStream(path=file_under_test, chunks_num=ro_chunks_num)
+            stream.retention_delay_sec = 1
+            stream.retention_delay_limit = 2
+            state_machine = CalledReadOnlyStreamProtocol(called_p2p, thid=testing_thid)
+            await state_machine.run_forever(stream)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            ro = CallerReadOnlyStreamProtocol(
+                called=caller_p2p, uri=file_under_test, read_timeout=3, retry_count=3,
+                thid=testing_thid
+            )
+            # open
+            await ro.open()
+            # checks read data md5
+            read_data = await ro.read()
+            assert calc_bytes_hash(read_data) == file_under_test_md5
+            # check EOF
+            with pytest.raises(StreamEOF):
+                await ro.seek_to_chunk(1000)
+            await ro.seek_to_chunk(ro_chunks_num)
+            with pytest.raises(StreamEOF):
+                await ro.read_chunk()
+            # close
+            await ro.close()
+
+    results = await run_coroutines(called(), caller(), timeout=50)
+    assert len(results) == 2
