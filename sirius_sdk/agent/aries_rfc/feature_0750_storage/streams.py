@@ -474,9 +474,9 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         self.__fd = await aiofiles.open(self.path, 'a+b', buffering=0)
         file_is_seekable = await self.__fd.seekable()
         self._seekable = (self.enc is None) and file_is_seekable
+        self.__file_pos = await self.__fd.seek(0, io.SEEK_END)
+        self.__file_size = self.__file_pos
         if self.enc:
-            self.__file_pos = await self.__fd.seek(0, io.SEEK_END)
-            self.__file_size = self.__file_pos
             await self.__fd.seek(0, io.SEEK_SET)
             await self.__load_enc_chunks()
             await self.__fd.seek(0, io.SEEK_END)
@@ -485,8 +485,6 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         else:
             self._current_chunk = math.trunc(self.__file_pos / self._chunk_size)
             self._chunks_num = self._current_chunk
-            self.__file_pos = await self.__fd.seek(0, io.SEEK_END)
-            self.__file_size = self.__file_pos
         self._is_open = True
 
     async def close(self):
