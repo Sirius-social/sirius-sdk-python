@@ -456,6 +456,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         self.__cek = None
         self.__file_size = 0
         self.__file_pos = 0
+        self.__chunk_offsets = []
         if enc:
             if enc.type != StreamEncType.UNKNOWN:
                 if enc.type != StreamEncType.X25519KeyAgreementKey2019:
@@ -470,11 +471,22 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
                 await fd.truncate(0)
 
     async def open(self):
-        self.__fd = await aiofiles.open(self.path, 'wb', buffering=0)
-        await self.__fd.seek(0, io.SEEK_SET)
-        self._seekable = self.enc is None
-        self.__file_size = 0
-        self.__file_pos = 0
+        self.__fd = await aiofiles.open(self.path, 'a+b', buffering=0)
+        file_is_seekable = await self.__fd.seekable()
+        self._seekable = (self.enc is None) and file_is_seekable
+        if self.enc:
+            self.__file_pos = await self.__fd.seek(0, io.SEEK_END)
+            self.__file_size = self.__file_pos
+            await self.__fd.seek(0, io.SEEK_SET)
+            await self.__load_enc_chunks()
+            await self.__fd.seek(0, io.SEEK_END)
+            self._chunks_num = len(self.__chunk_offsets)
+            self._current_chunk = self._chunks_num
+        else:
+            self._current_chunk = math.trunc(self.__file_pos / self._chunk_size)
+            self._chunks_num = self._current_chunk
+            self.__file_pos = await self.__fd.seek(0, io.SEEK_END)
+            self.__file_size = self.__file_pos
         self._is_open = True
 
     async def close(self):
@@ -486,6 +498,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             self.__file_size = 0
             self.__file_pos = 0
             self._is_open = False
+            self.__chunk_offsets.clear()
 
     async def seek_to_chunk(self, no: int) -> int:
         self.__assert_is_open()
@@ -520,6 +533,18 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             self._chunks_num += 1
         self._current_chunk += 1
         return self._current_chunk, len(chunk)
+
+    async def __load_enc_chunks(self):
+        file_pos = 0
+        self.__chunk_offsets.clear()
+        while file_pos < self.__file_size:
+            b = await self.__fd.read(4)
+            file_pos += len(b)
+            if len(b) != 4:
+                raise StreamFormatError('Unexpected encoded file structure')
+            sz = struct.unpack("i", b)[0]
+            self.__chunk_offsets.append([sz, file_pos])
+            file_pos = await self.__fd.seek(sz, io.SEEK_CUR)
 
     def __assert_is_open(self):
         if not self.__fd:

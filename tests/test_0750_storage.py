@@ -1,4 +1,5 @@
 import asyncio
+import io
 import math
 import os
 import json
@@ -107,6 +108,26 @@ async def test_fs_streams(files_dir: str):
             assert wo_file_md5 == file_under_test_md5
         finally:
             os.remove(wo_file_path)
+    # 4. Write stream: append to end
+    wo_file_path = os.path.join(files_dir, 'append_stream.jpeg')
+    chunk_size = 1
+    wo = FileSystemWriteOnlyStream(wo_file_path, chunk_size)
+    await wo.create(truncate=True)
+    await wo.open()
+    try:
+        await wo.write(b'0' * chunk_size)
+        assert wo.current_chunk == 1
+        await wo.close()
+        wo = FileSystemWriteOnlyStream(wo_file_path, chunk_size)
+        await wo.open()
+        assert wo.current_chunk == 1
+        await wo.write(b'1' * chunk_size)
+        await wo.close()
+        with open(wo_file_path, 'rb') as f:
+            content = f.read()
+            assert content == b'01'
+    finally:
+        os.remove(wo_file_path)
 
 
 @pytest.mark.asyncio
@@ -325,34 +346,72 @@ async def test_streams_encoding_seeking():
         b'1' * chunk_size,
         b'2' * (chunk_size//2)
     ]
-    replaced_chunk = b'x' * chunk_size
+    append_chunk = b'x' * chunk_size
 
     recip_vk_bytes, recip_sigkey_bytes = create_keypair(b'0000000000000000000000RECIPIENT1')
     recip_vk, recip_sigkey = bytes_to_b58(recip_vk_bytes), bytes_to_b58(recip_sigkey_bytes)
     file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
     open(file_under_test, 'w+b')
     try:
+        enc = StreamEncryption(
+            type_=StreamEncType.X25519KeyAgreementKey2019).setup(target_verkeys=[recip_vk]
+                                                                 )
         writer = FileSystemWriteOnlyStream(
             path=file_under_test, chunk_size=chunk_size,
-            enc=StreamEncryption(type_=StreamEncType.X25519KeyAgreementKey2019).setup(target_verkeys=[recip_vk])
+            enc=enc
         )
         # Write chunks
         await writer.open()
         try:
             for no, chunk in enumerate(actual_chunks):
-                await writer.write_chunk(chunk, no)
+                await writer.write_chunk(chunk)
             assert writer.chunks_num == len(actual_chunks)
         finally:
             await writer.close()
         # Read chunks
         reader = FileSystemReadOnlyStream(
             path=file_under_test, chunks_num=len(actual_chunks),
-            enc=StreamDecryption(type_=StreamEncType.X25519KeyAgreementKey2019).setup(recip_vk, recip_sigkey)
+            enc=StreamDecryption(
+                recipients=writer.enc.recipients, type_=StreamEncType.X25519KeyAgreementKey2019, nonce=writer.enc.nonce
+            ).setup(recip_vk, recip_sigkey)
         )
         await reader.open()
         try:
             for no, expected_chunk in enumerate(actual_chunks):
-                actual_chunk = await reader.read_chunk()
+                new_no, actual_chunk = await reader.read_chunk(no)
+                assert actual_chunk == expected_chunk
+                assert new_no == no+1
+        finally:
+            await reader.close()
+        # Append
+        writer = FileSystemWriteOnlyStream(
+            path=file_under_test, chunk_size=chunk_size,
+            enc=enc
+        )
+        # Append chunk to the end of stream
+        await writer.open()
+        try:
+            await writer.write_chunk(append_chunk)
+            actual_chunks_after_append = writer.chunks_num
+            assert actual_chunks_after_append == len(actual_chunks) + 1
+        finally:
+            await writer.close()
+        reader = FileSystemReadOnlyStream(
+            path=file_under_test, chunks_num=actual_chunks_after_append,
+            enc=StreamDecryption(
+                recipients=writer.enc.recipients, type_=StreamEncType.X25519KeyAgreementKey2019, nonce=writer.enc.nonce
+            ).setup(recip_vk, recip_sigkey)
+        )
+        await reader.open()
+        try:
+            i = 0
+            async for chunk in reader.read_chunked():
+                if i < len(actual_chunks):
+                    expected = actual_chunks[i]
+                else:
+                    expected = append_chunk
+                assert chunk == expected
+                i += 1
         finally:
             await reader.close()
     finally:
