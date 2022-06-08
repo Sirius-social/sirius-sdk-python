@@ -2,6 +2,9 @@ import asyncio
 import math
 import os
 import json
+import string
+import random
+import tempfile
 import uuid
 from typing import Optional
 
@@ -16,6 +19,13 @@ from sirius_sdk.encryption import create_keypair, pack_message, unpack_message, 
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
 from .helpers import calc_file_hash, calc_bytes_hash, calc_file_size, run_coroutines
 from .conftest import get_pairwise3
+
+
+def get_random_string(length):
+    # choose from all lowercase letter
+    letters = string.ascii_lowercase
+    s = ''.join(random.choice(letters) for i in range(length))
+    return s
 
 
 class MockedReadOnlyStream(FileSystemReadOnlyStream):
@@ -87,6 +97,7 @@ async def test_fs_streams(files_dir: str):
                 raw = f.read()
             await wo.open()
             try:
+                assert wo.is_open is True
                 await wo.write(raw)
                 assert wo.chunks_num == expected_chunks_num
                 assert wo.current_chunk == expected_chunks_num
@@ -124,6 +135,7 @@ async def test_fs_streams_seeks(files_dir: str):
             ro = FileSystemReadOnlyStream(file_under_test, chunks_num=len(chunks))
             await ro.open()
             try:
+                assert ro.is_open is True
                 assert ro.current_chunk == 0
                 assert ro.chunks_num == len(chunks)
                 for no, expected_chunk in enumerate(chunks):
@@ -182,8 +194,6 @@ async def test_fs_streams_encoding(files_dir: str):
     file_under_test = os.path.join(files_dir, 'big_img.jpeg')
     file_under_test_md5 = calc_file_hash(file_under_test)
 
-    sender_vk_bytes, sender_sigkey_bytes = create_keypair(b'00000000000000000000000000SENDER')
-    sender_vk, sender_sigkey = bytes_to_b58(sender_vk_bytes), bytes_to_b58(sender_sigkey_bytes)
     recip_vk_bytes, recip_sigkey_bytes = create_keypair(b'00000000000000000000000RECIPIENT')
     recip_vk, recip_sigkey = bytes_to_b58(recip_vk_bytes), bytes_to_b58(recip_sigkey_bytes)
 
@@ -213,6 +223,140 @@ async def test_fs_streams_encoding(files_dir: str):
             await ro.close()
     finally:
         os.remove(enc_file_path)
+
+
+@pytest.mark.asyncio
+async def test_streams_encoding_layers(files_dir: str):
+    file_under_test = os.path.join(files_dir, 'big_img.jpeg')
+    file_under_test_md5 = calc_file_hash(file_under_test)
+    tmp_file_layer1 = os.path.join(tempfile.tempdir, f'layer1_{uuid.uuid4().hex}.bin')
+    tmp_file_layer2 = os.path.join(tempfile.tempdir, f'layer2_{uuid.uuid4().hex}.bin')
+    file_for_checks = os.path.join(tempfile.tempdir, f'checks_{uuid.uuid4().hex}.bin')
+    # Layer-1
+    recip_vk_bytes1, recip_sigkey_bytes1 = create_keypair(b'0000000000000000000000RECIPIENT1')
+    recip_vk1, recip_sigkey1 = bytes_to_b58(recip_vk_bytes1), bytes_to_b58(recip_sigkey_bytes1)
+    layers_chunk_size = 1024
+    layer1 = {
+        'keys': (recip_vk1, recip_sigkey1),
+        'writer': FileSystemWriteOnlyStream(
+            path=tmp_file_layer1,
+            chunk_size=layers_chunk_size,
+            enc=StreamEncryption().setup(target_verkeys=[recip_vk1])
+        )
+    }
+    # Layer-2
+    recip_vk_bytes2, recip_sigkey_bytes2 = create_keypair(b'0000000000000000000000RECIPIENT2')
+    recip_vk2, recip_sigkey2 = bytes_to_b58(recip_vk_bytes2), bytes_to_b58(recip_sigkey_bytes2)
+    layer2 = {
+        'keys': (recip_vk2, recip_sigkey2),
+        'writer': FileSystemWriteOnlyStream(
+            path=tmp_file_layer2,
+            chunk_size=layers_chunk_size,
+            enc=StreamEncryption().setup(target_verkeys=[recip_vk2])
+        )
+    }
+    await layer1['writer'].create(truncate=True)
+    try:
+        await layer2['writer'].create(truncate=True)
+        try:
+            with open(file_under_test, 'rb') as f:
+                content_under_test = f.read()
+            # Layer-2 Encrypt (upper-level)
+            await layer2['writer'].open()
+            await layer2['writer'].write(content_under_test)
+            layer2_chunks_num = layer2['writer'].chunks_num
+            await layer2['writer'].close()
+            # Layer-1 Encrypt (Lower-Level)
+            src = FileSystemReadOnlyStream(
+                path=layer2['writer'].path, chunks_num=layer2_chunks_num, enc=StreamDecryption(type_=StreamEncType.UNKNOWN)
+            )
+            await src.open()
+            await layer1['writer'].create(truncate=True)
+            await layer1['writer'].open()
+            await layer1['writer'].copy(src)
+            layer1_chunks_num = layer1['writer'].chunks_num
+            await layer1['writer'].close()
+            await src.close()
+            # Layer1 -> Layer2 decryption (lower -> upper)
+            layer1_reader = FileSystemReadOnlyStream(
+                path=layer1['writer'].path, chunks_num=layer1_chunks_num, enc=layer1['writer'].enc
+            )
+            await layer1_reader.open()
+            try:
+                dest = FileSystemWriteOnlyStream(
+                    path=file_for_checks, chunk_size=layers_chunk_size, enc=StreamEncryption(type_=StreamEncType.UNKNOWN)
+                )
+                await dest.create(truncate=True)
+                try:
+                    await dest.open()
+                    await dest.copy(layer1_reader)
+                    await dest.close()
+                    layer2_reader = FileSystemReadOnlyStream(
+                        path=file_for_checks, chunks_num=layer2_chunks_num, enc=layer2['writer'].enc
+                    )
+                    await layer2_reader.open()
+                    try:
+                        # Check-1
+                        actual_data = await layer2_reader.read()
+                        actual_md5 = calc_bytes_hash(actual_data)
+                        assert file_under_test_md5 == actual_md5
+                        # Check-2
+                        accum = b''
+                        async for chunk in layer2_reader.read_chunked(src=layer1_reader):
+                            accum += chunk
+                        assert file_under_test_md5 == actual_md5
+                    finally:
+                        await layer2_reader.close()
+                finally:
+                    os.remove(file_for_checks)
+            finally:
+                await layer1_reader.close()
+        finally:
+            os.remove(tmp_file_layer2)
+    finally:
+        os.remove(tmp_file_layer1)
+
+
+@pytest.mark.asyncio
+async def test_streams_encoding_seeking():
+    chunk_size = 1024
+    actual_chunks = [
+        b'0' * chunk_size,
+        b'1' * chunk_size,
+        b'2' * (chunk_size//2)
+    ]
+    replaced_chunk = b'x' * chunk_size
+
+    recip_vk_bytes, recip_sigkey_bytes = create_keypair(b'0000000000000000000000RECIPIENT1')
+    recip_vk, recip_sigkey = bytes_to_b58(recip_vk_bytes), bytes_to_b58(recip_sigkey_bytes)
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+    open(file_under_test, 'w+b')
+    try:
+        writer = FileSystemWriteOnlyStream(
+            path=file_under_test, chunk_size=chunk_size,
+            enc=StreamEncryption(type_=StreamEncType.X25519KeyAgreementKey2019).setup(target_verkeys=[recip_vk])
+        )
+        # Write chunks
+        await writer.open()
+        try:
+            for no, chunk in enumerate(actual_chunks):
+                await writer.write_chunk(chunk, no)
+            assert writer.chunks_num == len(actual_chunks)
+        finally:
+            await writer.close()
+        # Read chunks
+        reader = FileSystemReadOnlyStream(
+            path=file_under_test, chunks_num=len(actual_chunks),
+            enc=StreamDecryption(type_=StreamEncType.X25519KeyAgreementKey2019).setup(recip_vk, recip_sigkey)
+        )
+        await reader.open()
+        try:
+            for no, expected_chunk in enumerate(actual_chunks):
+                actual_chunk = await reader.read_chunk()
+        finally:
+            await reader.close()
+    finally:
+        os.remove(file_under_test)
 
 
 @pytest.mark.asyncio
@@ -297,6 +441,7 @@ async def test_readonly_stream_protocols(files_dir: str, config_c: dict, config_
             # open
             await ro.open()
             # checks...
+            assert ro.is_open is True
             assert ro.current_chunk == 0
             assert ro.chunks_num == ro_chunks_num
             assert ro.seekable is True
@@ -316,6 +461,7 @@ async def test_readonly_stream_protocols(files_dir: str, config_c: dict, config_
             assert ro.current_chunk == 3
             # close
             await ro.close()
+            assert ro.is_open is False
 
     results = await run_coroutines(called(), caller(), timeout=5)
     assert len(results) == 2
@@ -403,5 +549,112 @@ async def test_readonly_stream_delays(files_dir: str, config_c: dict, config_d: 
             # close
             await ro.close()
 
-    results = await run_coroutines(called(), caller(), timeout=50)
+    results = await run_coroutines(called(), caller(), timeout=15)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_writeonly_stream_protocols(config_c: dict, config_d: dict):
+    """
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-writeonly-protocol-' + uuid.uuid4().hex
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+    chunks_num = 5
+    chunk_size = 128
+    etalon_chunks = []
+    for n in range(chunks_num):
+        s = f'{n}' * chunk_size
+        etalon_chunks.append(s.encode())
+    s = 'x' * (chunk_size // 2)
+    etalon_chunks.append(s.encode())
+    etalon_data = b''
+    for b in etalon_chunks:
+        etalon_data += b
+    etalon_md5 = calc_bytes_hash(etalon_data)
+    print('')
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            stream = FileSystemWriteOnlyStream(path=file_under_test, chunk_size=chunk_size)
+            await stream.create()
+            try:
+                state_machine = CalledWriteOnlyStreamProtocol(called_p2p, thid=testing_thid)
+                await state_machine.run_forever(stream)
+            finally:
+                os.remove(file_under_test)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            wo = CallerWriteOnlyStreamProtocol(called=caller_p2p, uri=file_under_test, thid=testing_thid)
+            # open
+            await wo.open()
+            # checks...
+            assert wo.is_open is True
+            assert wo.current_chunk == 0
+            assert wo.chunks_num == 0
+            assert wo.seekable is True
+            assert wo.chunk_size == chunk_size
+            # write all
+            for no, chunk in enumerate(etalon_chunks):
+                new_no, sz = await wo.write_chunk(chunk, no)
+                assert new_no == no + 1
+                assert sz == len(chunk)
+                assert wo.current_chunk == new_no
+            # check MD5
+            md5 = calc_file_hash(file_under_test)
+            assert etalon_md5 == md5
+            # close
+            await wo.close()
+            assert wo.is_open is False
+
+    results = await run_coroutines(called(), caller(), timeout=5)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_writeonly_stream_write_all(config_c: dict, config_d: dict):
+    """
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-writeonly-protocol-' + uuid.uuid4().hex
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+    chunk_size = 128
+    data_size = chunk_size * 5 + 100
+    data = b'0' * data_size
+    etalon_md5 = calc_bytes_hash(data)
+    print('')
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            stream = FileSystemWriteOnlyStream(path=file_under_test, chunk_size=chunk_size)
+            await stream.create()
+            try:
+                state_machine = CalledWriteOnlyStreamProtocol(called_p2p, thid=testing_thid)
+                await state_machine.run_forever(stream)
+            finally:
+                os.remove(file_under_test)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            wo = CallerWriteOnlyStreamProtocol(called=caller_p2p, uri=file_under_test, thid=testing_thid)
+            # open
+            await wo.open()
+            # write all
+            await wo.write(data)
+            # check MD5
+            md5 = calc_file_hash(file_under_test)
+            assert etalon_md5 == md5
+            # close
+            await wo.close()
+
+    results = await run_coroutines(called(), caller(), timeout=5)
     assert len(results) == 2

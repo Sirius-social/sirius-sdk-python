@@ -1,8 +1,10 @@
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption, StreamEncryption, \
   StreamDecryption, FileSystemReadOnlyStream, FileSystemWriteOnlyStream, BaseStreamError, StreamEOF, \
-  StreamEncryptionError, StreamInitializationError, StreamSeekableError, StreamFormatError, StreamTimeoutOccurred
+  StreamEncryptionError, StreamInitializationError, StreamSeekableError, StreamFormatError, StreamTimeoutOccurred, \
+  StreamEncType
 
-from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol
+from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
+    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol
 
 
 __all__ = [
@@ -10,5 +12,6 @@ __all__ = [
     "AbstractWriteOnlyStream", "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream",
     "CalledReadOnlyStreamProtocol", "CallerReadOnlyStreamProtocol", "BaseStreamError",
     "StreamEOF", "StreamEncryptionError", "StreamInitializationError", "StreamSeekableError",
-    "StreamFormatError", "StreamTimeoutOccurred"
+    "StreamFormatError", "StreamTimeoutOccurred", "CallerWriteOnlyStreamProtocol", "CalledWriteOnlyStreamProtocol",
+    "StreamEncType"
 ]

@@ -2,6 +2,7 @@ import io
 import json
 import math
 import struct
+from enum import Enum
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Union
 
@@ -47,9 +48,17 @@ class StreamTimeoutOccurred(BaseStreamError):
     pass
 
 
+class StreamEncType(Enum):
+    # This enc-type typically used to save chunked structure of stream
+    # that was encoded outside (on upper levels)
+    UNKNOWN = 'UNKNOWN'
+    # X25519
+    X25519KeyAgreementKey2019 = 'X25519KeyAgreementKey2019'
+
+
 class AbstractStreamEncryption(ABC):
 
-    def __init__(self, nonce: str = None, type_: str = 'X25519KeyAgreementKey2019'):
+    def __init__(self, nonce: str = None, type_: StreamEncType = StreamEncType.X25519KeyAgreementKey2019):
         """"Encryption settings for Streams
         :param nonce: (base58 string) nonce bytes
         """
@@ -75,7 +84,7 @@ class AbstractStreamEncryption(ABC):
         return self._recipients
 
     @property
-    def type(self) -> str:
+    def type(self) -> StreamEncType:
         return self.__type
 
     @property
@@ -85,12 +94,12 @@ class AbstractStreamEncryption(ABC):
 
 class StreamEncryption(AbstractStreamEncryption):
 
-    def setup(self, target_verkeys: List[str]):
+    def setup(self, target_verkeys: List[str]) -> "StreamEncryption":
         """Prepare for Encryption
 
         :param target_verkeys: list of base58 encoded target verkeys
         """
-        if self.type != 'X25519KeyAgreementKey2019':
+        if self.type != StreamEncType.X25519KeyAgreementKey2019:
             raise StreamEncryptionError(f'Unsupported key agreement "{self.type}"')
         recip_json, cek = prepare_pack_recipient_keys(
             to_verkeys=[b58_to_bytes(key) for key in target_verkeys]
@@ -98,15 +107,16 @@ class StreamEncryption(AbstractStreamEncryption):
         recip = json.loads(recip_json)
         self._recipients = recip['recipients']
         self._cek = cek
+        return self
 
 
 class StreamDecryption(AbstractStreamEncryption):
 
-    def __init__(self, recipients: Dict = None, nonce: str = None, type_: str = 'X25519KeyAgreementKey2019'):
+    def __init__(self, recipients: Dict = None, nonce: str = None, type_: StreamEncType = StreamEncType.X25519KeyAgreementKey2019):
         super().__init__(nonce, type_)
         self._recipients = recipients
 
-    def setup(self, vk: str, sk: str):
+    def setup(self, vk: str, sk: str) -> "StreamDecryption":
         """Prepare for Decryption
 
         :param vk: (base58 string) decryption verkey
@@ -118,6 +128,7 @@ class StreamDecryption(AbstractStreamEncryption):
             recipients=self.recipients, my_verkey=b58_to_bytes(vk), my_sigkey=b58_to_bytes(sk)
         )
         self._cek = cek
+        return self
 
 
 class AbstractStream(ABC):
@@ -133,6 +144,11 @@ class AbstractStream(ABC):
         self._current_chunk = 0
         self._seekable = None
         self._chunks_num: int = 0
+        self._is_open: bool = False
+
+    @property
+    def is_open(self) -> bool:
+        return self._is_open
 
     @property
     def path(self) -> str:
@@ -178,12 +194,14 @@ class AbstractReadOnlyStream(AbstractStream):
 
     def __init__(self, path: str, chunks_num: int, enc: Optional[StreamDecryption] = None):
         """
+        :param path: path to stream on local infrastructure (device, cloud provider ...)
         :param chunks_num: count of chunks that stream was splitted to
           !!! stream may ignore chunks_num (when stream is encoded for example) !!!
           Chunks allow:
             - partially upload/download big data files/streams (control progress)
             - encrypt/decrypt big data partially
             - adv. services like upload/download with pause/resume (for cloud providers for example)
+        :param enc: allow decrypt stream chunks
         """
         super().__init__(path, enc)
         self._chunks_num = chunks_num
@@ -201,7 +219,14 @@ class AbstractReadOnlyStream(AbstractStream):
 
     async def decrypt(self, chunk: bytes) -> bytes:
         if self.enc:
-            raise NotImplemented
+            if self.enc.type == StreamEncType.UNKNOWN:
+                return chunk
+            else:
+                nonce_bytes = b58_to_bytes(self.enc.nonce)
+                decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
+                    ciphertext=chunk, aad=b'', nonce=nonce_bytes, key=self.enc.cek
+                )
+                return decrypted
         else:
             return chunk
 
@@ -224,7 +249,7 @@ class AbstractReadOnlyStream(AbstractStream):
         else:
             await src.seek_to_chunk(0)
             while not await src.eof():
-                _, chunk = await self.read_chunk()
+                _, chunk = await src.read_chunk()
                 raw = await self.decrypt(chunk)
                 yield raw
 
@@ -249,9 +274,17 @@ class AbstractWriteOnlyStream(AbstractStream):
           Chunks allow:
             - partially upload/download big data files/streams (control progress)
             - encrypt/decrypt big data partially
-            - adv. services like upload/download with pause/resume (for cloud providers for example)"""
+            - adv. services like upload/download with pause/resume (for cloud providers for example)
+        :param enc: allow encrypt stream chunks
+        """
         super().__init__(path, enc)
+        if chunk_size <= 0:
+            raise StreamInitializationError('Chunk Size must to be > 0 !')
         self._chunk_size = chunk_size
+
+    @property
+    def chunk_size(self) -> int:
+        return self._chunk_size
 
     @abstractmethod
     async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
@@ -268,7 +301,7 @@ class AbstractWriteOnlyStream(AbstractStream):
         stream.seek(0)
         while True:
             try:
-                chunk = stream.read(self._chunk_size)
+                chunk = stream.read(self.chunk_size)
                 if len(chunk) > 0:
                     await self.write_chunk(chunk)
                 else:
@@ -277,15 +310,36 @@ class AbstractWriteOnlyStream(AbstractStream):
                 return
 
     async def copy(self, src: AbstractReadOnlyStream):
-        accum = b''
-        async for chunk in src.read_chunked():
-            accum += chunk
-            while len(accum) >= self._chunk_size:
-                await self.write_chunk(accum[:self._chunk_size])
-                accum = accum[self._chunk_size:]
-            if await src.eof():
-                await self.write_chunk(accum)
-                return
+        if not src.is_open:
+            raise StreamInitializationError('Source stream is closed!')
+        if src.enc or self.enc:
+            async for chunk in src.read_chunked():
+                await self.write_chunk(chunk)
+                if await src.eof():
+                    return
+        else:
+            accum = b''
+            async for chunk in src.read_chunked():
+                accum += chunk
+                while len(accum) >= self._chunk_size:
+                    await self.write_chunk(accum[:self._chunk_size])
+                    accum = accum[self._chunk_size:]
+                if await src.eof():
+                    await self.write_chunk(accum)
+                    return
+
+    async def encrypt(self, chunk: bytes) -> bytes:
+        if self.enc:
+            if self.enc.type == StreamEncType.UNKNOWN:
+                return chunk
+            else:
+                nonce_bytes = b58_to_bytes(self.enc.nonce)
+                encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
+                    chunk, aad=b'', nonce=nonce_bytes, key=self.enc.cek
+                )
+                return encoded
+        else:
+            return chunk
 
 
 class FileSystemReadOnlyStream(AbstractReadOnlyStream):
@@ -296,13 +350,11 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
         super().__init__(path, chunks_num, enc)
         self.__fd = None
         self.__size = 0
-        self.__nonce_b = None
         self.__chunk_size = 0
         self.__chunk_offsets = []
         if enc:
-            if enc.cek is None:
+            if enc.type != StreamEncType.UNKNOWN and enc.cek is None:
                 raise StreamEncryptionError('You passed "enc" param but not initialized it. Call setup() at first!')
-            self.__nonce_b = b58_to_bytes(enc.nonce)
 
     async def open(self):
         if self.__fd:
@@ -316,6 +368,7 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
         else:
             self.__chunk_size = math.ceil(self.__size / self.chunks_num)
         self._seekable = True
+        self._is_open = True
 
     async def close(self):
         if self.__fd:
@@ -323,6 +376,7 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
             self.__size = 0
             self.__fd = None
             self._seekable = None
+            self._is_open = False
             self.__chunk_offsets.clear()
 
     async def seek_to_chunk(self, no: int) -> int:
@@ -371,15 +425,6 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
             self._current_chunk += 1
             return self._current_chunk, raw
 
-    async def decrypt(self, chunk: bytes) -> bytes:
-        if self.enc:
-            decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
-                ciphertext=chunk, aad=b'', nonce=self.__nonce_b, key=self.enc.cek
-            )
-            return decrypted
-        else:
-            return chunk
-
     async def eof(self) -> bool:
         self.__assert_is_open()
         if self._current_chunk < self.chunks_num:
@@ -409,15 +454,14 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
     def __init__(self, path: str, chunk_size: int, enc: Optional[StreamEncryption] = None):
         super().__init__(path, chunk_size, enc)
         self.__cek = None
-        self.__nonce_b = None
         self.__file_size = 0
         self.__file_pos = 0
         if enc:
-            if enc.type != 'X25519KeyAgreementKey2019':
-                raise StreamEncryptionError(f'Unsupported key agreement "{enc.type}"')
-            if not enc.recipients:
-                raise StreamEncryptionError(f'Recipients data missed, call Setup first!')
-            self.__nonce_b = b58_to_bytes(enc.nonce)
+            if enc.type != StreamEncType.UNKNOWN:
+                if enc.type != StreamEncType.X25519KeyAgreementKey2019:
+                    raise StreamEncryptionError(f'Unsupported key agreement "{enc.type}"')
+                if not enc.recipients:
+                    raise StreamEncryptionError(f'Recipients data missed, call Setup first!')
         self.__fd = None
 
     async def create(self, truncate: bool = False):
@@ -431,6 +475,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         self._seekable = self.enc is None
         self.__file_size = 0
         self.__file_pos = 0
+        self._is_open = True
 
     async def close(self):
         if self.__fd:
@@ -440,6 +485,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             self._seekable = None
             self.__file_size = 0
             self.__file_pos = 0
+            self._is_open = False
 
     async def seek_to_chunk(self, no: int) -> int:
         self.__assert_is_open()
@@ -460,9 +506,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             await self.seek_to_chunk(no)
         if self.enc:
             # encode
-            encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
-                chunk, aad=b'', nonce=self.__nonce_b, key=self.enc.cek
-            )
+            encoded = await self.encrypt(chunk)
             # Write Chunk Header with actual encoded bytes size
             sz = len(encoded)
             offset1 = await self.__fd.write(struct.pack("i", sz))
