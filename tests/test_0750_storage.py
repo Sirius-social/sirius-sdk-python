@@ -1,8 +1,6 @@
 import asyncio
-import io
 import math
 import os
-import json
 import string
 import random
 import tempfile
@@ -10,13 +8,9 @@ import uuid
 from typing import Optional
 
 import pytest
-import nacl.bindings
-import nacl.utils
-import nacl.secret
 
 import sirius_sdk
-from sirius_sdk.encryption import create_keypair, pack_message, unpack_message, bytes_to_b58, sign_message, \
-    verify_signed_message, did_from_verkey, b58_to_bytes
+from sirius_sdk.encryption import create_keypair, bytes_to_b58
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
 from .helpers import calc_file_hash, calc_bytes_hash, calc_file_size, run_coroutines
 from .conftest import get_pairwise3
@@ -244,6 +238,63 @@ async def test_fs_streams_encoding(files_dir: str):
             await ro.close()
     finally:
         os.remove(enc_file_path)
+
+
+@pytest.mark.asyncio
+async def test_wallets(config_c: dict):
+
+    async with sirius_sdk.context(**config_c):
+        seed = uuid.uuid4().hex[:32]
+        vk = await sirius_sdk.Crypto.create_key(seed=seed)
+
+    # Non-ASCII symbols
+    chunk = "hello aåbäcö".encode()
+
+    enc = StreamEncryption(nonce=bytes_to_b58(b'0'*12)).setup(target_verkeys=[vk])
+    dec = StreamDecryption(recipients=enc.recipients, nonce=enc.nonce)
+
+    assert dec.cek is None
+
+    async with sirius_sdk.context(**config_c):
+        w = FileSystemWriteOnlyStream(path='', chunk_size=1, enc=enc)
+        r = FileSystemReadOnlyStream(path='', chunks_num=1, enc=dec)
+        encoded = await w.encrypt(chunk)
+        # ====================
+        print('')
+        decoded = await r.decrypt(encoded)
+        assert decoded == chunk
+        print('')
+
+
+@pytest.mark.asyncio
+async def test_fs_streams_decoding_from_wallet(config_c: dict):
+
+    async with sirius_sdk.context(**config_c):
+        vk = await sirius_sdk.Crypto.create_key()
+
+    enc = StreamEncryption().setup(target_verkeys=[vk])
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+    chunk_size = 1024
+    chunk = b'x' * chunk_size
+
+    wo = FileSystemWriteOnlyStream(file_under_test, chunk_size=chunk_size, enc=enc)
+    await wo.create(truncate=True)
+    try:
+        await wo.open()
+        await wo.write(chunk)
+        test_file_chunks_num = wo.chunks_num
+        await wo.close()
+        # Decoding
+        dec = StreamDecryption(type_=enc.type, recipients=enc.recipients)
+        async with sirius_sdk.context(**config_c):
+            packed = await sirius_sdk.Crypto.pack_message(message=chunk, recipient_verkeys=[vk])
+
+            ro = FileSystemReadOnlyStream(file_under_test, chunks_num=test_file_chunks_num, enc=dec)
+            await ro.open()
+            actual_chunk = await ro.read_chunk()
+            await ro.close()
+    finally:
+        os.remove(file_under_test)
 
 
 @pytest.mark.asyncio
@@ -676,7 +727,7 @@ async def test_writeonly_stream_protocols(config_c: dict, config_d: dict):
 
 
 @pytest.mark.asyncio
-async def test_writeonly_stream_write_all(config_c: dict, config_d: dict):
+async def test_writeonly_stream_protocol_write_all(config_c: dict, config_d: dict):
     """
     Agent-C is CALLER
     Agent-D is CALLED
@@ -717,3 +768,22 @@ async def test_writeonly_stream_write_all(config_c: dict, config_d: dict):
 
     results = await run_coroutines(called(), caller(), timeout=5)
     assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_protocols_encoding(config_c: dict, config_d: dict):
+    """
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+
+    assert 0
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-writeonly-protocol-encoding-' + uuid.uuid4().hex
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+
+    recip_vk_bytes, recip_sigkey_bytes = create_keypair(b'00000000000000000000000RECIPIENT')
+    recip_vk, recip_sigkey = bytes_to_b58(recip_vk_bytes), bytes_to_b58(recip_sigkey_bytes)
+    enc = StreamEncryption().setup(target_verkeys=[recip_vk])
+    dec = StreamDecryption(recipients=enc.recipients, nonce=enc.nonce)

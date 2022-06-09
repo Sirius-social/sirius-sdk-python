@@ -4,13 +4,17 @@ import math
 import struct
 from enum import Enum
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import List, Optional, Dict, Union
 
 import aiofiles
 import nacl.utils
 import nacl.bindings
 
-from sirius_sdk.encryption import b58_to_bytes, bytes_to_b58
+import sirius_sdk
+from sirius_sdk.errors.exceptions import SiriusInitializationError
+from sirius_sdk.hub.core import _current_hub
+from sirius_sdk.encryption import b58_to_bytes, bytes_to_b58, bytes_to_b64, b64_to_bytes
 from sirius_sdk.encryption.ed25519 import prepare_pack_recipient_keys, locate_pack_recipient_key
 
 
@@ -183,6 +187,80 @@ class AbstractStream(ABC):
     async def seek_to_chunk(self, no: int) -> int:
         raise NotImplemented
 
+    async def encrypt(self, chunk: bytes) -> bytes:
+        if self.enc:
+            if self.enc.type == StreamEncType.UNKNOWN:
+                return chunk
+            else:
+                mlen = len(chunk)
+                prefix = struct.pack("i", mlen)
+                nonce_bytes = b58_to_bytes(self.enc.nonce)
+                aad = self._build_aad(self.enc.recipients)
+                encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
+                    chunk, aad=aad, nonce=nonce_bytes, key=self.enc.cek
+                )
+                payload = prefix + encoded
+                return payload
+        else:
+            return chunk
+
+    async def decrypt(self, chunk: bytes) -> bytes:
+        if self.enc:
+            if self.enc.type == StreamEncType.UNKNOWN:
+                return chunk
+            else:
+                nonce_bytes = b58_to_bytes(self.enc.nonce)
+                prefix = chunk[:4]
+                payload = chunk[4:]
+                mlen = struct.unpack("i", prefix)[0]
+                if self.enc.cek:
+                    aad = self._build_aad(self.enc.recipients)
+                    # Use manually configured encryption settings: [public-key, secret-key]
+                    decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
+                        ciphertext=payload, aad=aad, nonce=nonce_bytes, key=self.enc.cek
+                    )
+                else:
+                    # Use Wallet to decrypt with previously configured SDK
+                    recips = self._build_recips(self.enc.recipients)
+                    recips_b64 = bytes_to_b64(json.dumps(recips).encode("ascii"), urlsafe=True)
+                    ciphertext = payload[:mlen]
+                    tag = payload[mlen:]
+                    packed_message = OrderedDict(
+                        [
+                            ("protected", recips_b64),
+                            ("iv", bytes_to_b64(nonce_bytes, urlsafe=True)),
+                            ("ciphertext", bytes_to_b64(ciphertext, urlsafe=True)),
+                            ("tag", bytes_to_b64(tag, urlsafe=True)),
+                        ]
+                    )
+                    jwe = json.dumps(packed_message).encode()
+                    unpacked = await sirius_sdk.Crypto.unpack_message(jwe)
+                    decrypted = unpacked['message'].encode()
+                return decrypted
+        else:
+            return chunk
+
+    def _build_recips(self, recipients: dict) -> dict:
+        if self.enc.type == StreamEncType.X25519KeyAgreementKey2019:
+            recips = OrderedDict(
+                [
+                    ("enc", "xchacha20poly1305_ietf"),
+                    ("typ", "JWM/1.0"),
+                    ("alg", "Anoncrypt"),
+                    ("recipients", recipients),
+                ]
+            )
+            return recips
+        else:
+            raise StreamEncryptionError('Unknown encryption format')
+
+    def _build_aad(self, recipients: dict) -> bytes:
+        recips = self._build_recips(recipients)
+        recips_json = json.dumps(recips)
+        recips_b64 = bytes_to_b64(recips_json.encode("ascii"), urlsafe=True)
+        aad = recips_b64.encode("ascii")
+        return aad
+
 
 class AbstractReadOnlyStream(AbstractStream):
     """Stream abstraction for reading operations:
@@ -216,19 +294,6 @@ class AbstractReadOnlyStream(AbstractStream):
         :return (new-chunk-offset, data)
         """
         raise NotImplemented
-
-    async def decrypt(self, chunk: bytes) -> bytes:
-        if self.enc:
-            if self.enc.type == StreamEncType.UNKNOWN:
-                return chunk
-            else:
-                nonce_bytes = b58_to_bytes(self.enc.nonce)
-                decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
-                    ciphertext=chunk, aad=b'', nonce=nonce_bytes, key=self.enc.cek
-                )
-                return decrypted
-        else:
-            return chunk
 
     @abstractmethod
     async def eof(self) -> bool:
@@ -328,19 +393,6 @@ class AbstractWriteOnlyStream(AbstractStream):
                     await self.write_chunk(accum)
                     return
 
-    async def encrypt(self, chunk: bytes) -> bytes:
-        if self.enc:
-            if self.enc.type == StreamEncType.UNKNOWN:
-                return chunk
-            else:
-                nonce_bytes = b58_to_bytes(self.enc.nonce)
-                encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
-                    chunk, aad=b'', nonce=nonce_bytes, key=self.enc.cek
-                )
-                return encoded
-        else:
-            return chunk
-
 
 class FileSystemReadOnlyStream(AbstractReadOnlyStream):
 
@@ -353,8 +405,19 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
         self.__chunk_size = 0
         self.__chunk_offsets = []
         if enc:
-            if enc.type != StreamEncType.UNKNOWN and enc.cek is None:
-                raise StreamEncryptionError('You passed "enc" param but not initialized it. Call setup() at first!')
+            if enc.type != StreamEncType.UNKNOWN:
+                if enc.cek is None:
+                    try:
+                        hub = _current_hub()
+                        crypto_manager_exists = hub.get_crypto() is not None
+                        if crypto_manager_exists is False:
+                            raise StreamEncryptionError(
+                                'Crypto manager is not configured'
+                            )
+                    except SiriusInitializationError:
+                        raise StreamEncryptionError(
+                            'You should initialize SDK or Call setup() to manually pass keys for decoder'
+                        )
 
     async def open(self):
         if self.__fd:

@@ -1,3 +1,4 @@
+from .documents import Document, EncryptedDocument
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption, StreamEncryption, \
   StreamDecryption, FileSystemReadOnlyStream, FileSystemWriteOnlyStream, BaseStreamError, StreamEOF, \
   StreamEncryptionError, StreamInitializationError, StreamSeekableError, StreamFormatError, StreamTimeoutOccurred, \
@@ -13,5 +14,5 @@ __all__ = [
     "CalledReadOnlyStreamProtocol", "CallerReadOnlyStreamProtocol", "BaseStreamError",
     "StreamEOF", "StreamEncryptionError", "StreamInitializationError", "StreamSeekableError",
     "StreamFormatError", "StreamTimeoutOccurred", "CallerWriteOnlyStreamProtocol", "CalledWriteOnlyStreamProtocol",
-    "StreamEncType"
+    "StreamEncType", "Document", "EncryptedDocument"
 ]
