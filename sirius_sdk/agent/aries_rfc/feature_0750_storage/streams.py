@@ -377,21 +377,10 @@ class AbstractWriteOnlyStream(AbstractStream):
     async def copy(self, src: AbstractReadOnlyStream):
         if not src.is_open:
             raise StreamInitializationError('Source stream is closed!')
-        if src.enc or self.enc:
-            async for chunk in src.read_chunked():
-                await self.write_chunk(chunk)
-                if await src.eof():
-                    return
-        else:
-            accum = b''
-            async for chunk in src.read_chunked():
-                accum += chunk
-                while len(accum) >= self._chunk_size:
-                    await self.write_chunk(accum[:self._chunk_size])
-                    accum = accum[self._chunk_size:]
-                if await src.eof():
-                    await self.write_chunk(accum)
-                    return
+        async for chunk in src.read_chunked():
+            await self.write_chunk(chunk)
+            if await src.eof():
+                return
 
 
 class FileSystemReadOnlyStream(AbstractReadOnlyStream):
@@ -565,7 +554,13 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         self.__assert_is_open()
         if not self._seekable:
             raise StreamSeekableError('Stream is not seekable')
-        file_pos = no * self._chunk_size
+        if self.__chunk_offsets:
+            try:
+                sz, file_pos = self.__chunk_offsets[no]
+            except IndexError:
+                raise StreamEOF('Chunk No out of range')
+        else:
+            file_pos = no * self._chunk_size
         if file_pos > self.__file_size:
             raise StreamEOF('EOF')
         else:

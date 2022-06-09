@@ -177,10 +177,11 @@ async def test_fs_streams_copy(files_dir: str):
     file_under_test = os.path.join(files_dir, 'big_img.jpeg')
     file_under_test_md5 = calc_file_hash(file_under_test)
     file_under_test_size = calc_file_size(file_under_test)
+    chunks_num = 5
     # 1. Reading All Data
     for chunk_size in [100, 1024, 10000000]:
-        expected_chunks_num = math.ceil(file_under_test_size / chunk_size)
-        ro = FileSystemReadOnlyStream(file_under_test, chunks_num=5)
+        expected_chunks_num = chunks_num  # math.ceil(file_under_test_size / chunk_size)
+        ro = FileSystemReadOnlyStream(file_under_test, chunks_num=chunks_num)
         await ro.open()
         try:
             wo_file_path = os.path.join(files_dir, 'big_img_copy_stream.jpeg')
@@ -241,7 +242,7 @@ async def test_fs_streams_encoding(files_dir: str):
 
 
 @pytest.mark.asyncio
-async def test_wallets(config_c: dict):
+async def test_fs_streams_decoding_from_wallet1(config_c: dict):
 
     async with sirius_sdk.context(**config_c):
         seed = uuid.uuid4().hex[:32]
@@ -259,15 +260,12 @@ async def test_wallets(config_c: dict):
         w = FileSystemWriteOnlyStream(path='', chunk_size=1, enc=enc)
         r = FileSystemReadOnlyStream(path='', chunks_num=1, enc=dec)
         encoded = await w.encrypt(chunk)
-        # ====================
-        print('')
         decoded = await r.decrypt(encoded)
         assert decoded == chunk
-        print('')
 
 
 @pytest.mark.asyncio
-async def test_fs_streams_decoding_from_wallet(config_c: dict):
+async def test_fs_streams_decoding_from_wallet2(config_c: dict):
 
     async with sirius_sdk.context(**config_c):
         vk = await sirius_sdk.Crypto.create_key()
@@ -285,14 +283,13 @@ async def test_fs_streams_decoding_from_wallet(config_c: dict):
         test_file_chunks_num = wo.chunks_num
         await wo.close()
         # Decoding
-        dec = StreamDecryption(type_=enc.type, recipients=enc.recipients)
+        dec = StreamDecryption(type_=enc.type, recipients=enc.recipients, nonce=enc.nonce)
         async with sirius_sdk.context(**config_c):
-            packed = await sirius_sdk.Crypto.pack_message(message=chunk, recipient_verkeys=[vk])
-
             ro = FileSystemReadOnlyStream(file_under_test, chunks_num=test_file_chunks_num, enc=dec)
             await ro.open()
-            actual_chunk = await ro.read_chunk()
+            no, actual_chunk = await ro.read_chunk()
             await ro.close()
+            assert actual_chunk == chunk
     finally:
         os.remove(file_under_test)
 
