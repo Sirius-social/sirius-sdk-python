@@ -12,6 +12,7 @@ import pytest
 import sirius_sdk
 from sirius_sdk.encryption import create_keypair, bytes_to_b58
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
+
 from .helpers import calc_file_hash, calc_bytes_hash, calc_file_size, run_coroutines
 from .conftest import get_pairwise3
 
@@ -774,7 +775,6 @@ async def test_stream_protocols_encoding(config_c: dict, config_d: dict):
     Agent-D is CALLED
     """
 
-    assert 0
     caller_p2p = await get_pairwise3(me=config_c, their=config_d)
     called_p2p = await get_pairwise3(me=config_d, their=config_c)
     testing_thid = 'test-writeonly-protocol-encoding-' + uuid.uuid4().hex
@@ -784,3 +784,59 @@ async def test_stream_protocols_encoding(config_c: dict, config_d: dict):
     recip_vk, recip_sigkey = bytes_to_b58(recip_vk_bytes), bytes_to_b58(recip_sigkey_bytes)
     enc = StreamEncryption().setup(target_verkeys=[recip_vk])
     dec = StreamDecryption(recipients=enc.recipients, nonce=enc.nonce)
+    dec.setup(recip_vk, recip_sigkey)
+    data_size = 5000
+    data = b'0' * data_size
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            wo = FileSystemWriteOnlyStream(
+                path=file_under_test
+            )
+            await wo.create()
+            try:
+                state_machine1 = CalledWriteOnlyStreamProtocol(called_p2p, thid=testing_thid)
+                await state_machine1.run_forever(wo)
+
+                state_machine2 = CalledReadOnlyStreamProtocol(called_p2p, thid=testing_thid)
+                ro = FileSystemReadOnlyStream(
+                    path=file_under_test,
+                    chunks_num=wo.chunks_num
+                )
+                await state_machine2.run_forever(ro)
+            finally:
+                os.remove(file_under_test)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            nonlocal data
+            # Write data
+            wo = CallerWriteOnlyStreamProtocol(
+                called=caller_p2p,
+                uri=file_under_test,
+                thid=testing_thid,
+                enc=enc
+            )
+            # open
+            await wo.open()
+            # write all
+            await wo.write(data)
+            # close
+            await wo.close()
+            # sleep
+            await asyncio.sleep(1)
+            # reader
+            ro = CallerReadOnlyStreamProtocol(
+                called=caller_p2p,
+                uri=file_under_test,
+                thid=testing_thid,
+                enc=dec,
+                read_timeout=3
+            )
+            await ro.open()
+            actual_data = await ro.read()
+            await ro.close()
+            assert actual_data == data
+
+    results = await run_coroutines(called(), caller(), timeout=5)
+    assert len(results) == 2

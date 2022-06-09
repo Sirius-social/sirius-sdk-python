@@ -5,7 +5,7 @@ import struct
 from enum import Enum
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import List, Optional, Dict, Union
+from typing import List, Optional, Dict
 
 import aiofiles
 import nacl.utils
@@ -14,42 +14,11 @@ import nacl.bindings
 import sirius_sdk
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.hub.core import _current_hub
-from sirius_sdk.encryption import b58_to_bytes, bytes_to_b58, bytes_to_b64, b64_to_bytes
+from sirius_sdk.encryption import b58_to_bytes, bytes_to_b58, bytes_to_b64
 from sirius_sdk.encryption.ed25519 import prepare_pack_recipient_keys, locate_pack_recipient_key
 
-
-class BaseStreamError(RuntimeError):
-
-    def __init__(self, message):
-        super().__init__(message)
-
-    @property
-    def message(self) -> str:
-        return self.args[0] if self.args else ''
-
-
-class StreamEOF(BaseStreamError):
-    pass
-
-
-class StreamEncryptionError(BaseStreamError):
-    pass
-
-
-class StreamInitializationError(BaseStreamError):
-    pass
-
-
-class StreamSeekableError(BaseStreamError):
-    pass
-
-
-class StreamFormatError(BaseStreamError):
-    pass
-
-
-class StreamTimeoutOccurred(BaseStreamError):
-    pass
+from .errors import StreamEOF, StreamEncryptionError, StreamInitializationError, \
+    StreamSeekableError, StreamFormatError
 
 
 class StreamEncType(Enum):
@@ -161,6 +130,10 @@ class AbstractStream(ABC):
     @property
     def enc(self) -> Optional[StreamEncryption]:
         return self.__enc
+
+    @enc.setter
+    def enc(self, value: StreamEncryption):
+        self.__enc = value
 
     @property
     def seekable(self) -> Optional[bool]:
@@ -332,7 +305,7 @@ class AbstractWriteOnlyStream(AbstractStream):
       - etc
     """
 
-    def __init__(self, path: str, chunk_size: int, enc: Optional[StreamEncryption] = None):
+    def __init__(self, path: str, chunk_size: int = 1024, enc: Optional[StreamEncryption] = None):
         """
         :param chunk_size: size (in bytes) of chunks that stream was splitted to
           !!! actual chunks-sizes may be different (when stream is encoded for example) !!!
@@ -343,13 +316,17 @@ class AbstractWriteOnlyStream(AbstractStream):
         :param enc: allow encrypt stream chunks
         """
         super().__init__(path, enc)
-        if chunk_size <= 0:
-            raise StreamInitializationError('Chunk Size must to be > 0 !')
-        self._chunk_size = chunk_size
+        self.chunk_size = chunk_size
 
     @property
     def chunk_size(self) -> int:
         return self._chunk_size
+
+    @chunk_size.setter
+    def chunk_size(self, value: int):
+        if value <= 0:
+            raise StreamInitializationError('Chunk Size must to be > 0 !')
+        self._chunk_size = value
 
     @abstractmethod
     async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
@@ -503,7 +480,9 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
 
 class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
 
-    def __init__(self, path: str, chunk_size: int, enc: Optional[StreamEncryption] = None):
+    DEF_CHUNK_SIZE = 1024  # 1KB
+
+    def __init__(self, path: str, chunk_size: int = DEF_CHUNK_SIZE, enc: Optional[StreamEncryption] = None):
         super().__init__(path, chunk_size, enc)
         self.__cek = None
         self.__file_size = 0
@@ -525,7 +504,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
     async def open(self):
         self.__fd = await aiofiles.open(self.path, 'a+b', buffering=0)
         file_is_seekable = await self.__fd.seekable()
-        self._seekable = (self.enc is None) and file_is_seekable
+        self._seekable = file_is_seekable
         self.__file_pos = await self.__fd.seek(0, io.SEEK_END)
         self.__file_size = self.__file_pos
         if self.enc:
@@ -552,8 +531,8 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
 
     async def seek_to_chunk(self, no: int) -> int:
         self.__assert_is_open()
-        if not self._seekable:
-            raise StreamSeekableError('Stream is not seekable')
+        if no == self._current_chunk:
+            return no
         if self.__chunk_offsets:
             try:
                 sz, file_pos = self.__chunk_offsets[no]

@@ -1,21 +1,18 @@
 import base64
 import uuid
 import contextlib
-from enum import Enum
-from typing import Optional, Union, List, Dict, Any, Tuple
+from typing import Optional, Union
 
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk import CoProtocolThreadedP2P
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
-from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamError, StreamSeekableError, \
-    StreamFormatError, StreamEncryptionError, StreamInitializationError, StreamEOF, StreamTimeoutOccurred, \
-    StreamDecryption, StreamEncryption
-
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, StreamDecryption, StreamEncryption, StreamEncType
+from .errors import BaseStreamError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
+    StreamFormatError, StreamTimeoutOccurred
 
 PROBLEM_CODE_EOF = 'eof'
 PROBLEM_CODE_ENCRYPTION = 'encryption_error'
@@ -78,7 +75,8 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
             request=StreamOperation(
                 operation=StreamOperation.OperationCode.OPEN,
                 params={
-                    'uri': self.__uri
+                    'uri': self.__uri,
+                    'encrypted': self.enc is not None
                 }
             )
         )
@@ -114,7 +112,8 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
             before_no = no
         else:
             before_no = self._current_chunk
-        no, chunk = await self.__internal_read_chunk(before_no)
+        no, encrypted = await self.__internal_read_chunk(before_no)
+        chunk = await self.decrypt(encrypted)
         return no, chunk
 
     async def eof(self) -> bool:
@@ -266,6 +265,11 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
             co = await self.open_coprotocol()
             try:
                 if request.operation == StreamOperation.OperationCode.OPEN:
+                    encrypted = request.params.get('encrypted', False)
+                    if encrypted:
+                        # Local stream must persist chunks structure
+                        if proxy_to.enc is None:
+                            proxy_to.enc = StreamEncryption(type_=StreamEncType.UNKNOWN)
                     await proxy_to.open()
                     params = {
                         'state': {
@@ -348,7 +352,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
 
     def __init__(
             self, called: Pairwise, uri: str, thid: str = None, enc: StreamEncryption = None,
-            retry_count: int = 3, chunk_size: int = 1024, time_to_live: int = 60, logger=None, *args, **kwargs
+            retry_count: int = 3, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         """Stream abstraction for write-only operations provided with [Vault] entity
 
@@ -358,17 +362,11 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
         :param enc: allow encrypt stream chunks
         :param retry_count (optional): if chunk-write-operation was terminated with timeout
                                        then protocol will re-try operation from the same seek
-        :param chunk_size: size (in bytes) of chunks that stream was splitted to
-          !!! actual chunks-sizes may be different (when stream is encoded for example) !!!
-          Chunks allow:
-            - partially upload/download big data files/streams (control progress)
-            - encrypt/decrypt big data partially
-            - adv. services like upload/download with pause/resume (for cloud providers for example)
         :param logger (optional): state-machine logger
         """
 
         AbstractStateMachine.__init__(self, time_to_live=time_to_live, logger=logger, *args, **kwargs)
-        AbstractWriteOnlyStream.__init__(self, path=uri, chunk_size=chunk_size, enc=enc)
+        AbstractWriteOnlyStream.__init__(self, path=uri, enc=enc)
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
         self.__uri = uri
         self.__called = called
@@ -393,7 +391,8 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
             request=StreamOperation(
                 operation=StreamOperation.OperationCode.OPEN,
                 params={
-                    'uri': self.__uri
+                    'uri': self.__uri,
+                    'encrypted': self.enc is not None
                 }
             )
         )
@@ -401,7 +400,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
         self._seekable = state.get('seekable', None)
         self._current_chunk = state.get('current_chunk', 0)
         self._chunks_num = state.get('chunks_num', 0)
-        self._chunk_size = state.get('chunk_size', 0)
+        self.chunk_size = state.get('chunk_size', 0)
         self._is_open = True
 
     async def close(self):
@@ -417,7 +416,8 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
             before_no = no
         else:
             before_no = self._current_chunk
-        no, chunk = await self.__internal_write_chunk(before_no, chunk)
+        encrypted = await self.encrypt(chunk)
+        no, chunk = await self.__internal_write_chunk(before_no, encrypted)
         return no, chunk
 
     async def seek_to_chunk(self, no: int) -> int:
@@ -577,6 +577,11 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
             co = await self.open_coprotocol()
             try:
                 if request.operation == StreamOperation.OperationCode.OPEN:
+                    encrypted = request.params.get('encrypted', False)
+                    if encrypted:
+                        # Local stream must persist chunks structure
+                        if proxy_to.enc is None:
+                            proxy_to.enc = StreamEncryption(type_=StreamEncType.UNKNOWN)
                     await proxy_to.open()
                     params = {
                         'state': {

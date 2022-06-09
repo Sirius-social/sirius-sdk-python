@@ -1,8 +1,8 @@
 from .documents import Document, EncryptedDocument
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption, StreamEncryption, \
-  StreamDecryption, FileSystemReadOnlyStream, FileSystemWriteOnlyStream, BaseStreamError, StreamEOF, \
-  StreamEncryptionError, StreamInitializationError, StreamSeekableError, StreamFormatError, StreamTimeoutOccurred, \
-  StreamEncType
+  StreamDecryption, FileSystemReadOnlyStream, FileSystemWriteOnlyStream, StreamEncType
+from .errors import BaseStreamError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
+    StreamFormatError, StreamTimeoutOccurred
 
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
     CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol
@@ -11,8 +11,8 @@ from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamPr
 __all__ = [
     "AbstractStreamEncryption", "StreamEncryption", "StreamDecryption", "AbstractReadOnlyStream",
     "AbstractWriteOnlyStream", "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream",
-    "CalledReadOnlyStreamProtocol", "CallerReadOnlyStreamProtocol", "BaseStreamError",
+    "CalledReadOnlyStreamProtocol", "CallerReadOnlyStreamProtocol", "CallerWriteOnlyStreamProtocol",
+    "CalledWriteOnlyStreamProtocol", "StreamEncType", "Document", "EncryptedDocument", "BaseStreamError",
     "StreamEOF", "StreamEncryptionError", "StreamInitializationError", "StreamSeekableError",
-    "StreamFormatError", "StreamTimeoutOccurred", "CallerWriteOnlyStreamProtocol", "CalledWriteOnlyStreamProtocol",
-    "StreamEncType", "Document", "EncryptedDocument"
+    "StreamFormatError", "StreamTimeoutOccurred"
 ]
