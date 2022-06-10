@@ -351,6 +351,14 @@ class AbstractWriteOnlyStream(AbstractStream):
             except EOFError:
                 return
 
+    @abstractmethod
+    async def truncate(self, no: int = 0):
+        """Truncate stream content
+
+        :param no: new stream size will bi limited chunk_no
+        """
+        raise NotImplemented
+
     async def copy(self, src: AbstractReadOnlyStream):
         if not src.is_open:
             raise StreamInitializationError('Source stream is closed!')
@@ -533,6 +541,11 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         self.__assert_is_open()
         if no == self._current_chunk:
             return no
+        elif no == self._chunks_num:
+            self._current_chunk = self._chunks_num
+            return self._current_chunk
+        elif no > self._chunks_num:
+            raise StreamEOF('EOF')
         if self.__chunk_offsets:
             try:
                 sz, file_pos = self.__chunk_offsets[no]
@@ -560,6 +573,10 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             offset1 = await self.__fd.write(struct.pack("i", sz))
             offset2 = await self.__fd.write(encoded)
             offset = offset1 + offset2
+            if no is not None and no < len(self.__chunk_offsets):
+                self.__chunk_offsets[no] = (sz, self.__file_pos)
+            else:
+                self.__chunk_offsets.append((sz, self.__file_pos))
         else:
             offset = await self.__fd.write(chunk)
         self.__file_pos += offset
@@ -568,6 +585,37 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             self._chunks_num += 1
         self._current_chunk += 1
         return self._current_chunk, len(chunk)
+
+    async def truncate(self, no: int = 0):
+        self.__assert_is_open()
+        if no == 0:
+            await self.__fd.truncate(0)
+            await self.__fd.flush()
+            self._current_chunk = 0
+            self._chunks_num = 0
+        else:
+            if self.__chunk_offsets:
+                max_chunk_offset = len(self.__chunk_offsets)
+                if no >= max_chunk_offset:
+                    return
+                else:
+                    sz, file_pos = self.__chunk_offsets[no]
+                    await self.__fd.truncate(file_pos)
+                    await self.__fd.flush()
+                    self.__chunk_offsets = self.__chunk_offsets[:no]
+                    self._chunks_num = len(self.__chunk_offsets)
+                    if self._current_chunk > no:
+                        await self.seek_to_chunk(no)
+            else:
+                file_pos = no * self._chunk_size
+                if file_pos >= self.__file_size:
+                    return self._chunks_num
+                else:
+                    await self.__fd.truncate(file_pos)
+                    await self.__fd.flush()
+                    self._chunks_num = no
+                    if self._current_chunk > no:
+                        await self.seek_to_chunk(no)
 
     async def __load_enc_chunks(self):
         file_pos = 0

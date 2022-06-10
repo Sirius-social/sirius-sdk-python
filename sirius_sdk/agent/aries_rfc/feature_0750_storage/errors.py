@@ -1,4 +1,4 @@
-class BaseStreamError(RuntimeError):
+class BaseConfidentialStorageError(RuntimeError):
 
     def __init__(self, message):
         super().__init__(message)
@@ -8,25 +8,29 @@ class BaseStreamError(RuntimeError):
         return self.args[0] if self.args else ''
 
 
-class StreamEOF(BaseStreamError):
+class StreamEOF(BaseConfidentialStorageError):
     pass
 
 
-class StreamEncryptionError(BaseStreamError):
+class StreamEncryptionError(BaseConfidentialStorageError):
     pass
 
 
-class StreamInitializationError(BaseStreamError):
+class StreamInitializationError(BaseConfidentialStorageError):
     pass
 
 
-class StreamSeekableError(BaseStreamError):
+class StreamSeekableError(BaseConfidentialStorageError):
     pass
 
 
-class StreamFormatError(BaseStreamError):
+class StreamFormatError(BaseConfidentialStorageError):
     pass
 
 
-class StreamTimeoutOccurred(BaseStreamError):
+class StreamTimeoutOccurred(BaseConfidentialStorageError):
+    pass
+
+
+class ConfidentialStoragePermissionDenied(BaseConfidentialStorageError):
     pass

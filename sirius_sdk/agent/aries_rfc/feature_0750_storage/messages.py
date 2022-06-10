@@ -55,6 +55,7 @@ class StreamOperation(BaseConfidentialStorageMessage):
         SEEK_TO_CHUNK = 'seek_to_chunk'
         READ_CHUNK = 'read_chunk'
         WRITE_CHUNK = 'write_chunk'
+        TRUNCATE = 'truncate'
 
     def __init__(self, operation: Union[str, OperationCode] = None, params=None, *args, **kwargs):
         super().__init__(*args, **kwargs)

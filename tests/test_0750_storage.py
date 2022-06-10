@@ -174,6 +174,34 @@ async def test_fs_streams_seeks(files_dir: str):
 
 
 @pytest.mark.asyncio
+async def test_fs_streams_truncate():
+    chunks = [b'chunk1', b'chunk2', b'chunk3']
+    actual_chunks_num = len(chunks)
+    for trunked_to_no in [0, 1, 2, 1000]:
+        file_under_test = os.path.join(tempfile.tempdir, f'truncates_for_{trunked_to_no}.bin')
+        wo = FileSystemWriteOnlyStream(file_under_test, chunk_size=len(chunks[0]))
+        await wo.create(truncate=True)
+        try:
+            await wo.open()
+            try:
+                assert wo.chunks_num == 0
+                for no, chunk in enumerate(chunks):
+                    await wo.write_chunk(chunk, no)
+                assert wo.chunks_num == len(chunks)
+                await wo.truncate(trunked_to_no)
+                assert wo.chunks_num == min(trunked_to_no, actual_chunks_num), f'Error for trancate to {trunked_to_no}'
+                assert wo.current_chunk == min(trunked_to_no, actual_chunks_num), f'Error for trancate to {trunked_to_no}'
+            finally:
+                await wo.close()
+            with open(file_under_test, 'rb') as f:
+                content = f.read()
+            expected = ''.join([s.decode() for s in chunks[:trunked_to_no]]).encode()
+            assert expected == content, f'Error for trancate to {trunked_to_no}'
+        finally:
+            os.remove(file_under_test)
+
+
+@pytest.mark.asyncio
 async def test_fs_streams_copy(files_dir: str):
     file_under_test = os.path.join(files_dir, 'big_img.jpeg')
     file_under_test_md5 = calc_file_hash(file_under_test)
@@ -240,6 +268,47 @@ async def test_fs_streams_encoding(files_dir: str):
             await ro.close()
     finally:
         os.remove(enc_file_path)
+
+
+@pytest.mark.asyncio
+async def test_fs_streams_truncate_for_encoding():
+    chunks = [b'chunk1', b'chunk2', b'chunk3']
+    actual_chunks_num = len(chunks)
+    for trunked_to_no in [0, 1, 2, 1000]:
+        file_under_test = os.path.join(tempfile.tempdir, f'truncates_for_{trunked_to_no}.bin')
+        wo = FileSystemWriteOnlyStream(
+            file_under_test, chunk_size=len(chunks[0]), enc=StreamEncryption(type_=StreamEncType.UNKNOWN)
+        )
+        await wo.create(truncate=True)
+        try:
+            await wo.open()
+            try:
+                assert wo.chunks_num == 0
+                for no, chunk in enumerate(chunks):
+                    await wo.write_chunk(chunk, no)
+                assert wo.chunks_num == len(chunks)
+                await wo.truncate(trunked_to_no)
+                assert wo.chunks_num == min(trunked_to_no, actual_chunks_num), f'Error for truncate to {trunked_to_no}'
+                assert wo.current_chunk == min(trunked_to_no, actual_chunks_num), f'Error for truncate to {trunked_to_no}'
+            finally:
+                await wo.close()
+            if trunked_to_no == 0:
+                with open(file_under_test, 'rb') as f:
+                    content = f.read()
+                assert content == b''
+            else:
+                ro = FileSystemReadOnlyStream(
+                    file_under_test, chunks_num=min(trunked_to_no, actual_chunks_num), enc=StreamDecryption(type_=StreamEncType.UNKNOWN)
+                )
+                await ro.open()
+                try:
+                    content = await ro.read()
+                finally:
+                    await ro.close()
+                expected = ''.join([s.decode() for s in chunks[:trunked_to_no]]).encode()
+                assert expected == content, f'Error for truncate to {trunked_to_no}'
+        finally:
+            os.remove(file_under_test)
 
 
 @pytest.mark.asyncio
@@ -837,6 +906,80 @@ async def test_stream_protocols_encoding(config_c: dict, config_d: dict):
             actual_data = await ro.read()
             await ro.close()
             assert actual_data == data
+
+    results = await run_coroutines(called(), caller(), timeout=5)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_protocols_truncate(config_c: dict, config_d: dict):
+    """
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-writeonly-protocol-encoding-' + uuid.uuid4().hex
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+
+    recip_vk_bytes, recip_sigkey_bytes = create_keypair(b'00000000000000000000000RECIPIENT')
+    recip_vk, recip_sigkey = bytes_to_b58(recip_vk_bytes), bytes_to_b58(recip_sigkey_bytes)
+    enc = StreamEncryption().setup(target_verkeys=[recip_vk])
+    dec = StreamDecryption(recipients=enc.recipients, nonce=enc.nonce)
+    dec.setup(recip_vk, recip_sigkey)
+    chunks = [b'chunk1', b'chunk2', b'chunk3']
+    content = ''.join([s.decode() for s in chunks]).encode()
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            wo = FileSystemWriteOnlyStream(
+                path=file_under_test
+            )
+            await wo.create()
+            try:
+                state_machine1 = CalledWriteOnlyStreamProtocol(called_p2p, thid=testing_thid)
+                await state_machine1.run_forever(wo)
+
+                state_machine2 = CalledReadOnlyStreamProtocol(called_p2p, thid=testing_thid)
+                ro = FileSystemReadOnlyStream(
+                    path=file_under_test,
+                    chunks_num=wo.chunks_num
+                )
+                await state_machine2.run_forever(ro)
+            finally:
+                os.remove(file_under_test)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            nonlocal chunks
+            # Write data
+            wo = CallerWriteOnlyStreamProtocol(
+                called=caller_p2p,
+                uri=file_under_test,
+                thid=testing_thid,
+                enc=enc
+            )
+            # Write
+            await wo.open()
+            for chunk in chunks:
+                await wo.write_chunk(chunk)
+            await wo.truncate(1)
+            await wo.close()
+            # sleep
+            await asyncio.sleep(1)
+            # reader
+            ro = CallerReadOnlyStreamProtocol(
+                called=caller_p2p,
+                uri=file_under_test,
+                thid=testing_thid,
+                enc=dec,
+                read_timeout=3
+            )
+            await ro.open()
+            actual_data = await ro.read()
+            await ro.close()
+            assert actual_data == chunks[0]
 
     results = await run_coroutines(called(), caller(), timeout=5)
     assert len(results) == 2

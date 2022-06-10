@@ -11,7 +11,7 @@ from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedMa
 
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, StreamDecryption, StreamEncryption, StreamEncType
-from .errors import BaseStreamError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
+from .errors import BaseConfidentialStorageError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
     StreamFormatError, StreamTimeoutOccurred
 
 PROBLEM_CODE_EOF = 'eof'
@@ -21,6 +21,7 @@ PROBLEM_CODE_SEEKABLE = 'stream_is_not_seekable'
 PROBLEM_CODE_FORMAT = 'format_error'
 PROBLEM_CODE_INVALID_REQ = 'invalid_request'
 PROBLEM_CODE_TIMEOUT_OCCURRED = 'timeout_occurred'
+PROBLEM_CODE_PERMISSION_DENIED = 'permission_denied'
 
 
 class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream):
@@ -93,6 +94,9 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
                 operation=StreamOperation.OperationCode.CLOSE
             )
             await co.send(req)
+            self._current_chunk = 0
+            self._chunks_num = 0
+            self._seekable = None
 
     async def seek_to_chunk(self, no: int) -> int:
         resp = await self.rpc(
@@ -292,7 +296,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                     chunk = base64.b64encode(chunk).decode()
                     params = {'no': new_no, 'chunk': chunk}
                     await co.send(StreamOperationResult(request.operation, params))
-            except BaseStreamError as e:
+            except BaseConfidentialStorageError as e:
                 if isinstance(e, StreamEOF):
                     problem_code, explain = PROBLEM_CODE_EOF, e.message
                 elif isinstance(e, StreamFormatError):
@@ -410,6 +414,9 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
                 operation=StreamOperation.OperationCode.CLOSE
             )
             await co.send(req)
+            self._current_chunk = 0
+            self._chunks_num = 0
+            self._seekable = None
 
     async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
         if no is not None:
@@ -432,6 +439,19 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
         no = resp.params['no']
         self._current_chunk = no
         return no
+
+    async def truncate(self, no: int = 0):
+        resp = await self.rpc(
+            request=StreamOperation(
+                operation=StreamOperation.OperationCode.TRUNCATE,
+                params={
+                    'no': no
+                }
+            )
+        )
+        state = resp.params['state']
+        self._current_chunk = state.get('current_chunk', self.current_chunk)
+        self._chunks_num = state.get('chunks_num', self.chunks_num)
 
     async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
         if self.__coprotocol is None:
@@ -605,7 +625,17 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                     new_no, writen_sz = await proxy_to.write_chunk(chunk, no)
                     params = {'no': new_no, 'size': writen_sz}
                     await co.send(StreamOperationResult(request.operation, params))
-            except BaseStreamError as e:
+                elif request.operation == StreamOperation.OperationCode.TRUNCATE:
+                    no = request.params.get('no')
+                    await proxy_to.truncate(no)
+                    params = {
+                        'state': {
+                            'chunks_num': proxy_to.chunks_num,
+                            'current_chunk': proxy_to.current_chunk
+                        }
+                    }
+                    await co.send(StreamOperationResult(request.operation, params))
+            except BaseConfidentialStorageError as e:
                 if isinstance(e, StreamEOF):
                     problem_code, explain = PROBLEM_CODE_EOF, e.message
                 elif isinstance(e, StreamFormatError):

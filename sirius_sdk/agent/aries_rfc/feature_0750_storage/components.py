@@ -75,7 +75,7 @@ class FileSystemByteStorage(RawByteStorage):
             stream = FileSystemReadOnlyStream(path, chunks_num=chunks_num)
             return stream
 
-    async def make_writable_stream(self, uri: str) -> AbstractReadOnlyStream:
+    async def make_writable_stream(self, uri: str) -> AbstractWriteOnlyStream:
         pass
 
     @staticmethod
