@@ -28,7 +28,7 @@ class StreamFormatError(BaseConfidentialStorageError):
     pass
 
 
-class StreamTimeoutOccurred(BaseConfidentialStorageError):
+class ConfidentialStorageTimeoutOccurred(BaseConfidentialStorageError):
     pass
 
 

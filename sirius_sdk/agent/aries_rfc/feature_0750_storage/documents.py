@@ -1,7 +1,10 @@
-from typing import List, Any
+import json
+from typing import List, Any, Optional
 
 import sirius_sdk
 from sirius_sdk import AbstractCrypto
+
+from .streams import AbstractWriteOnlyStream, AbstractReadOnlyStream
 
 
 class Document:
@@ -16,29 +19,61 @@ class Document:
     @content.setter
     def content(self, value: Any):
         self.__content = value
+        self._on_content_changed()
+
+    async def save(self, stream: AbstractWriteOnlyStream):
+        await stream.truncate()
+        await stream.write(self.__content)
+
+    async def load(self, stream: AbstractReadOnlyStream):
+        await stream.seek_to_chunk(0)
+        self.__content = await stream.read()
+
+    def _on_content_changed(self):
+        pass
 
 
 class EncryptedDocument(Document):
 
-    def __init__(self, target_verkeys: List[str], my_vk: str = None, crypto: AbstractCrypto = None):
+    def __init__(
+            self, src: "EncryptedDocument" = None, target_verkeys: List[str] = None
+    ):
         super().__init__()
-        self.__target_verkeys = target_verkeys
-        self.__my_vk = my_vk
-        self.__crypto = crypto
+        self.__target_verkeys = target_verkeys or []
+        self.__sender_vk = None
+        self.__encrypted = False
+        if src:
+            self.content = src.content
+            self.__encrypted = src.__encrypted
 
-    async def create_from(self, src: Document):
-        self.content = src.content
-        await self.decrypt()
+    @property
+    def encrypted(self) -> bool:
+        return self.__encrypted
 
-    async def encrypt(self) -> bytes:
-        crypto = self.__crypto or sirius_sdk.Crypto
-        jwe = await crypto.pack_message(
-            message=self.content,
-            recipient_verkeys=self.__target_verkeys,
-            sender_verkey=self.__my_vk
-        )
-        return jwe
+    @property
+    def sender_vk(self) -> Optional[str]:
+        return self.__sender_vk
+
+    async def encrypt(self, my_vk: str = None):
+        if not self.__encrypted:
+            if isinstance(self.content, bytes):
+                content = self.content.decode()
+            else:
+                content = self.content
+            self.content = await sirius_sdk.Crypto.pack_message(
+                message=content,
+                recipient_verkeys=self.__target_verkeys,
+                sender_verkey=my_vk
+            )
+            self.__encrypted = True
 
     async def decrypt(self):
-        crypto = self.__crypto or sirius_sdk.Crypto
-        self.content = await crypto.unpack_message(self.content)
+        if self.__encrypted:
+            unpacked = await sirius_sdk.Crypto.unpack_message(self.content)
+            self.content = unpacked['message'].encode()
+            self.__sender_vk = unpacked.get('sender_verkey')
+            self.__encrypted = False
+
+    def _on_content_changed(self):
+        self.__encrypted = False
+        self.__sender_vk = None

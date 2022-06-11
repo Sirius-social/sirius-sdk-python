@@ -10,9 +10,9 @@ from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
 
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, StreamDecryption, StreamEncryption, StreamEncType
-from .errors import BaseConfidentialStorageError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
-    StreamFormatError, StreamTimeoutOccurred
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption
+from . import ConfidentialStorageEncType
+from .errors import *
 
 PROBLEM_CODE_EOF = 'eof'
 PROBLEM_CODE_ENCRYPTION = 'encryption_error'
@@ -24,6 +24,48 @@ PROBLEM_CODE_TIMEOUT_OCCURRED = 'timeout_occurred'
 PROBLEM_CODE_PERMISSION_DENIED = 'permission_denied'
 
 
+def problem_report_from_exception(e: BaseConfidentialStorageError) -> ConfidentialStorageMessageProblemReport:
+    if isinstance(e, StreamEOF):
+        problem_code, explain = PROBLEM_CODE_EOF, e.message
+    elif isinstance(e, StreamFormatError):
+        problem_code, explain = PROBLEM_CODE_FORMAT, e.message
+    elif isinstance(e, StreamInitializationError):
+        problem_code, explain = PROBLEM_CODE_INIT, e.message
+    elif isinstance(e, StreamEncryptionError):
+        problem_code, explain = PROBLEM_CODE_ENCRYPTION, e.message
+    elif isinstance(e, StreamSeekableError):
+        problem_code, explain = PROBLEM_CODE_SEEKABLE, e.message
+    elif isinstance(e, ConfidentialStorageTimeoutOccurred):
+        problem_code, explain = PROBLEM_CODE_TIMEOUT_OCCURRED, e.message
+    elif isinstance(e, ConfidentialStoragePermissionDenied):
+        problem_code, explain = PROBLEM_CODE_PERMISSION_DENIED, e.message
+    else:
+        problem_code, explain = PROBLEM_CODE_INVALID_REQ, e.message
+    report = ConfidentialStorageMessageProblemReport(
+        problem_code=problem_code, explain=explain
+    )
+    return report
+
+
+def exception_from_problem_report(report: ConfidentialStorageMessageProblemReport) -> Optional[Union[BaseConfidentialStorageError, StateMachineTerminatedWithError]]:
+    if report.problem_code == PROBLEM_CODE_EOF:
+        return StreamEOF(report.explain)
+    elif report.problem_code == PROBLEM_CODE_ENCRYPTION:
+        return StreamEncryptionError(report.explain)
+    elif report.problem_code == PROBLEM_CODE_INIT:
+        return StreamInitializationError(report.explain)
+    elif report.problem_code == PROBLEM_CODE_SEEKABLE:
+        return StreamSeekableError(report.explain)
+    elif report.problem_code == PROBLEM_CODE_FORMAT:
+        return StreamFormatError(report.explain)
+    elif report.problem_code == PROBLEM_CODE_TIMEOUT_OCCURRED:
+        return ConfidentialStorageTimeoutOccurred(report.explain)
+    elif report.problem_code == PROBLEM_CODE_PERMISSION_DENIED:
+        return ConfidentialStoragePermissionDenied(report.explain)
+    else:
+        return None
+
+
 class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream):
     """ReadOnly Stream protocol for Caller entity
 
@@ -33,7 +75,7 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
 
     def __init__(
             self, called: Pairwise, uri: str, read_timeout: int, retry_count: int = 1,
-            thid: str = None, enc: StreamDecryption = None, logger=None, *args, **kwargs
+            thid: str = None, enc: AbstractStreamEncryption = None, logger=None, *args, **kwargs
     ):
         """Stream abstraction for read-only operations provided with [Vault] entity
 
@@ -157,16 +199,9 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
                         return resp
                     elif isinstance(resp, ConfidentialStorageMessageProblemReport):
                         self._problem_report = resp
-                        if resp.problem_code == PROBLEM_CODE_EOF:
-                            raise StreamEOF(resp.explain)
-                        elif resp.problem_code == PROBLEM_CODE_ENCRYPTION:
-                            raise StreamEncryptionError(resp.explain)
-                        elif resp.problem_code == PROBLEM_CODE_INIT:
-                            raise StreamInitializationError(resp.explain)
-                        elif resp.problem_code == PROBLEM_CODE_SEEKABLE:
-                            raise StreamSeekableError(resp.explain)
-                        elif resp.problem_code == PROBLEM_CODE_FORMAT:
-                            raise StreamFormatError(resp.explain)
+                        exc = exception_from_problem_report(resp)
+                        if exc:
+                            raise exc
                         else:
                             raise StateMachineTerminatedWithError(problem_code=resp.problem_code, explain=resp.explain)
                     else:
@@ -179,7 +214,7 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
                         explain=err_message
                     )
                     await co.send(report)
-                    raise StreamTimeoutOccurred(err_message)
+                    raise ConfidentialStorageTimeoutOccurred(err_message)
 
     async def __internal_read_chunk(self, read_chunk: int) -> (int, bytes):
         before_no = read_chunk
@@ -194,7 +229,7 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
                         }
                     )
                 )
-            except StreamTimeoutOccurred:
+            except ConfidentialStorageTimeoutOccurred:
                 # Next iteration
                 await self.close_coprotocol()
                 continue
@@ -206,7 +241,7 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
             else:
                 # re-try again
                 pass
-        raise StreamTimeoutOccurred(
+        raise ConfidentialStorageTimeoutOccurred(
             f'Stream read Timeout occurred for timeout={self.read_timeout} and retry_count={self.retry_count}'
         )
 
@@ -273,7 +308,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                     if encrypted:
                         # Local stream must persist chunks structure
                         if proxy_to.enc is None:
-                            proxy_to.enc = StreamEncryption(type_=StreamEncType.UNKNOWN)
+                            proxy_to.enc = AbstractStreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
                     await proxy_to.open()
                     params = {
                         'state': {
@@ -297,23 +332,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                     params = {'no': new_no, 'chunk': chunk}
                     await co.send(StreamOperationResult(request.operation, params))
             except BaseConfidentialStorageError as e:
-                if isinstance(e, StreamEOF):
-                    problem_code, explain = PROBLEM_CODE_EOF, e.message
-                elif isinstance(e, StreamFormatError):
-                    problem_code, explain = PROBLEM_CODE_FORMAT, e.message
-                elif isinstance(e, StreamInitializationError):
-                    problem_code, explain = PROBLEM_CODE_INIT, e.message
-                elif isinstance(e, StreamEncryptionError):
-                    problem_code, explain = PROBLEM_CODE_ENCRYPTION, e.message
-                elif isinstance(e, StreamSeekableError):
-                    problem_code, explain = PROBLEM_CODE_SEEKABLE, e.message
-                elif isinstance(e, StreamTimeoutOccurred):
-                    problem_code, explain = PROBLEM_CODE_TIMEOUT_OCCURRED, e.message
-                else:
-                    problem_code, explain = PROBLEM_CODE_INVALID_REQ, e.message
-                report = ConfidentialStorageMessageProblemReport(
-                    problem_code=problem_code, explain=explain
-                )
+                report = problem_report_from_exception(e)
                 # Don't raise any error: give caller to make decision
                 await co.send(report)
 
@@ -355,7 +374,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
     """
 
     def __init__(
-            self, called: Pairwise, uri: str, thid: str = None, enc: StreamEncryption = None,
+            self, called: Pairwise, uri: str, thid: str = None, enc: AbstractStreamEncryption = None,
             retry_count: int = 3, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         """Stream abstraction for write-only operations provided with [Vault] entity
@@ -509,7 +528,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
                         explain=err_message
                     )
                     await co.send(report)
-                    raise StreamTimeoutOccurred(err_message)
+                    raise ConfidentialStorageTimeoutOccurred(err_message)
 
     async def __internal_write_chunk(self, chunk_no: int, chunk: bytes) -> (int, int):
         before_no = chunk_no
@@ -525,7 +544,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
                         }
                     )
                 )
-            except StreamTimeoutOccurred:
+            except ConfidentialStorageTimeoutOccurred:
                 # Next iteration
                 await self.close_coprotocol()
                 continue
@@ -533,7 +552,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
             writen_sz = resp.params['size']
             self._current_chunk = new_offset
             return new_offset, writen_sz
-        raise StreamTimeoutOccurred(
+        raise ConfidentialStorageTimeoutOccurred(
             f'Stream write Timeout occurred for timeout={self.time_to_live} and retry_count={self.retry_count}'
         )
 
@@ -593,6 +612,11 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
     ):
         if isinstance(request, ConfidentialStorageMessageProblemReport):
             self._problem_report = request
+            exc = exception_from_problem_report(request)
+            if exc:
+                raise exc
+            else:
+                raise StateMachineTerminatedWithError(problem_code=request.problem_code, explain=request.explain)
         elif isinstance(request, StreamOperation):
             co = await self.open_coprotocol()
             try:
@@ -601,7 +625,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                     if encrypted:
                         # Local stream must persist chunks structure
                         if proxy_to.enc is None:
-                            proxy_to.enc = StreamEncryption(type_=StreamEncType.UNKNOWN)
+                            proxy_to.enc = AbstractStreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
                     await proxy_to.open()
                     params = {
                         'state': {
@@ -636,23 +660,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                     }
                     await co.send(StreamOperationResult(request.operation, params))
             except BaseConfidentialStorageError as e:
-                if isinstance(e, StreamEOF):
-                    problem_code, explain = PROBLEM_CODE_EOF, e.message
-                elif isinstance(e, StreamFormatError):
-                    problem_code, explain = PROBLEM_CODE_FORMAT, e.message
-                elif isinstance(e, StreamInitializationError):
-                    problem_code, explain = PROBLEM_CODE_INIT, e.message
-                elif isinstance(e, StreamEncryptionError):
-                    problem_code, explain = PROBLEM_CODE_ENCRYPTION, e.message
-                elif isinstance(e, StreamSeekableError):
-                    problem_code, explain = PROBLEM_CODE_SEEKABLE, e.message
-                elif isinstance(e, StreamTimeoutOccurred):
-                    problem_code, explain = PROBLEM_CODE_TIMEOUT_OCCURRED, e.message
-                else:
-                    problem_code, explain = PROBLEM_CODE_INVALID_REQ, e.message
-                report = ConfidentialStorageMessageProblemReport(
-                    problem_code=problem_code, explain=explain
-                )
+                report = problem_report_from_exception(e)
                 # Don't raise any error: give caller to make decision
                 await co.send(report)
 

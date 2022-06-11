@@ -277,7 +277,7 @@ async def test_fs_streams_truncate_for_encoding():
     for trunked_to_no in [0, 1, 2, 1000]:
         file_under_test = os.path.join(tempfile.tempdir, f'truncates_for_{trunked_to_no}.bin')
         wo = FileSystemWriteOnlyStream(
-            file_under_test, chunk_size=len(chunks[0]), enc=StreamEncryption(type_=StreamEncType.UNKNOWN)
+            file_under_test, chunk_size=len(chunks[0]), enc=StreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
         )
         await wo.create(truncate=True)
         try:
@@ -298,7 +298,7 @@ async def test_fs_streams_truncate_for_encoding():
                 assert content == b''
             else:
                 ro = FileSystemReadOnlyStream(
-                    file_under_test, chunks_num=min(trunked_to_no, actual_chunks_num), enc=StreamDecryption(type_=StreamEncType.UNKNOWN)
+                    file_under_test, chunks_num=min(trunked_to_no, actual_chunks_num), enc=StreamDecryption(type_=ConfidentialStorageEncType.UNKNOWN)
                 )
                 await ro.open()
                 try:
@@ -407,7 +407,7 @@ async def test_streams_encoding_layers(files_dir: str):
             await layer2['writer'].close()
             # Layer-1 Encrypt (Lower-Level)
             src = FileSystemReadOnlyStream(
-                path=layer2['writer'].path, chunks_num=layer2_chunks_num, enc=StreamDecryption(type_=StreamEncType.UNKNOWN)
+                path=layer2['writer'].path, chunks_num=layer2_chunks_num, enc=StreamDecryption(type_=ConfidentialStorageEncType.UNKNOWN)
             )
             await src.open()
             await layer1['writer'].create(truncate=True)
@@ -423,7 +423,7 @@ async def test_streams_encoding_layers(files_dir: str):
             await layer1_reader.open()
             try:
                 dest = FileSystemWriteOnlyStream(
-                    path=file_for_checks, chunk_size=layers_chunk_size, enc=StreamEncryption(type_=StreamEncType.UNKNOWN)
+                    path=file_for_checks, chunk_size=layers_chunk_size, enc=StreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
                 )
                 await dest.create(truncate=True)
                 try:
@@ -472,8 +472,8 @@ async def test_streams_encoding_seeking():
     open(file_under_test, 'w+b')
     try:
         enc = StreamEncryption(
-            type_=StreamEncType.X25519KeyAgreementKey2019).setup(target_verkeys=[recip_vk]
-                                                                 )
+            type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019).setup(target_verkeys=[recip_vk]
+                                                                              )
         writer = FileSystemWriteOnlyStream(
             path=file_under_test, chunk_size=chunk_size,
             enc=enc
@@ -490,7 +490,7 @@ async def test_streams_encoding_seeking():
         reader = FileSystemReadOnlyStream(
             path=file_under_test, chunks_num=len(actual_chunks),
             enc=StreamDecryption(
-                recipients=writer.enc.recipients, type_=StreamEncType.X25519KeyAgreementKey2019, nonce=writer.enc.nonce
+                recipients=writer.enc.recipients, type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019, nonce=writer.enc.nonce
             ).setup(recip_vk, recip_sigkey)
         )
         await reader.open()
@@ -517,7 +517,7 @@ async def test_streams_encoding_seeking():
         reader = FileSystemReadOnlyStream(
             path=file_under_test, chunks_num=actual_chunks_after_append,
             enc=StreamDecryption(
-                recipients=writer.enc.recipients, type_=StreamEncType.X25519KeyAgreementKey2019, nonce=writer.enc.nonce
+                recipients=writer.enc.recipients, type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019, nonce=writer.enc.nonce
             ).setup(recip_vk, recip_sigkey)
         )
         await reader.open()
@@ -983,3 +983,77 @@ async def test_stream_protocols_truncate(config_c: dict, config_d: dict):
 
     results = await run_coroutines(called(), caller(), timeout=5)
     assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_encrypted_documents(config_a: dict, config_b: dict, config_c: dict):
+    """
+    Agent-A + Agent-B are reader parties
+    Agent-C is publisher party
+    """
+
+    # Recipient-1
+    async with sirius_sdk.context(**config_a):
+        recip_vk_a = await sirius_sdk.Crypto.create_key()
+    # Recipient-1
+    async with sirius_sdk.context(**config_b):
+        recip_vk_b = await sirius_sdk.Crypto.create_key()
+    # Sender
+    async with sirius_sdk.context(**config_c):
+        sender_vk = await sirius_sdk.Crypto.create_key()
+
+    content = 'some-data-and-non-ascii-aåbäcö'.encode()
+    document = EncryptedDocument(target_verkeys=[recip_vk_a, recip_vk_b])
+
+    document.content = content
+    assert document.content == content
+    assert document.encrypted is False
+    # Publisher
+    async with sirius_sdk.context(**config_c):
+        await document.encrypt(my_vk=sender_vk)
+
+    assert document.content != content
+    assert document.encrypted is True
+
+    for party in [config_a, config_b]:
+        async with sirius_sdk.context(**party):
+            tmp = EncryptedDocument(src=document)
+            await tmp.decrypt()
+            assert tmp.sender_vk == sender_vk
+            assert tmp.content == content
+
+
+@pytest.mark.asyncio
+async def test_encrypted_documents_save_load(config_a: dict):
+    """
+    Agent-A is reader parties
+    """
+    # Recipient
+    async with sirius_sdk.context(**config_a):
+        recip_vk = await sirius_sdk.Crypto.create_key()
+
+    expected_content = 'some-data-and-non-ascii-aåbäcö'.encode()
+    document = EncryptedDocument(target_verkeys=[recip_vk])
+    document.content = expected_content
+
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+    wo = FileSystemWriteOnlyStream(file_under_test)
+    await wo.create(truncate=True)
+    try:
+        #
+        await wo.open()
+        try:
+            await document.save(wo)
+            chunks_num = wo.chunks_num
+        finally:
+            await wo.close()
+        ro = FileSystemReadOnlyStream(file_under_test, chunks_num)
+        await ro.open()
+        try:
+            loaded_doc = EncryptedDocument()
+            await loaded_doc.load(ro)
+            assert loaded_doc.content == expected_content
+        finally:
+            await ro.close()
+    finally:
+        os.remove(file_under_test)

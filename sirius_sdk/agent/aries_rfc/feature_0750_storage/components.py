@@ -1,14 +1,10 @@
-import os
+from enum import Enum
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union
-from urllib.parse import urlparse
-from contextlib import asynccontextmanager
+from typing import List, Union, Optional
 
-import aiofiles
-
-from sirius_sdk.encryption import bytes_to_b58
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, FileSystemReadOnlyStream, FileSystemWriteOnlyStream
-from .documents import EncryptedDocument, Document
+import sirius_sdk
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption
+from .documents import EncryptedDocument
 
 
 class StructuredDocument:
@@ -38,51 +34,48 @@ class StructuredDocument:
         return self.__content
 
 
-class RawByteStorage(ABC):
-    """Layer A: raw bytes storage (Cloud, DB, File-system, Mobile, etc)
+class ConfidentialStorageAuthProvider:
+    """Layer C: Authorization (policy enforcement point)
 
     see details: https://identity.foundation/confidential-storage/#ecosystem-overview
     """
 
-    @abstractmethod
-    async def make_document(self, id_: str) -> Document:
-        raise NotImplementedError
+    class PermissionLevel(Enum):
+        # Entity may run read-operations
+        CAN_READ = 'CAN_READ'
+        # Entity has access to write/update document/streams
+        CAN_WRITE = 'CAN_WRITE'
+        # Entity can create new documents/streams
+        CAN_CREATE = 'CAN_CREATE'
 
-    @abstractmethod
-    async def make_readable_stream(self, uri: str, chunks_num: int) -> AbstractReadOnlyStream:
-        raise NotImplementedError
+    def __init__(self, entity: sirius_sdk.Pairwise):
+        """
+        :param entity: Service Client
+        """
+        self.__entity = entity
 
-    @abstractmethod
-    async def make_writable_stream(self, uri: str) -> AbstractReadOnlyStream:
-        raise NotImplementedError
+    @property
+    def entity(self) -> sirius_sdk.Pairwise:
+        return self.__entity
 
+    async def has_permissions(self) -> List[PermissionLevel]:
+        """
+        :return: list of DataVault permissions for client
+        """
+        return [
+            self.PermissionLevel.CAN_READ,
+            self.PermissionLevel.CAN_WRITE,
+            self.PermissionLevel.CAN_CREATE
+        ]
 
-class FileSystemByteStorage(RawByteStorage):
+    async def can_read(self) -> bool:
+        return self.PermissionLevel.CAN_READ in await self.has_permissions()
 
-    async def make_document(self, id_: str) -> Document:
-        path = self.__uri_to_path(id_)
-        if os.path.isfile(path):
-            doc = Document()
-            async with aiofiles.open(path, 'rb') as f:
-                doc.content = await f.read()
-            return doc
-        else:
-            raise RuntimeError
+    async def can_write(self) -> bool:
+        return self.PermissionLevel.CAN_WRITE in await self.has_permissions()
 
-    async def make_readable_stream(self, uri: str, chunks_num: int) -> AbstractReadOnlyStream:
-        path = self.__uri_to_path(uri)
-        if os.path.isfile(path):
-            stream = FileSystemReadOnlyStream(path, chunks_num=chunks_num)
-            return stream
-
-    async def make_writable_stream(self, uri: str) -> AbstractWriteOnlyStream:
-        pass
-
-    @staticmethod
-    def __uri_to_path(uri: str) -> str:
-        p = urlparse(uri)
-        path = os.path.abspath(os.path.join(p.netloc, p.path))
-        return path
+    async def can_create(self) -> bool:
+        return self.PermissionLevel.CAN_CREATE in await self.has_permissions()
 
 
 class EncryptedDataVault:
@@ -99,9 +92,31 @@ class EncryptedDataVault:
             pass
 
 
-class AuthProvider:
-    """Layer C: Authorization (policy enforcement point)
+class ConfidentialStorageRawByteStorage(ABC):
+    """Layer A: raw bytes storage (Cloud, DB, File-system, Mobile, etc)
 
     see details: https://identity.foundation/confidential-storage/#ecosystem-overview
     """
-    pass
+
+    def __init__(self, encryption: AbstractStreamEncryption = None):
+        self.__encryption = encryption
+
+    @property
+    def encryption(self) -> Optional[AbstractStreamEncryption]:
+        return self.__encryption
+
+    @abstractmethod
+    async def create(self, uri: str):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def remove(self, uri: str):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def readable(self, uri: str, chunks_num: int) -> AbstractReadOnlyStream:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
+        raise NotImplementedError
