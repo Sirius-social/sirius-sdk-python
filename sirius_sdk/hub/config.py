@@ -35,11 +35,14 @@ class Config:
             p2p: Union[P2PConnection, dict] = None, io_timeout: int = None
     ) -> "Config":
         if args:
-            cfg = args[0]
-            if type(cfg) is dict:
-                return self.setup_cloud(**cfg)
+            if len(args) == 3:
+                return self.setup_cloud(server_uri=args[0], credentials=args[1], p2p=args[2])
             else:
-                raise SiriusInitializationError('Expected configuration as dictionary of params')
+                cfg = args[0]
+                if type(cfg) is dict:
+                    return self.setup_cloud(**cfg)
+                else:
+                    raise SiriusInitializationError('Expected configuration as dictionary of params')
         # setup cloud agent connection url
         if server_uri is None:
             raise SiriusInitializationError('"server_uri" must be set')
