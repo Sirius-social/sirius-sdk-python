@@ -93,6 +93,15 @@ def get_agent(name: str) -> Agent:
     return agent
 
 
+def get_agent_config(name: str) -> Dict:
+    params = get_suite_singleton().get_agent_params(name)
+    return {
+        'server_uri': params['server_address'],
+        'credentials': params['credentials'],
+        'p2p': params['p2p']
+    }
+
+
 @pytest.fixture()
 def test_suite() -> ServerTestSuite:
     return get_suite_singleton()
@@ -146,6 +155,26 @@ def C() -> Agent:
 @pytest.fixture()
 def D() -> Agent:
     return get_agent('agent4')
+
+
+@pytest.fixture()
+def config_a() -> Dict:
+    return get_agent_config('agent1')
+
+
+@pytest.fixture()
+def config_b() -> Dict:
+    return get_agent_config('agent2')
+
+
+@pytest.fixture()
+def config_c() -> Dict:
+    return get_agent_config('agent3')
+
+
+@pytest.fixture()
+def config_d() -> Dict:
+    return get_agent_config('agent4')
 
 
 @pytest.fixture()
@@ -218,14 +247,16 @@ async def get_pairwise(me: Agent, their: Agent) -> sirius_sdk.Pairwise:
 
 
 async def get_pairwise2(me: Tuple[Dict, str], their: Tuple[Dict, str]) -> sirius_sdk.Pairwise:
+    server_uri1 = me[0].get('server_address') or me[0].get('server_uri')
     agent_me = Agent(
-        server_address=me[0]['server_address'],
+        server_address=server_uri1,
         credentials=me[0]['credentials'],
         p2p=me[0]['p2p'],
         name=me[1]
     )
+    server_uri2 = their[0].get('server_address') or their[0].get('server_uri')
     agent_their = Agent(
-        server_address=their[0]['server_address'],
+        server_address=server_uri2,
         credentials=their[0]['credentials'],
         p2p=their[0]['p2p'],
         name=their[1]
@@ -238,6 +269,28 @@ async def get_pairwise2(me: Tuple[Dict, str], their: Tuple[Dict, str]) -> sirius
     finally:
         await agent_me.close()
         await agent_their.close()
+
+
+async def get_pairwise3(me: Dict, their: Dict) -> sirius_sdk.Pairwise:
+    suite = get_suite_singleton()
+    me_name = None
+    for name, config in suite.metadata.items():
+        cred1 = me['credentials'].decode() if isinstance(me['credentials'], bytes) else me['credentials']
+        cred2 = config['credentials'].decode() if isinstance(config['credentials'], bytes) else config['credentials']
+        if cred1 == cred2:
+            me_name = name
+    if me_name is None:
+        raise RuntimeError('Not found test-suite agent name')
+    their_name = None
+    for name, config in suite.metadata.items():
+        cred1 = their['credentials'].decode() if isinstance(their['credentials'], bytes) else their['credentials']
+        cred2 = config['credentials'].decode() if isinstance(config['credentials'], bytes) else config['credentials']
+        if cred1 == cred2:
+            their_name = name
+    if their_name is None:
+        raise RuntimeError('Not found test-suite agent name')
+    p2p = await get_pairwise2(me=(me, me_name), their=(their, their_name))
+    return p2p
 
 
 def create_mediator_instance(mediator_invitation: dict, my_verkey: str, routing_keys: list = None) -> Mediator:

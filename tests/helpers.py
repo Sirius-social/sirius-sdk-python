@@ -573,6 +573,12 @@ def calc_file_hash(path: str) -> str:
     return calc_bytes_hash(raw)
 
 
+def calc_file_size(path: str) -> int:
+    with open(path, 'rb') as f:
+        raw = f.read()
+    return len(raw)
+
+
 def calc_bytes_hash(raw: bytes) -> str:
     md = hashlib.md5(raw)
     return md.hexdigest()
