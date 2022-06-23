@@ -692,3 +692,11 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         finally:
             if close_on_exit:
                 await self.close_coprotocol()
+
+
+class CallerEncryptedDataVault(AbstractStateMachine):
+    pass
+
+
+class CalledEncryptedDataVault(AbstractStateMachine):
+    pass

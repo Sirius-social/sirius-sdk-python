@@ -18,8 +18,9 @@ class Document:
 
     @content.setter
     def content(self, value: Any):
+        self._before_content_change()
         self.__content = value
-        self._on_content_changed()
+        self._after_content_changed()
 
     async def save(self, stream: AbstractWriteOnlyStream):
         await stream.truncate()
@@ -29,7 +30,10 @@ class Document:
         await stream.seek_to_chunk(0)
         self.__content = await stream.read()
 
-    def _on_content_changed(self):
+    def _before_content_change(self):
+        pass
+
+    def _after_content_changed(self):
         pass
 
 
@@ -74,6 +78,6 @@ class EncryptedDocument(Document):
             self.__sender_vk = unpacked.get('sender_verkey')
             self.__encrypted = False
 
-    def _on_content_changed(self):
+    def _after_content_changed(self):
         self.__encrypted = False
         self.__sender_vk = None

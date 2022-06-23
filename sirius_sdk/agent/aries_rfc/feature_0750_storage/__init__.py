@@ -5,7 +5,8 @@ from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractSt
 from .encoding import ConfidentialStorageEncType
 from .errors import BaseConfidentialStorageError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
     StreamFormatError, ConfidentialStorageTimeoutOccurred
-from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage
+from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage, \
+    VaultConfig
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
@@ -20,5 +21,5 @@ __all__ = [
     "StreamSeekableError", "StreamFormatError", "ConfidentialStorageTimeoutOccurred", "ConfidentialStorageEncType",
     "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream",
     "ConfidentialStorageAuthProvider", "EncryptedDataVault", "FileSystemRawByteStorage",
-    "Document", "EncryptedDocument"
+    "Document", "EncryptedDocument", "VaultConfig"
 ]
