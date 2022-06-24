@@ -1,6 +1,6 @@
 import json
 import asyncio
-import logging
+import math
 from typing import Union, Optional, List
 
 import aiohttp
@@ -10,7 +10,11 @@ from sirius_sdk.didcomm import extentions as didcomm_ext
 from sirius_sdk.base import BaseConnector
 from sirius_sdk import AbstractP2PCoProtocol
 from sirius_sdk.errors.exceptions import *
+from sirius_sdk.hub.abstract import AbstractBus
+from sirius_sdk.hub.core import context_get, context_set
 from sirius_sdk.messaging import Message, restore_message_instance
+from sirius_sdk.agent.aries_rfc.feature_0753_bus.messages import BusSubscribeRequest, BusUnsubscribeRequest, \
+    BusProblemReport, BusBindResponse, BusPublishRequest, BusPublishResponse, BusEvent, BusOperation
 
 
 def qualify_key(key: str) -> str:
@@ -77,34 +81,18 @@ class MediatorConnector(BaseConnector):
         return True
 
 
-class MediatorCoProtocol(AbstractP2PCoProtocol):
+class TunnelMixin:
 
-    def __init__(
-            self,
-            connector: MediatorConnector, my_verkey: str, mediator_verkey: str,
-            time_to_live: int = None
-    ):
-        super().__init__(time_to_live)
-        self.__connector: MediatorConnector = connector
-        self._mediator_verkey = mediator_verkey
-        self._my_verkey = my_verkey
-
-    async def send(self, message: Message):
-        # Aries-RFC 0092 https://github.com/hyperledger/aries-rfcs/tree/master/features/0092-transport-return-route
-        transport = message.get('~transport', {})
-        transport['return_route'] = 'all'
-        message['~transport'] = transport
-
-        payload = await sirius_sdk.Crypto.pack_message(
+    async def pack(self, message: Message) -> bytes:
+        packed = await sirius_sdk.Crypto.pack_message(
             message=json.dumps(message),
-            recipient_verkeys=[self._mediator_verkey],
-            sender_verkey=self._my_verkey,
+            recipient_verkeys=[self.mediator_verkey],
+            sender_verkey=self.my_verkey,
         )
-        await self.__connector.write(payload)
+        return packed
 
-    async def get_one(self) -> (Optional[Message], str, Optional[str]):
-        payload = await self.__connector.read()
-        message, sender_vk, recip_vk = await sirius_sdk.Crypto.unpack_message(payload)
+    async def unpack(self, jwe: bytes) -> (Optional[Message], str, Optional[str]):
+        message, sender_vk, recip_vk = await sirius_sdk.Crypto.unpack_message(jwe)
         if type(message) is str:
             payload = json.loads(message)
         elif type(message) is bytes:
@@ -119,10 +107,130 @@ class MediatorCoProtocol(AbstractP2PCoProtocol):
         else:
             return Message(**payload), sender_vk, recip_vk
 
+
+class MediatorCoProtocol(AbstractP2PCoProtocol, TunnelMixin):
+
+    def __init__(
+            self,
+            connector: MediatorConnector, my_verkey: str, mediator_verkey: str,
+            time_to_live: int = None
+    ):
+        super().__init__(time_to_live)
+        self.__connector: MediatorConnector = connector
+        self._mediator_verkey = mediator_verkey
+        self._my_verkey = my_verkey
+
+    @property
+    def connector(self) -> MediatorConnector:
+        return self.__connector
+
+    @property
+    def mediator_verkey(self) -> str:
+        return self._mediator_verkey
+
+    @property
+    def my_verkey(self) -> str:
+        return self._my_verkey
+
+    async def send(self, message: Message):
+        # Aries-RFC 0092 https://github.com/hyperledger/aries-rfcs/tree/master/features/0092-transport-return-route
+        transport = message.get('~transport', {})
+        transport['return_route'] = 'all'
+        message['~transport'] = transport
+        payload = await self.pack(message)
+        await self.connector.write(payload)
+
+    async def get_one(self, timeout: int = None) -> (Optional[Message], str, Optional[str]):
+        payload = await self.connector.read(timeout)
+        message, sender_vk, recip_vk = await self.unpack(payload)
+        return message, sender_vk, recip_vk
+
     async def switch(self, message: Message) -> (bool, Message):
         await self.send(message)
         msg, _, _ = await self.get_one()
         return True, msg
+
+
+class MediatorBus(AbstractBus, TunnelMixin):
+
+    BINDINGS_CTX_ID = 'binding.id'
+
+    def __init__(self, connector: MediatorConnector, my_verkey: str, mediator_verkey: str):
+        self.__connector: MediatorConnector = connector
+        self._mediator_verkey = mediator_verkey
+        self._my_verkey = my_verkey
+
+    @property
+    def connector(self) -> MediatorConnector:
+        return self.__connector
+
+    @property
+    def mediator_verkey(self) -> str:
+        return self._mediator_verkey
+
+    @property
+    def my_verkey(self) -> str:
+        return self._my_verkey
+
+    async def subscribe(self, thid: str) -> bool:
+        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid))
+        payload = await self.pack(request)
+        await self.connector.write(payload)
+        jwe = await self.connector.read()
+        resp, _, _ = await self.unpack(jwe)
+        self.__validate(resp, expected_class=BusBindResponse)
+        return True
+
+    async def unsubscribe(self, thid: str):
+        request = BusUnsubscribeRequest(
+            binding_id=thid,
+            need_answer=False  # don't wait response
+        )
+        payload = await self.pack(request)
+        await self.connector.write(payload)
+
+    async def publish(self, thid: str, payload: bytes) -> int:
+        request = BusPublishRequest(binding_id=thid, payload=payload)
+        payload = await self.pack(request)
+        await self.connector.write(payload)
+        jwe = await self.connector.read()
+        resp, _, _ = await self.unpack(jwe)
+        self.__validate(resp, expected_class=BusPublishResponse)
+        return resp.recipients_num
+
+    async def get_event(self, timeout: float = None) -> bytes:
+        if timeout is not None:
+            timeout = math.ceil(timeout)
+        jwe = await self.connector.read(timeout)
+        event, _, _ = await self.unpack(jwe)
+        self.__validate(event, expected_class=BusEvent)
+        return event.payload
+
+    @staticmethod
+    def __validate(msg: BusOperation, expected_class) -> BusOperation:
+        if isinstance(msg, BusProblemReport):
+            raise SiriusRPCError(msg.explain)
+        elif isinstance(msg, expected_class):
+            return msg
+        else:
+            raise SiriusRPCError(f'Unexpected response type: {msg.__class__.__name__}')
+
+    def __get_binding_id(self, thid: str) -> Optional[str]:
+        ctx = context_get(self.BINDINGS_CTX_ID, default={})
+        return ctx.get(thid, None)
+
+    def __pop_binding_id(self, thid: str) -> Optional[str]:
+        ctx = context_get(self.BINDINGS_CTX_ID, default={})
+        bid = ctx.get(thid, None)
+        if bid is not None:
+            del ctx[thid]
+            context_set(self.BINDINGS_CTX_ID, ctx)
+        return bid
+
+    def __set_binding_id(self, thid: str, binding_id: str):
+        ctx = context_get(self.BINDINGS_CTX_ID, default={})
+        ctx[thid] = binding_id
+        context_set(self.BINDINGS_CTX_ID, ctx)
 
 
 class Mediator:
@@ -171,6 +279,7 @@ class Mediator:
             routing_keys = []
         self.__routing_keys = [qualify_key(key) for key in routing_keys]
         self.__endpoints: List[sirius_sdk.Endpoint] = []
+        self.__bus: Optional[AbstractBus] = None
 
     @property
     def is_connected(self) -> bool:
@@ -183,6 +292,10 @@ class Mediator:
     @property
     def endpoints(self) -> List[sirius_sdk.Endpoint]:
         return self.__endpoints
+
+    @property
+    def bus(self) -> AbstractBus:
+        return self.__bus
 
     async def connect(self):
         if self.__is_connected:
@@ -255,6 +368,11 @@ class Mediator:
                             is_default=True
                         )
                     )
+                    self.__bus = MediatorBus(
+                        connector=self._connector,
+                        my_verkey=self._coprotocol.my_verkey,
+                        mediator_verkey=self._coprotocol.mediator_verkey
+                    )
                 else:
                     raise SiriusRPCError('Error while granting mediate endpoint')
             else:
@@ -268,3 +386,4 @@ class Mediator:
             await self._connector.close()
             self.__is_connected = False
             self.__did_doc = None
+            self.__bus = None

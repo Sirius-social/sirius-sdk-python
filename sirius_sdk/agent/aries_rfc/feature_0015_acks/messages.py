@@ -5,6 +5,8 @@ from sirius_sdk.messaging import check_for_attributes
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
 
+from .mixins import AckMixin
+
 
 class Status(Enum):
     # outcome has occurred, and it was positive
@@ -17,7 +19,7 @@ class Status(Enum):
     FAIL = 'FAIL'
 
 
-class Ack(AriesProtocolMessage, metaclass=RegisterMessage):
+class Ack(AriesProtocolMessage, AckMixin, metaclass=RegisterMessage):
 
     PROTOCOL = 'notification'
     NAME = 'ack'
@@ -52,12 +54,3 @@ class Ack(AriesProtocolMessage, metaclass=RegisterMessage):
             return Status.FAIL
         else:
             return None
-
-    @property
-    def thread_id(self) -> Optional[str]:
-        return self.get(THREAD_DECORATOR, {}).get('thid', None)
-
-    @property
-    def please_ack(self) -> Optional[dict]:
-        """https://github.com/hyperledger/aries-rfcs/tree/master/features/0317-please-ack"""
-        return self.get('~please_ack', None)
