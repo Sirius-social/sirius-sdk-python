@@ -179,18 +179,22 @@ class MediatorBus(AbstractBus, TunnelMixin):
         jwe = await self.connector.read()
         resp, _, _ = await self.unpack(jwe)
         self.__validate(resp, expected_class=BusBindResponse)
+        if resp.binding_id != thid:
+            self.__set_binding_id(thid, resp.binding_id)
         return True
 
     async def unsubscribe(self, thid: str):
+        binding_id = self.__pop_binding_id(thid)
         request = BusUnsubscribeRequest(
-            binding_id=thid,
+            binding_id=binding_id or thid,
             need_answer=False  # don't wait response
         )
         payload = await self.pack(request)
         await self.connector.write(payload)
 
     async def publish(self, thid: str, payload: bytes) -> int:
-        request = BusPublishRequest(binding_id=thid, payload=payload)
+        binding_id = self.__get_binding_id(thid)
+        request = BusPublishRequest(binding_id=binding_id or thid, payload=payload)
         payload = await self.pack(request)
         await self.connector.write(payload)
         jwe = await self.connector.read()
