@@ -483,12 +483,12 @@ class BusProxy(AbstractBus):
         service = await _current_hub().get_bus()
         return await service.publish(thid, payload)
 
-    async def get_event(self, timeout: float = None) -> bytes:
+    async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:
         service = await _current_hub().get_bus()
-        data = await service.get_event(timeout)
-        return data
+        event = await service.get_event(timeout)
+        return event
 
-    async def get_message(self, timeout: float = None) -> Message:
+    async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
         service = await _current_hub().get_bus()
-        msg = await service.get_message(timeout)
-        return msg
+        event = await service.get_message(timeout)
+        return event

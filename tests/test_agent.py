@@ -343,8 +343,8 @@ async def test_agent_bus(test_suite: ServerTestSuite):
         sub_num = await session2.bus.publish(thid, content)
         assert sub_num == 1
 
-        rcv_content = await session1.bus.get_event(timeout=5)
-        assert rcv_content == content
+        event = await session1.bus.get_event(timeout=5)
+        assert event.payload == content
 
         await session1.bus.unsubscribe(thid)
 
@@ -407,9 +407,11 @@ async def test_agent_bus_for_threaded_protocol(test_suite: ServerTestSuite):
         await sender.send_message(**send_message_kwargs)
         # Check income
         event = await receiver.bus.get_message(timeout=5)
-        assert isinstance(event, Message)
-        assert event.__class__.__name__ == 'Ping'
-        assert event == trust_ping
+        assert isinstance(event.message, Message)
+        assert event.message.__class__.__name__ == 'Ping'
+        assert event.message == trust_ping
+        assert event.sender_verkey == sender_entity['verkey']
+        assert event.recipient_verkey == receiver_entity['verkey']
         # Unsubscribe
         await receiver.bus.unsubscribe(thid)
         # send again and raise errors on reading
@@ -485,12 +487,12 @@ async def test_agent_bus_for_complex_protocol(test_suite: ServerTestSuite):
         # Check income
         event1 = await receiver.bus.get_message(timeout=5)
         event2 = await receiver.bus.get_message(timeout=5)
-        if event1.__class__.__name__ == 'Ping':
-            assert event1 == trust_ping
-            assert event2 == some_msg
+        if event1.message.__class__.__name__ == 'Ping':
+            assert event1.message == trust_ping
+            assert event2.message == some_msg
         else:
-            assert event1 == some_msg
-            assert event2 == trust_ping
+            assert event1.message == some_msg
+            assert event2.message == trust_ping
         # Unsubscribe and try again
         await receiver.bus.unsubscribe_ext(binding_ids)
         # Send messages
@@ -515,5 +517,5 @@ async def test_bus_proxy(test_suite: ServerTestSuite):
         num = await sirius_sdk.Bus.publish(thid, payload)
         assert num > 0
 
-        income = await sirius_sdk.Bus.get_event(timeout=3)
-        assert payload == income
+        event = await sirius_sdk.Bus.get_event(timeout=3)
+        assert payload == event.payload

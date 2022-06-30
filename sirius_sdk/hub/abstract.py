@@ -1,5 +1,6 @@
-from typing import List
+from typing import List, Optional
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from sirius_sdk.messaging import Message
 
@@ -13,6 +14,18 @@ class AbstractBus(ABC):
     informative entity) on other hands user-space operations flow can run co-protocols and exchange data
     without dependency of location
     """
+
+    @dataclass
+    class BytesEvent:
+        binding_id: str
+        payload: bytes
+
+    @dataclass
+    class MessageEvent:
+        binding_id: str
+        message: Message
+        sender_verkey: Optional[str]
+        recipient_verkey: Optional[str]
 
     @abstractmethod
     async def subscribe(self, thid: str) -> bool:
@@ -53,7 +66,7 @@ class AbstractBus(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def get_event(self, timeout: float = None) -> bytes:
+    async def get_event(self, timeout: float = None) -> BytesEvent:
         """Wait event on streams earlier subscribed
 
         :param timeout: wait timeout, raises SiriusTimeoutIO if timeout occurred
@@ -62,7 +75,7 @@ class AbstractBus(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def get_message(self, timeout: float = None) -> Message:
+    async def get_message(self, timeout: float = None) -> MessageEvent:
         """Wait message on streams earlier subscribed
 
         :param timeout: wait timeout, raises SiriusTimeoutIO if timeout occurred

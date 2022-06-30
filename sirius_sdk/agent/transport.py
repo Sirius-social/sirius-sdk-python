@@ -8,7 +8,13 @@ async def http_send(
 ):
     """Send over HTTP"""
     headers = {'content-type': content_type}
-    request = aiohttp.request('post', endpoint, data=msg, headers=headers, connector=connector)
+    request = aiohttp.request(
+        'post', endpoint,
+        data=msg,
+        headers=headers,
+        connector=connector,
+        timeout=aiohttp.ClientTimeout(total=timeout)
+    )
     async with request as resp:
         body = await resp.read()
         if resp.status in [200, 202]:

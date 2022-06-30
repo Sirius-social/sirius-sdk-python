@@ -76,8 +76,8 @@ async def test_bus_pubsub(mediator_invitation: dict):
                     assert num > 0
                 # Retrieve from session-2
                 for n in range(2):
-                    data = await session2.bus.get_event(timeout=3)
-                    assert data in [content1, content2]
+                    event = await session2.bus.get_event(timeout=3)
+                    assert event.payload in [content1, content2]
                 # Unsubscribe from thread-2
                 await session2.bus.unsubscribe(thid1)
                 # Publish again
@@ -85,8 +85,8 @@ async def test_bus_pubsub(mediator_invitation: dict):
                     num = await session1.bus.publish(thid, content)
                     assert num == num_expected
                 # Retrieve from session-2
-                data = await session2.bus.get_event(timeout=3)
-                assert data == content2
+                event = await session2.bus.get_event(timeout=3)
+                assert event.payload == content2
                 with pytest.raises(SiriusTimeoutIO):
                     await session2.bus.get_event(timeout=3)
             finally:

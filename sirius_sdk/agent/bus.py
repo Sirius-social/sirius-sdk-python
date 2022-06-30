@@ -72,31 +72,36 @@ class RpcBus(AbstractBus):
         assert isinstance(resp, BusPublishResponse)
         return resp.recipients_num
 
-    async def get_event(self, timeout: int = None) -> bytes:
+    async def get_event(self, timeout: int = None) -> AbstractBus.BytesEvent:
         cut_stamp = datetime.datetime.now()
         wait_timeout = timeout
         while True:
             payload = await self.__connector.read(wait_timeout)
             ok, resp = restore_message_instance(json.loads(payload.decode()))
             if ok and isinstance(resp, BusEvent):
-                return resp.payload
+                return AbstractBus.BytesEvent(binding_id=resp.binding_id, payload=resp.payload)
             else:
                 _ = (cut_stamp - datetime.datetime.now()).total_seconds()
                 wait_timeout = math.ceil(_)
                 if wait_timeout <= 0:
                     raise SiriusTimeoutIO
 
-    async def get_message(self, timeout: float = None) -> Message:
-        payload = await self.get_event(timeout)
-        decrypted = self.__p2p.unpack(payload)
+    async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
+        event = await self.get_event(timeout)
+        decrypted = self.__p2p.unpack(event.payload)
         if decrypted.get('@type', None):
             msg_typ = MsgType.from_str(decrypted['@type'])
             if msg_typ.protocol == 'sirius_rpc' and msg_typ.name == 'event' and 'message' in decrypted:
                 ok, msg = restore_message_instance(decrypted['message'])
-                if ok:
-                    return msg
-                else:
-                    return Message(**decrypted['message'])
+                if not ok:
+                    msg = Message(**decrypted['message'])
+
+                return AbstractBus.MessageEvent(
+                    binding_id=event.binding_id,
+                    message=msg,
+                    sender_verkey=decrypted.get('sender_verkey', None),
+                    recipient_verkey=decrypted.get('recipient_verkey', None)
+                )
         else:
             raise SiriusRPCError('Unexpected message format')
 

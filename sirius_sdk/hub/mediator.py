@@ -213,15 +213,16 @@ class MediatorBus(AbstractBus, TunnelMixin):
         self.__validate(resp, expected_class=BusPublishResponse)
         return resp.recipients_num
 
-    async def get_event(self, timeout: float = None) -> bytes:
+    async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:
         if timeout is not None:
             timeout = math.ceil(timeout)
         jwe = await self.connector.read(timeout)
         event, _, _ = await self.unpack(jwe)
         self.__validate(event, expected_class=BusEvent)
-        return event.payload
+        assert isinstance(event, BusEvent)
+        return AbstractBus.BytesEvent(binding_id=event.binding_id, payload=event.payload)
 
-    async def get_message(self, timeout: float = None) -> Message:
+    async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
         raise NotImplemented('Does not have sense for Mediator scenarios')
 
     @staticmethod
