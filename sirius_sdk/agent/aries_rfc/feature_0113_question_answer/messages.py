@@ -4,11 +4,10 @@ from typing import Optional, List
 
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.aries_rfc.utils import sign
-from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage
 
 
-class Question(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
+class Question(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Question
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0113-question-answer
@@ -77,7 +76,7 @@ class Question(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
         self['~timing'] = timing
 
 
-class Answer(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
+class Answer(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Answer
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0113-question-answer
