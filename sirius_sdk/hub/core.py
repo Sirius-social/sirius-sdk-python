@@ -32,7 +32,7 @@ class Hub:
             storage: AbstractImmutableCollection = None, crypto: AbstractCrypto = None,
             microledgers: AbstractMicroledgerList = None, pairwise_storage: AbstractPairwiseList = None,
             did: AbstractDID = None, anoncreds: AbstractAnonCreds = None, non_secrets: AbstractNonSecrets = None,
-            cache: AbstractCache = None, loop: asyncio.AbstractEventLoop = None
+            cache: AbstractCache = None, bus: AbstractBus = None, loop: asyncio.AbstractEventLoop = None
     ):
         if server_uri or credentials or p2p:
             if server_uri and credentials and p2p:
@@ -48,7 +48,7 @@ class Hub:
         self.__anoncreds = anoncreds
         self.__non_secrets = non_secrets
         self.__cache = cache
-        self.__bus: Optional[AbstractBus] = None
+        self.__bus: Optional[AbstractBus] = bus
         self.__server_uri = server_uri
         self.__credentials = credentials
         self.__p2p = p2p

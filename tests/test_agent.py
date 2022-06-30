@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 
+import sirius_sdk
 from sirius_sdk import Agent
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from sirius_sdk.encryption.custom import bytes_to_b58
@@ -500,3 +501,19 @@ async def test_agent_bus_for_complex_protocol(test_suite: ServerTestSuite):
     finally:
         await sender.close()
         await receiver.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_proxy(test_suite: ServerTestSuite):
+    params = test_suite.get_agent_params('agent1')
+    async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
+        thid = 'thid-' + uuid.uuid4().hex
+        ok = await sirius_sdk.Bus.subscribe(thid)
+        assert ok is True
+
+        payload = b'Content-Under-Test'
+        num = await sirius_sdk.Bus.publish(thid, payload)
+        assert num > 0
+
+        income = await sirius_sdk.Bus.get_event(timeout=3)
+        assert payload == income

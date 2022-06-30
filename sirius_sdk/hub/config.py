@@ -10,6 +10,8 @@ from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 
+from .abstract import AbstractBus
+
 
 class Config:
 
@@ -89,7 +91,7 @@ class Config:
             self, crypto: AbstractCrypto = None, did: AbstractDID = None,
             microledgers: AbstractMicroledgerList = None, storage: AbstractImmutableCollection = None,
             pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None,
-            anon_cred: AbstractAnonCreds = None
+            anon_cred: AbstractAnonCreds = None, bus: AbstractBus = None
     ) -> "Config":
         if crypto:
             self.__overrides['crypto'] = crypto
@@ -105,6 +107,8 @@ class Config:
             self.__overrides['non_secrets'] = non_secrets
         if anon_cred:
             self.__overrides['anon_cred'] = anon_cred
+        if bus:
+            self.__overrides['bus'] = bus
         return self
 
     def override_crypto(self, dependency: AbstractCrypto) -> "Config":
@@ -133,4 +137,8 @@ class Config:
 
     def override_anon_cred(self, dependency: AbstractAnonCreds) -> "Config":
         self.__overrides['anon_cred'] = dependency
+        return self
+
+    def override_bus(self, dependency: AbstractBus) -> "Config":
+        self.__overrides['bus'] = dependency
         return self
