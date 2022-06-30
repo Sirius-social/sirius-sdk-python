@@ -81,7 +81,6 @@ class Attach(dict):
         return base64.b64decode(self['data']["base64"])
 
 
-
 class AttachesMixin:
     """
     https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0017-attachments
