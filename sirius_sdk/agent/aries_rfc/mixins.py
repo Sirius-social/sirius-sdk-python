@@ -1,7 +1,7 @@
 from typing import Optional, List
 import base64
 
-from sirius_sdk.agent.aries_rfc.base import THREAD_DECORATOR
+from .decorators import *
 
 
 class PleaseAckMixin:
