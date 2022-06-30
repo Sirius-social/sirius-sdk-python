@@ -35,7 +35,7 @@ setup(
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft :: Windows',
     ],
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests"]),
     python_requires='>=3.7',
     include_package_data=True,
     install_requires=[
@@ -48,5 +48,6 @@ setup(
         'pytime>=0.2.0',
         'semver>=2.10.1',
         'sortedcontainers~=2.3.0'
-    ]
+    ],
+    keywords=["didcomm", "sdk", "self-sovereign-identity", "ssi", "smart-contract"],
 )

@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from multipledispatch import dispatch
 
 from sirius_sdk.messaging import Message
+from sirius_sdk.hub.abstract import AbstractBus
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
@@ -21,6 +22,8 @@ from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.microledgers.impl import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
+
+from .bus import RpcBus
 
 
 class TransportLayers(ABC):
@@ -102,6 +105,7 @@ class Agent(TransportLayers):
         self.__name = name
         self.__spawn_strategy = spawn_strategy
         self.__external_crypto_service = external_crypto
+        self.__bus: Optional[AbstractBus] = None
 
     @property
     def name(self) -> Optional[str]:
@@ -135,6 +139,10 @@ class Agent(TransportLayers):
     def pairwise_list(self) -> AbstractPairwiseList:
         self.__check_is_open()
         return self.__pairwise_list
+
+    @property
+    def bus(self) -> Optional[AbstractBus]:
+        return self.__bus
 
     @dispatch(str, TheirEndpoint)
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
@@ -234,6 +242,7 @@ class Agent(TransportLayers):
             self.__server_address, self.__credentials, self.__p2p,
             self.__timeout, self.__loop, self.__external_crypto_service
         )
+        self.__bus = RpcBus(connector=self.__rpc.connector, p2p=self.__p2p)
         self.__endpoints = self.__rpc.endpoints
         self.__wallet = DynamicWallet(rpc=self.__rpc)
         if self.__storage is None:

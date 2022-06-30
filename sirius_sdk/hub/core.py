@@ -18,6 +18,7 @@ from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
+from .abstract import AbstractBus
 
 
 __ROOT_HUB = None
@@ -47,6 +48,7 @@ class Hub:
         self.__anoncreds = anoncreds
         self.__non_secrets = non_secrets
         self.__cache = cache
+        self.__bus: Optional[AbstractBus] = None
         self.__server_uri = server_uri
         self.__credentials = credentials
         self.__p2p = p2p
@@ -71,6 +73,7 @@ class Hub:
         inst.__non_secrets = self.__non_secrets
         inst.__storage = self.__storage
         inst.__cache = self.__cache
+        inst.__bus = self.__bus
         return inst
 
     async def abort(self):
@@ -158,6 +161,13 @@ class Hub:
                 return self.__non_secrets or agent.wallet.non_secrets
         else:
             return self.__non_secrets
+
+    async def get_bus(self) -> AbstractBus:
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__bus or agent.bus
+        else:
+            return self.__bus
 
     def __create_agent_instance(self):
         if self.__allocate_agent:

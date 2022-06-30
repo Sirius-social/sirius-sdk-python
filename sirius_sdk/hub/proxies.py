@@ -1,5 +1,6 @@
 from typing import Optional, List, Union, Any
 
+from sirius_sdk.messaging import Message
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
@@ -10,6 +11,7 @@ from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, \
     AbstractMicroledger, AbstractBatchedAPI
 
+from .abstract import AbstractBus
 from .core import _current_hub
 from ..agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
 from ..agent.wallet.abstract import AnonCredSchema
@@ -457,3 +459,36 @@ class NonSecretsProxy(AbstractNonSecrets):
     async def wallet_search(self, type_: str, query: dict, options: RetrieveRecordOptions, limit: int = 1) -> (List[dict], int):
         service = await _current_hub().get_non_secrets()
         return await service.wallet_search(type_=type_, query=query, options=options, limit=limit)
+
+
+class BusProxy(AbstractBus):
+
+    async def subscribe(self, thid: str) -> bool:
+        service = await _current_hub().get_bus()
+        return await service.subscribe(thid)
+
+    async def subscribe_ext(self, sender_vk: List[str], recipient_vk: List[str], protocols: List[str]) -> (bool, List[str]):
+        service = await _current_hub().get_bus()
+        return await service.subscribe_ext(sender_vk, recipient_vk, protocols)
+
+    async def unsubscribe(self, thid: str):
+        service = await _current_hub().get_bus()
+        await service.unsubscribe(thid)
+
+    async def unsubscribe_ext(self, binding_ids: List[str]):
+        service = await _current_hub().get_bus()
+        await service.unsubscribe_ext(binding_ids)
+
+    async def publish(self, thid: str, payload: bytes) -> int:
+        service = await _current_hub().get_bus()
+        return await service.publish(thid, payload)
+
+    async def get_event(self, timeout: float = None) -> bytes:
+        service = await _current_hub().get_bus()
+        data = await service.get_event(timeout)
+        return data
+
+    async def get_message(self, timeout: float = None) -> Message:
+        service = await _current_hub().get_bus()
+        msg = await service.get_message(timeout)
+        return msg
