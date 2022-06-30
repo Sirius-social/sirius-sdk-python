@@ -165,7 +165,7 @@ class Hub:
     async def get_bus(self) -> AbstractBus:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__bus
+                return self.__bus or agent.bus
         else:
             return self.__bus
 

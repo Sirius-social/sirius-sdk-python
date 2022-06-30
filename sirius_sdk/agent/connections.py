@@ -3,7 +3,7 @@ import aiohttp
 import asyncio
 import datetime
 from abc import ABC, abstractmethod
-from typing import List, Any, Union, Optional
+from typing import List, Union, Optional
 
 from sirius_sdk.base import WebSocketConnector
 from sirius_sdk.encryption import P2PConnection
@@ -153,6 +153,10 @@ class AgentRPC(BaseAgentConnection):
         return self.__endpoints
 
     @property
+    def connector(self) -> WebSocketConnector:
+        return self._connector
+
+    @property
     def networks(self) -> List[str]:
         return self.__networks
 
@@ -184,7 +188,7 @@ class AgentRPC(BaseAgentConnection):
                 params=params or {}
             )
             msg_typ = MessageType.from_str(msg_type)
-            encrypt = msg_typ.protocol not in ['admin', 'microledgers', 'microledgers-batched']
+            encrypt = msg_typ.protocol not in ['admin', 'microledgers', 'microledgers-batched', 'bus']
             if not await self.__tunnel_rpc.post(message=request, encrypt=encrypt):
                 raise SiriusRPCError()
             if wait_response:

@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from sirius_sdk import Agent
+from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from sirius_sdk.encryption.custom import bytes_to_b58
 from sirius_sdk.messaging import Message, register_message_class
 from .helpers import ServerTestSuite
@@ -313,3 +314,189 @@ async def test_agents_crypto(test_suite: ServerTestSuite):
     finally:
         await agent1.close()
         await agent2.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_bus(test_suite: ServerTestSuite):
+    agent_params = test_suite.get_agent_params('agent1')
+    session1 = Agent(
+        server_address=agent_params['server_address'],
+        credentials=agent_params['credentials'],
+        p2p=agent_params['p2p'],
+        timeout=5,
+    )
+    session2 = Agent(
+        server_address=agent_params['server_address'],
+        credentials=agent_params['credentials'],
+        p2p=agent_params['p2p'],
+        timeout=5,
+    )
+    await session1.open()
+    await session2.open()
+    try:
+        thid = 'thread-id-' + uuid.uuid4().hex
+        ok = await session1.bus.subscribe(thid)
+        assert ok is True
+
+        content = b'Some-Message'
+        sub_num = await session2.bus.publish(thid, content)
+        assert sub_num == 1
+
+        rcv_content = await session1.bus.get_event(timeout=5)
+        assert rcv_content == content
+
+        await session1.bus.unsubscribe(thid)
+
+        await session2.bus.publish(thid, content)
+
+        with pytest.raises(SiriusTimeoutIO):
+            await session1.bus.get_event(timeout=3)
+
+        sub_num = await session2.bus.publish(thid, content)
+        assert sub_num == 0
+    finally:
+        await session1.close()
+        await session2.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_bus_for_threaded_protocol(test_suite: ServerTestSuite):
+    sender_params = test_suite.get_agent_params('agent1')
+    receiver_params = test_suite.get_agent_params('agent2')
+    sender_entity = list(sender_params['entities'].items())[0][1]
+    receiver_entity = list(receiver_params['entities'].items())[0][1]
+    sender = Agent(
+        server_address=sender_params['server_address'],
+        credentials=sender_params['credentials'],
+        p2p=sender_params['p2p'],
+        timeout=5,
+    )
+    receiver = Agent(
+        server_address=receiver_params['server_address'],
+        credentials=receiver_params['credentials'],
+        p2p=receiver_params['p2p'],
+        timeout=5,
+    )
+    await sender.open()
+    await receiver.open()
+    try:
+        # Get endpoints
+        receiver_endpoint = [e for e in receiver.endpoints if e.routing_keys == []][0].address
+        receiver_listener = await receiver.subscribe()
+        # Exchange Pairwise
+        # Prepare message
+        thid = 'thread-for-ping-' + uuid.uuid4().hex
+        trust_ping = Message({
+            '@id': 'trust-ping-message-' + uuid.uuid4().hex,
+            '@type': 'https://didcomm.org/trust_ping/1.0/ping',
+            "comment": "Hi.",
+            "~thread": {"thid": thid},
+        })
+        # Subscribe to events
+        ok = await receiver.bus.subscribe(thid)
+        assert ok is True
+        # Send message
+        send_message_kwargs = dict(
+            message=trust_ping,
+            their_vk=receiver_entity['verkey'],
+            endpoint=receiver_endpoint,
+            my_vk=sender_entity['verkey'],
+            routing_keys=[]
+        )
+        await sender.send_message(**send_message_kwargs)
+        # Check income
+        event = await receiver.bus.get_message(timeout=5)
+        assert isinstance(event, Message)
+        assert event.__class__.__name__ == 'Ping'
+        assert event == trust_ping
+        # Unsubscribe
+        await receiver.bus.unsubscribe(thid)
+        # send again and raise errors on reading
+        await sender.send_message(**send_message_kwargs)
+        with pytest.raises(SiriusTimeoutIO):
+            await receiver.bus.get_message(timeout=3)
+    finally:
+        await sender.close()
+        await receiver.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_bus_for_complex_protocol(test_suite: ServerTestSuite):
+    sender_params = test_suite.get_agent_params('agent1')
+    receiver_params = test_suite.get_agent_params('agent2')
+    sender_entity = list(sender_params['entities'].items())[0][1]
+    receiver_entity = list(receiver_params['entities'].items())[0][1]
+    sender = Agent(
+        server_address=sender_params['server_address'],
+        credentials=sender_params['credentials'],
+        p2p=sender_params['p2p'],
+        timeout=5,
+    )
+    receiver = Agent(
+        server_address=receiver_params['server_address'],
+        credentials=receiver_params['credentials'],
+        p2p=receiver_params['p2p'],
+        timeout=5,
+    )
+    await sender.open()
+    await receiver.open()
+    try:
+        # Get endpoints
+        receiver_endpoint = [e for e in receiver.endpoints if e.routing_keys == []][0].address
+        receiver_listener = await receiver.subscribe()
+        # Exchange Pairwise
+        # Prepare message
+        thid = 'thread-for-ping-' + uuid.uuid4().hex
+        trust_ping = Message({
+            '@id': 'trust-ping-message-' + uuid.uuid4().hex,
+            '@type': 'https://didcomm.org/trust_ping/1.0/ping',
+            "comment": "Hi.",
+        })
+        some_msg = Message({
+            '@id': 'some-message-' + uuid.uuid4().hex,
+            '@type': 'https://didcomm.org/some-protocol/1.0/some-request',
+        })
+        sender_vk = sender_entity['verkey']
+        receiver_vk = receiver_entity['verkey']
+        # Subscribe to events
+        ok, binding_ids = await receiver.bus.subscribe_ext(
+            sender_vk=[sender_vk], recipient_vk=[receiver_vk], protocols=['trust_ping', 'some-protocol']
+        )
+        assert ok is True
+        # Send message
+        send_message_kwargs1 = dict(
+            message=trust_ping,
+            their_vk=receiver_entity['verkey'],
+            endpoint=receiver_endpoint,
+            my_vk=sender_entity['verkey'],
+            routing_keys=[]
+        )
+        send_message_kwargs2 = dict(
+            message=some_msg,
+            their_vk=receiver_entity['verkey'],
+            endpoint=receiver_endpoint,
+            my_vk=sender_entity['verkey'],
+            routing_keys=[]
+        )
+        # Send messages
+        await sender.send_message(**send_message_kwargs1)
+        await sender.send_message(**send_message_kwargs2)
+        # Check income
+        event1 = await receiver.bus.get_message(timeout=5)
+        event2 = await receiver.bus.get_message(timeout=5)
+        if event1.__class__.__name__ == 'Ping':
+            assert event1 == trust_ping
+            assert event2 == some_msg
+        else:
+            assert event1 == some_msg
+            assert event2 == trust_ping
+        # Unsubscribe and try again
+        await receiver.bus.unsubscribe_ext(binding_ids)
+        # Send messages
+        await sender.send_message(**send_message_kwargs1)
+        await sender.send_message(**send_message_kwargs2)
+        with pytest.raises(SiriusTimeoutIO):
+            await receiver.bus.get_message(timeout=5)
+    finally:
+        await sender.close()
+        await receiver.close()

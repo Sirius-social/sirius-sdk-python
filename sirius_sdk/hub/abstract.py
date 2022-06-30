@@ -1,6 +1,7 @@
+from typing import List
 from abc import ABC, abstractmethod
 
-from sirius_sdk.errors.exceptions import SiriusTimeoutIO
+from sirius_sdk.messaging import Message
 
 
 class AbstractBus(ABC):
@@ -22,8 +23,24 @@ class AbstractBus(ABC):
         raise NotImplemented
 
     @abstractmethod
+    async def subscribe_ext(self, sender_vk: List[str], recipient_vk: List[str], protocols: List[str]) -> (bool, List[str]):
+        """Subscribe to events that addressed by verkeys and protocol-names
+
+         - Assumed bus agent has access to wallet secrets, so it is case fow cloud wallet agents
+
+        returns: success flag, list of binding ids
+        """
+        raise NotImplemented
+
+    @abstractmethod
     async def unsubscribe(self, thid: str):
         """UnSubscribe from events stream marked with specific thread-id
+        """
+        raise NotImplemented
+
+    @abstractmethod
+    async def unsubscribe_ext(self, binding_ids: List[str]):
+        """UnSubscribe from events stream marked with specific binding-ids
         """
         raise NotImplemented
 
@@ -41,5 +58,14 @@ class AbstractBus(ABC):
 
         :param timeout: wait timeout, raises SiriusTimeoutIO if timeout occurred
         returns event data in bytes
+        """
+        raise NotImplemented
+
+    @abstractmethod
+    async def get_message(self, timeout: float = None) -> Message:
+        """Wait message on streams earlier subscribed
+
+        :param timeout: wait timeout, raises SiriusTimeoutIO if timeout occurred
+        returns parsed message
         """
         raise NotImplemented

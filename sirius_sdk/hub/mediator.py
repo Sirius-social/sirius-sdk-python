@@ -183,10 +183,21 @@ class MediatorBus(AbstractBus, TunnelMixin):
             self.__set_binding_id(thid, resp.binding_id)
         return True
 
+    async def subscribe_ext(self, sender_vk: List[str], recipient_vk: List[str], protocols: List[str]) -> (bool, List[str]):
+        raise NotImplemented('Mediator does not have access to Wallet or secrets')
+
     async def unsubscribe(self, thid: str):
         binding_id = self.__pop_binding_id(thid)
         request = BusUnsubscribeRequest(
             binding_id=binding_id or thid,
+            need_answer=False  # don't wait response
+        )
+        payload = await self.pack(request)
+        await self.connector.write(payload)
+
+    async def unsubscribe_ext(self, binding_ids: List[str]):
+        request = BusUnsubscribeRequest(
+            binding_id=binding_ids,
             need_answer=False  # don't wait response
         )
         payload = await self.pack(request)
@@ -209,6 +220,9 @@ class MediatorBus(AbstractBus, TunnelMixin):
         event, _, _ = await self.unpack(jwe)
         self.__validate(event, expected_class=BusEvent)
         return event.payload
+
+    async def get_message(self, timeout: float = None) -> Message:
+        raise NotImplemented('Does not have sense for Mediator scenarios')
 
     @staticmethod
     def __validate(msg: BusOperation, expected_class) -> BusOperation:
