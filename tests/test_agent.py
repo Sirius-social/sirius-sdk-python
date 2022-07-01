@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import pytest
@@ -512,6 +513,8 @@ async def test_bus_proxy(test_suite: ServerTestSuite):
         thid = 'thid-' + uuid.uuid4().hex
         ok = await sirius_sdk.Bus.subscribe(thid)
         assert ok is True
+
+        await asyncio.sleep(1)
 
         payload = b'Content-Under-Test'
         num = await sirius_sdk.Bus.publish(thid, payload)
