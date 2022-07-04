@@ -1,6 +1,7 @@
 from sirius_sdk.messaging import *
 from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping.messages import Ping, Pong
 from sirius_sdk.agent.aries_rfc.feature_0015_acks.messages import Ack, Status as AckStatus
+from sirius_sdk import aries_rfc
 import sirius_sdk.agent.aries_rfc.feature_0095_basic_message.messages as msg0095
 
 
@@ -150,11 +151,11 @@ def test_aries_ack():
 
 def test_attaches_mixin():
     msg = msg0095.Message(content="content", locale="en")
-    att = msg0095.Attach(id="id", mime_type="image/png", filename="photo.png", data="eW91ciB0ZXh0".encode())
+    att = aries_rfc.Attach(id="id", mime_type="image/png", filename="photo.png", data="eW91ciB0ZXh0".encode())
     msg.add_attach(att)
 
     assert len(msg.attaches) == 1
-    assert isinstance(msg.attaches[0], msg0095.Attach)
+    assert isinstance(msg.attaches[0], aries_rfc.Attach)
     assert msg.attaches[0].data == "eW91ciB0ZXh0".encode()
 
 

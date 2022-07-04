@@ -1,4 +1,5 @@
 import uuid
+import asyncio
 
 import pytest
 
@@ -80,6 +81,7 @@ async def test_bus_pubsub(mediator_invitation: dict):
                     assert event.payload in [content1, content2]
                 # Unsubscribe from thread-2
                 await session2.bus.unsubscribe(thid1)
+                await asyncio.sleep(1)
                 # Publish again
                 for thid, num_expected in [(thid1, 0), (thid2, 1)]:
                     num = await session1.bus.publish(thid, content)
