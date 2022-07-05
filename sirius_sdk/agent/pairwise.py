@@ -15,6 +15,10 @@ class TheirEndpoint:
         self.routing_keys = routing_keys or []
 
     @property
+    def address(self) -> str:
+        return self.endpoint
+
+    @property
     def netloc(self) -> Optional[str]:
         if self.endpoint:
             return urlparse(self.endpoint).netloc

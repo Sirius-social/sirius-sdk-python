@@ -91,7 +91,7 @@ class Config:
             self, crypto: AbstractCrypto = None, did: AbstractDID = None,
             microledgers: AbstractMicroledgerList = None, storage: AbstractImmutableCollection = None,
             pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None,
-            anon_cred: AbstractAnonCreds = None, bus: AbstractBus = None
+            anon_cred: AbstractAnonCreds = None, bus: AbstractBus = None, **kwargs
     ) -> "Config":
         if crypto:
             self.__overrides['crypto'] = crypto

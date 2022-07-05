@@ -1,6 +1,8 @@
-from typing import Optional, List
 import base64
+from dataclasses import dataclass
+from typing import Optional, List
 
+from sirius_sdk.base import Message
 from .decorators import *
 
 
@@ -25,6 +27,20 @@ class PleaseAckMixin:
 
 class ThreadMixin:
 
+    @dataclass
+    class Thread:
+        thid: str = None
+        pthid: str = None
+        sender_order: int = None
+        received_orders: dict = None
+
+        @property
+        def is_filled(self) -> bool:
+            return self.thid is not None or \
+                   self.pthid is not None or \
+                   self.sender_order is not None or \
+                   self.received_orders is not None
+
     @property
     def thread_id(self) -> Optional[str]:
         return self.get(THREAD_DECORATOR, {}).get('thid', None)
@@ -34,6 +50,58 @@ class ThreadMixin:
         thread = self.get(THREAD_DECORATOR, {})
         thread['thid'] = thid
         self[THREAD_DECORATOR] = thread
+
+    @property
+    def thread(self) -> Optional[Thread]:
+        return self.get_thread(self)
+
+    @thread.setter
+    def thread(self, value: Thread = None):
+        self.set_thread(self, value)
+
+    @staticmethod
+    def get_thread(message: Message) -> Optional[Thread]:
+        d = message.get(THREAD_DECORATOR, {})
+        thid = d.get('thid', None)
+        pthid = d.get('pthid', None)
+        if 'sender_order' in d:
+            try:
+                sender_order = int(d['sender_order'])
+            except ValueError:
+                sender_order = None
+        else:
+            sender_order = None
+        if 'received_orders' in d:
+            received_orders = d['received_orders']
+            if not isinstance(received_orders, dict):
+                received_orders = None
+        else:
+            received_orders = None
+
+        thread = ThreadMixin.Thread(
+            thid=thid, pthid=pthid, sender_order=sender_order, received_orders=received_orders
+        )
+        if thread.is_filled:
+            return thread
+        else:
+            return None
+
+    @staticmethod
+    def set_thread(message: Message, value: Thread = None):
+        if value is not None and value.is_filled:
+            d = {}
+            if value.thid:
+                d['thid'] = value.thid
+            if value.pthid:
+                d['pthid'] = value.pthid
+            if value.sender_order is not None:
+                d['sender_order'] = value.sender_order
+            if value.received_orders is not None:
+                d['received_orders'] = value.received_orders
+            message[THREAD_DECORATOR] = d
+        else:
+            if THREAD_DECORATOR in self:
+                del message[THREAD_DECORATOR]
 
 
 class Attach(dict):

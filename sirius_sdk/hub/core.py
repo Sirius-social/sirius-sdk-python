@@ -205,7 +205,7 @@ def deprecated_init_params(f):
         else:
             cfg = Config()
 
-        server_uri = kwargs.pop('server_uri', None)
+        server_uri = kwargs.pop('server_uri', None) or kwargs.pop('server_address', None)
         credentials = kwargs.pop('credentials', None)
         p2p = kwargs.pop('p2p', None)
         io_timeout = kwargs.pop('io_timeout', None)
