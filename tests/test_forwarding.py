@@ -37,7 +37,7 @@ async def test_message_delivery(test_suite: ServerTestSuite):
     mediate_sk = sirius_sdk.encryption.bytes_to_b58(mediate_sk_bytes)
     p2p = await get_pairwise2((sdk_me, 'agent1'), (sdk_their, 'agent2'))
 
-    msg = sirius_sdk.aries_rfc.Message(
+    msg = sirius_sdk.aries_rfc.BasicMessage(
         content=expected_content
     )
     fut = asyncio.ensure_future(

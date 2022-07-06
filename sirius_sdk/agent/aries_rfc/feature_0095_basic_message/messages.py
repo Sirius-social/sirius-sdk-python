@@ -34,3 +34,6 @@ class Message(AriesProtocolMessage, metaclass=RegisterMessage):
 
     def set_time(self):
         self['sent_time'] = datetime.datetime.now().astimezone().replace(microsecond=0).isoformat()
+
+
+BasicMessage = Message
