@@ -4,7 +4,7 @@ import asyncio
 import pytest
 
 import sirius_sdk
-from sirius_sdk.errors.exceptions import SiriusTimeoutIO
+from sirius_sdk.errors.exceptions import SiriusTimeoutIO, OperationAbortedManually
 from .conftest import create_mediator_instance
 from .helpers import LocalCryptoManager, LocalDIDManager
 
@@ -46,7 +46,7 @@ async def test_routing_keys(mediator_invitation: dict):
 
 
 @pytest.mark.asyncio
-async def test_bus_pubsub(mediator_invitation: dict):
+async def test_bus(mediator_invitation: dict):
     """Check bus operations:
       - subscribe
       - publish
@@ -95,3 +95,30 @@ async def test_bus_pubsub(mediator_invitation: dict):
                 await session2.disconnect()
         finally:
             await session1.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_bus_abort(mediator_invitation: dict):
+    async with sirius_sdk.context(crypto=LocalCryptoManager(), did=LocalDIDManager()):
+        my_vk = await sirius_sdk.Crypto.create_key()
+        session = create_mediator_instance(mediator_invitation, my_vk)
+        await session.connect()
+        try:
+            session = create_mediator_instance(mediator_invitation, my_vk)
+            await session.connect()
+            try:
+                thid = 'thread-id-' + uuid.uuid4().hex
+                ok = await session.bus.subscribe(thid)
+                assert ok is True
+
+                async def __abort():
+                    await asyncio.sleep(1)
+                    await session.bus.abort()
+
+                asyncio.ensure_future(__abort())
+                with pytest.raises(OperationAbortedManually):
+                    await session.bus.get_event()
+            finally:
+                await session.disconnect()
+        finally:
+            await session.disconnect()

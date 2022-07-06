@@ -9,20 +9,24 @@ from .decorators import *
 class PleaseAckMixin:
 
     @property
-    def ack_message_id(self) -> str:
-        return self.get('~please_ack', {}).get('message_id', None) or self.id
+    def ack_message_id(self) -> Optional[str]:
+        return self.get_ack_message_id(self)
 
     @property
     def please_ack(self) -> bool:
         """https://github.com/hyperledger/aries-rfcs/tree/master/features/0317-please-ack"""
-        return self.get('~please_ack', None) is not None
+        return self.get(PLEASE_ACK_DECORATOR, None) is not None
 
     @please_ack.setter
     def please_ack(self, flag: bool):
         if flag:
-            self['~please_ack'] = {'message_id': self.id}
-        elif '~please_ack' in self:
-            del self['~please_ack']
+            self[PLEASE_ACK_DECORATOR] = {'message_id': self.id}
+        elif PLEASE_ACK_DECORATOR in self:
+            del self[PLEASE_ACK_DECORATOR]
+
+    @staticmethod
+    def get_ack_message_id(message: Message) -> Optional[str]:
+        return message.get(PLEASE_ACK_DECORATOR, {}).get('message_id', None) or message.id
 
 
 class ThreadMixin:

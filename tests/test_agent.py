@@ -319,7 +319,7 @@ async def test_agents_crypto(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
-async def test_agent_bus(test_suite: ServerTestSuite):
+async def test_bus(test_suite: ServerTestSuite):
     agent_params = test_suite.get_agent_params('agent1')
     session1 = Agent(
         server_address=agent_params['server_address'],
@@ -336,33 +336,38 @@ async def test_agent_bus(test_suite: ServerTestSuite):
     await session1.open()
     await session2.open()
     try:
-        thid = 'thread-id-' + uuid.uuid4().hex
-        ok = await session1.bus.subscribe(thid)
+        thid1 = 'thread-id-' + uuid.uuid4().hex
+        thid2 = 'thread-id-' + uuid.uuid4().hex
+        ok = await session1.bus.subscribe(thid1)
+        assert ok is True
+        ok = await session1.bus.subscribe(thid2)
         assert ok is True
 
         content = b'Some-Message'
-        sub_num = await session2.bus.publish(thid, content)
+        sub_num = await session2.bus.publish(thid1, content)
         assert sub_num == 1
 
         event = await session1.bus.get_event(timeout=5)
         assert event.payload == content
 
-        await session1.bus.unsubscribe(thid)
+        await session1.bus.unsubscribe(thid1)
+        await asyncio.sleep(1)
 
-        await session2.bus.publish(thid, content)
-
+        await session2.bus.publish(thid1, content)
         with pytest.raises(SiriusTimeoutIO):
             await session1.bus.get_event(timeout=3)
 
-        sub_num = await session2.bus.publish(thid, content)
-        assert sub_num == 0
+        sub_num1 = await session2.bus.publish(thid1, content)
+        assert sub_num1 == 0
+        sub_num2 = await session2.bus.publish(thid2, content)
+        assert sub_num2 == 1
     finally:
         await session1.close()
         await session2.close()
 
 
 @pytest.mark.asyncio
-async def test_agent_bus_abort(test_suite: ServerTestSuite):
+async def test_bus_abort(test_suite: ServerTestSuite):
     agent_params = test_suite.get_agent_params('agent1')
     session = Agent(
         server_address=agent_params['server_address'],
@@ -389,7 +394,7 @@ async def test_agent_bus_abort(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
-async def test_agent_bus_for_threaded_protocol(test_suite: ServerTestSuite):
+async def test_bus_for_threaded_protocol(test_suite: ServerTestSuite):
     sender_params = test_suite.get_agent_params('agent1')
     receiver_params = test_suite.get_agent_params('agent2')
     sender_entity = list(sender_params['entities'].items())[0][1]
@@ -452,7 +457,7 @@ async def test_agent_bus_for_threaded_protocol(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
-async def test_agent_bus_for_complex_protocol(test_suite: ServerTestSuite):
+async def test_bus_for_complex_protocol(test_suite: ServerTestSuite):
     sender_params = test_suite.get_agent_params('agent1')
     receiver_params = test_suite.get_agent_params('agent2')
     sender_entity = list(sender_params['entities'].items())[0][1]

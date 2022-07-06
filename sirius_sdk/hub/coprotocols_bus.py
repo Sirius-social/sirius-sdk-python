@@ -1,22 +1,22 @@
 import asyncio
 import json
 import logging
-from abc import ABC, abstractmethod
-from typing import Optional, List, Any, Union, Tuple, Dict
-from contextlib import asynccontextmanager
+from abc import ABC
+from typing import Optional, List, Tuple, Dict
 from datetime import datetime, timedelta
 
+from sirius_sdk.hub.abstract import AbstractBus
 from sirius_sdk.hub.core import Hub
+from sirius_sdk.agent.listener import Event
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message
 from sirius_sdk.messaging.fields import DIDField
-from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusConnectionClosed, \
-    SiriusTimeoutIO
+from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusTimeoutIO
 from sirius_sdk.agent.connections import RoutingBatch
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage
 from sirius_sdk.agent.aries_rfc.decorators import PLEASE_ACK_DECORATOR as ARIES_PLEASE_ACK_DECORATOR
-from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin
+from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin, PleaseAckMixin
 
 from .core import _current_hub
 
@@ -42,6 +42,7 @@ class AbstractCoProtocol(ABC):
         self.__is_aborted = False
         self.__die_timestamp = None
         self._hub: Optional[Hub] = None
+        self._bus: Optional[AbstractBus] = None
         self._is_running = False
         self._please_ack_ids = []
 
@@ -79,11 +80,14 @@ class AbstractCoProtocol(ABC):
         else:
             self.__die_timestamp = None
         self._hub: Optional[Hub] = _current_hub()
+        async with _current_hub().get_agent_connection_lazy() as agent:
+            self._bus = await agent.spawn()
         self._is_running = True
 
     async def stop(self):
         self._is_running = False
         self._hub = None
+        self._bus = None
         self._please_ack_ids.clear()
 
     async def abort(self):
@@ -113,22 +117,20 @@ class AbstractCoProtocol(ABC):
             return None
 
     async def _setup_context(self, message: Message):
-        bus = await self._hub.get_bus()
         ack_message_id = self._extract_ack_id(message)
         if ack_message_id:
-            await bus.subscribe(ack_message_id)
+            await self._bus.subscribe(ack_message_id)
             if ack_message_id not in self._please_ack_ids:
                 self._please_ack_ids.append(ack_message_id)
 
     async def _cleanup_context(self, message: Message = None):
-        bus = await self._hub.get_bus()
         if message:
             ack_message_id = self._extract_ack_id(message)
             if ack_message_id:
-                await bus.unsubscribe(ack_message_id)
+                await self._bus.unsubscribe(ack_message_id)
                 self._please_ack_ids = [i for i in self._please_ack_ids if i != ack_message_id]
         else:
-            await bus.unsubscribe_ext(self._please_ack_ids)
+            await self._bus.unsubscribe_ext(self._please_ack_ids)
             self._please_ack_ids.clear()
 
     @staticmethod
@@ -144,9 +146,8 @@ class AbstractCoProtocol(ABC):
         return None
 
     async def __abort(self):
-        if self._hub:
-            bus = await self._hub.get_bus()
-            await bus.abort()
+        if self._bus:
+            await self._bus.abort()
 
 
 class AbstractP2PCoProtocol(AbstractCoProtocol):
@@ -172,8 +173,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
 
     async def stop(self):
         if self._binding_ids or self._please_ack_ids:
-            bus = await self._hub.get_bus()
-            await bus.unsubscribe_ext(self._binding_ids + self._please_ack_ids)
+            await self._bus.unsubscribe_ext(self._binding_ids + self._please_ack_ids)
             self._binding_ids.clear()
             self._please_ack_ids.clear()
         await super().stop()
@@ -198,7 +198,6 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
         """
         if not self._is_running:
             await self.start()
-        bus = await self._hub.get_bus()
         expected_binding_ids = self._binding_ids + self._please_ack_ids
         while True:
             # re-calc timeout in loop until event income
@@ -207,7 +206,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
                 raise SiriusTimeoutIO
             # wait
             try:
-                event = await bus.get_message(timeout=timeout)
+                event = await self._bus.get_message(timeout=timeout)
             except OperationAbortedManually:
                 await self.clean()
                 raise
@@ -245,8 +244,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
             return False, None
 
     async def _subscribe_to_events(self):
-        bus = await self._hub.get_bus()
-        ok, binding_ids = await bus.subscribe_ext(
+        ok, binding_ids = await self._bus.subscribe_ext(
             sender_vk=[self.__their_vk], recipient_vk=[self.__my_vk], protocols=self.__protocols
         )
         if ok:
@@ -307,8 +305,7 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         self._setup(their_verkey=to.their.verkey, endpoint=to.their.address, my_verkey=to.me.verkey)
 
     async def _subscribe_to_events(self):
-        bus = await self._hub.get_bus()
-        ok = await bus.subscribe(thid=self.__thid)
+        ok = await self._bus.subscribe(thid=self.__thid)
         if ok:
             self._binding_ids.append(self.__thid)
         else:
@@ -352,15 +349,13 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
 
     async def start(self):
         await super().start()
-        bus = await self._hub.get_bus()
-        ok = await bus.subscribe(thid=self.__thid)
+        ok = await self._bus.subscribe(thid=self.__thid)
         if not ok:
             raise SiriusRPCError('Error with subscribe to protocol events')
 
     async def stop(self):
-        bus = await self._hub.get_bus()
         binding_ids = [self.__thid] + self._please_ack_ids
-        await bus.unsubscribe_ext(binding_ids)
+        await self._bus.unsubscribe_ext(binding_ids)
         self._please_ack_ids.clear()
         await super().stop()
 
@@ -395,7 +390,6 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         """
         if not self._is_running:
             await self.start()
-        bus = await self._hub.get_bus()
         expected_binding_ids = [self.__thid] + self._please_ack_ids
         while True:
             # re-calc timeout in loop until event income
@@ -404,7 +398,7 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
                 raise SiriusTimeoutIO
             # wait
             try:
-                event = await bus.get_message(timeout=timeout)
+                event = await self._bus.get_message(timeout=timeout)
             except SiriusTimeoutIO:
                 return None, None
             except OperationAbortedManually:
@@ -459,4 +453,33 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         for p2p in self.__theirs:
             if p2p.their.verkey == verkey:
                 return p2p
+        return None
+
+
+async def open_communication(event: Event, time_to_live: int = None) -> Optional[AbstractP2PCoProtocol]:
+    if event.pairwise is not None and event.message is not None:
+        thread_id = None
+        parent_thread_id = None
+        thread = ThreadMixin.get_thread(event.message)
+        if thread and thread.thid:
+            thread_id = thread.thid
+        ack_id = PleaseAckMixin.get_ack_message_id(event.message)
+        if ack_id:
+            parent_thread_id = thread_id
+            thread_id = ack_id
+        if thread_id:
+            comm = CoProtocolThreadedP2P(
+                thid=thread_id,
+                to=event.pairwise,
+                pthid=parent_thread_id,
+                time_to_live=time_to_live
+            )
+        else:
+            comm = CoProtocolP2P(
+                pairwise=event.pairwise,
+                protocols=[event.message.protocol],
+                time_to_live=time_to_live
+            )
+        return comm
+    else:
         return None

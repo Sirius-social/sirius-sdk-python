@@ -52,7 +52,7 @@ class RpcBus(AbstractBus):
 
     async def unsubscribe(self, thid: str):
         binding_id = self.__pop_binding_id(thid) or thid
-        request = BusUnsubscribeRequest(binding_id=binding_id, need_answer=False, client_id=self.__client_id)
+        request = BusUnsubscribeRequest(binding_id=binding_id, need_answer=False)
         await self.__rfc(request, wait_response=False)
 
     async def unsubscribe_ext(self, binding_ids: List[str]):
@@ -62,8 +62,7 @@ class RpcBus(AbstractBus):
             actual_binding_ids.append(actual_bid)
         request = BusUnsubscribeRequest(
             binding_id=actual_binding_ids,
-            need_answer=False,  # don't wait response
-            client_id=self.__client_id
+            need_answer=False  # don't wait response
         )
         await self.__rfc(request, wait_response=False)
 
@@ -87,12 +86,13 @@ class RpcBus(AbstractBus):
                 elif isinstance(resp, BusBindResponse):
                     if resp.aborted is True and resp.client_id == self.__client_id:
                         raise OperationAbortedManually('Bus events awaiting was aborted by user')
-            else:
-                if wait_timeout != INFINITE_TIMEOUT:
-                    _ = (cut_stamp - datetime.datetime.now()).total_seconds()
-                    wait_timeout = math.ceil(_)
-                    if wait_timeout <= 0:
-                        raise SiriusTimeoutIO
+                elif isinstance(resp, BusProblemReport):
+                    raise SiriusRPCError(resp.explain)
+            if wait_timeout != INFINITE_TIMEOUT:
+                _ = (cut_stamp - datetime.datetime.now()).total_seconds()
+                wait_timeout = math.ceil(_)
+                if wait_timeout <= 0:
+                    raise SiriusTimeoutIO
 
     async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
         event = await self.get_event(timeout)

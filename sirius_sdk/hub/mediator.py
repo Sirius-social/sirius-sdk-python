@@ -1,13 +1,14 @@
 import json
 import asyncio
 import math
+import datetime
 from typing import Union, Optional, List
 
 import aiohttp
 
 import sirius_sdk
 from sirius_sdk.didcomm import extentions as didcomm_ext
-from sirius_sdk.base import BaseConnector
+from sirius_sdk.base import BaseConnector, INFINITE_TIMEOUT
 from sirius_sdk import AbstractP2PCoProtocol
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.hub.abstract import AbstractBus
@@ -59,8 +60,12 @@ class MediatorConnector(BaseConnector):
             self._ws = None
 
     async def read(self, timeout: int = None) -> bytes:
+        if timeout == INFINITE_TIMEOUT:
+            _timeout = None
+        else:
+            _timeout = timeout or self.__timeout
         try:
-            msg = await self._ws.receive(timeout=timeout or self.__timeout)
+            msg = await self._ws.receive(timeout=_timeout)
         except asyncio.TimeoutError as e:
             raise SiriusTimeoutIO() from e
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
@@ -159,6 +164,7 @@ class MediatorBus(AbstractBus, TunnelMixin):
         self.__connector: MediatorConnector = connector
         self._mediator_verkey = mediator_verkey
         self._my_verkey = my_verkey
+        self.__client_id = str(id(self))
 
     @property
     def connector(self) -> MediatorConnector:
@@ -173,7 +179,7 @@ class MediatorBus(AbstractBus, TunnelMixin):
         return self._my_verkey
 
     async def subscribe(self, thid: str) -> bool:
-        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid))
+        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid), client_id=self.__client_id)
         payload = await self.pack(request)
         await self.connector.write(payload)
         jwe = await self.connector.read()
@@ -190,7 +196,7 @@ class MediatorBus(AbstractBus, TunnelMixin):
         binding_id = self.__pop_binding_id(thid)
         request = BusUnsubscribeRequest(
             binding_id=binding_id or thid,
-            need_answer=False  # don't wait response
+            need_answer=False,  # don't wait response
         )
         payload = await self.pack(request)
         await self.connector.write(payload)
@@ -198,7 +204,8 @@ class MediatorBus(AbstractBus, TunnelMixin):
     async def unsubscribe_ext(self, binding_ids: List[str]):
         request = BusUnsubscribeRequest(
             binding_id=binding_ids,
-            need_answer=False  # don't wait response
+            need_answer=False,  # don't wait response
+            client_id=self.__client_id
         )
         payload = await self.pack(request)
         await self.connector.write(payload)
@@ -214,19 +221,36 @@ class MediatorBus(AbstractBus, TunnelMixin):
         return resp.recipients_num
 
     async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:
+        cut_stamp = datetime.datetime.now()
         if timeout is not None:
-            timeout = math.ceil(timeout)
-        jwe = await self.connector.read(timeout)
-        event, _, _ = await self.unpack(jwe)
-        self.__validate(event, expected_class=BusEvent)
-        assert isinstance(event, BusEvent)
-        return AbstractBus.BytesEvent(binding_id=event.binding_id, payload=event.payload)
+            wait_timeout = math.ceil(timeout)
+        else:
+            wait_timeout = INFINITE_TIMEOUT
+
+        while True:
+            jwe = await self.connector.read(wait_timeout)
+            event, _, _ = await self.unpack(jwe)
+            if isinstance(event, BusEvent):
+                return AbstractBus.BytesEvent(binding_id=event.binding_id, payload=event.payload)
+            elif isinstance(event, BusBindResponse):
+                if event.aborted is True and event.client_id == self.__client_id:
+                    raise OperationAbortedManually('Bus events awaiting was aborted by user')
+            elif isinstance(event, BusProblemReport):
+                raise SiriusRPCError(event.explain)
+
+            if wait_timeout != INFINITE_TIMEOUT:
+                _ = (cut_stamp - datetime.datetime.now()).total_seconds()
+                wait_timeout = math.ceil(_)
+                if wait_timeout <= 0:
+                    raise SiriusTimeoutIO
 
     async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
         raise NotImplemented('Does not have sense for Mediator scenarios')
 
     async def abort(self):
-        raise NotImplemented
+        request = BusUnsubscribeRequest(client_id=self.__client_id, aborted=True)
+        payload = await self.pack(request)
+        await self.connector.write(payload)
 
     @staticmethod
     def __validate(msg: BusOperation, expected_class) -> BusOperation:

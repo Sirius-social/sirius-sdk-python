@@ -138,12 +138,15 @@ class WebSocketConnector(BaseConnector):
             raise SiriusIOError()
 
     async def write(self, message: Union[Message, bytes]) -> bool:
-        if isinstance(message, Message):
-            payload = message.serialize().encode(self.ENC)
+        if self.is_open:
+            if isinstance(message, Message):
+                payload = message.serialize().encode(self.ENC)
+            else:
+                payload = message
+            await self._ws.send_bytes(payload)
+            return True
         else:
-            payload = message
-        await self._ws.send_bytes(payload)
-        return True
+            return False
 
 
 class AbstractStateMachine(ABC):

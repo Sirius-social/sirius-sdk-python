@@ -29,6 +29,10 @@ from .bus import RpcBus
 
 class TransportLayers(ABC):
 
+    @dispatch()
+    async def spawn(self) -> AbstractBus:
+        raise NotImplemented
+
     @dispatch(str, TheirEndpoint)
     @abstractmethod
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
@@ -145,6 +149,11 @@ class Agent(TransportLayers):
     def bus(self) -> Optional[AbstractBus]:
         return self.__bus
 
+    @dispatch()
+    async def spawn(self) -> AbstractBus:
+        bus = RpcBus(connector=self.__rpc.connector, p2p=self.__p2p)
+        return bus
+
     @dispatch(str, TheirEndpoint)
     async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
@@ -190,7 +199,6 @@ class Agent(TransportLayers):
         )
 
     @dispatch(str)
-    @abstractmethod
     async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
@@ -222,7 +230,6 @@ class Agent(TransportLayers):
         )
 
     @dispatch(str, str)
-    @abstractmethod
     async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
