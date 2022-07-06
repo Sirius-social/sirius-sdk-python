@@ -492,3 +492,7 @@ class BusProxy(AbstractBus):
         service = await _current_hub().get_bus()
         event = await service.get_message(timeout)
         return event
+
+    async def abort(self):
+        service = await _current_hub().get_bus()
+        await service.abort()

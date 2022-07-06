@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional, List, Any, Union, Tuple, Dict
 from contextlib import asynccontextmanager
@@ -7,12 +8,12 @@ from datetime import datetime, timedelta
 
 from sirius_sdk.hub.core import Hub
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
-from sirius_sdk.agent.listener import Event
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message
 from sirius_sdk.messaging.fields import DIDField
 from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusConnectionClosed, \
     SiriusTimeoutIO
+from sirius_sdk.agent.connections import RoutingBatch
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage
 from sirius_sdk.agent.aries_rfc.decorators import PLEASE_ACK_DECORATOR as ARIES_PLEASE_ACK_DECORATOR
 from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin
@@ -60,10 +61,12 @@ class AbstractCoProtocol(ABC):
     def is_alive(self) -> bool:
         """Protocol may running but ttl is out of date
         """
-        if self.__die_timestamp and self._is_running:
+        if not self._is_running:
+            return False
+        elif self.__die_timestamp:
             return datetime.now() < self.__die_timestamp
         else:
-            return False
+            return True
 
     @property
     def is_aborted(self) -> bool:
@@ -80,17 +83,18 @@ class AbstractCoProtocol(ABC):
 
     async def stop(self):
         self._is_running = False
+        self._hub = None
+        self._please_ack_ids.clear()
 
     async def abort(self):
         """Useful to Abort running co-protocol outside of current loop"""
         if self._hub:
-            self._hub.run_soon(self.clean())
             if not self.__is_aborted:
                 self.__is_aborted = True
                 # Alarm! This call may kill all other co-protocols on the same Hub
                 # await self._hub.abort()
                 #
-                self._hub = None
+                await self.__abort()
 
     async def clean(self):
         if self._is_running:
@@ -139,6 +143,11 @@ class AbstractCoProtocol(ABC):
                 return aries_msg.ack_message_id
         return None
 
+    async def __abort(self):
+        if self._hub:
+            bus = await self._hub.get_bus()
+            await bus.abort()
+
 
 class AbstractP2PCoProtocol(AbstractCoProtocol):
 
@@ -162,7 +171,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
         self._binding_ids = list(set(self._binding_ids))
 
     async def stop(self):
-        if self._binding_ids:
+        if self._binding_ids or self._please_ack_ids:
             bus = await self._hub.get_bus()
             await bus.unsubscribe_ext(self._binding_ids + self._please_ack_ids)
             self._binding_ids.clear()
@@ -197,14 +206,20 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
             if (timeout is not None) and (timeout <= 0):
                 raise SiriusTimeoutIO
             # wait
-            event = await bus.get_message(timeout=timeout)
+            try:
+                event = await bus.get_message(timeout=timeout)
+            except OperationAbortedManually:
+                await self.clean()
+                raise
             # process event
             if event.binding_id in expected_binding_ids:
                 return event.message, event.sender_verkey, event.recipient_verkey
             else:
                 # co-protocols are competitors, so
                 # they operate in displace multitasking mode
-                pass
+                logging.warning(
+                    f'Expected binding_id: "{expected_binding_ids}" actually "{event.binding_id}" was received'
+                )
 
     async def switch(self, message: Message) -> (bool, Message):
         """Send Message to other-side of protocol and wait for response
@@ -295,13 +310,13 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         bus = await self._hub.get_bus()
         ok = await bus.subscribe(thid=self.__thid)
         if ok:
-            self._binding_ids.extend(self.__thid)
+            self._binding_ids.append(self.__thid)
         else:
             raise SiriusRPCError('Error with subscribe to protocol events')
 
     async def _before(self, message: Message, include_please_ack: bool = True):
         thread = ThreadMixin.get_thread(message)
-        if thread is None:
+        if thread is None:  # Don't rewrite externally set thread values
             thread = ThreadMixin.Thread(
                 thid=self.__thid, pthid=self.__pthid,
                 sender_order=self.__sender_order, received_orders=self.__received_orders
@@ -318,3 +333,130 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
             if err is None:
                 order = self.__received_orders.get(recipient, 0)
                 self.__received_orders[recipient] = max(order, respond_sender_order)
+
+
+class CoProtocolThreadedTheirs(AbstractCoProtocol):
+
+    def __init__(self, thid: str, theirs: List[Pairwise], pthid: str = None, time_to_live: int = None):
+        if len(theirs) < 1:
+            raise SiriusContextError('theirs is empty')
+        super().__init__(time_to_live=time_to_live)
+        self.__thid = thid
+        self.__pthid = pthid
+        self.__theirs = theirs
+        self.__dids = [their.their.did for their in theirs]
+
+    @property
+    def theirs(self) -> List[Pairwise]:
+        return self.__theirs
+
+    async def start(self):
+        await super().start()
+        bus = await self._hub.get_bus()
+        ok = await bus.subscribe(thid=self.__thid)
+        if not ok:
+            raise SiriusRPCError('Error with subscribe to protocol events')
+
+    async def stop(self):
+        bus = await self._hub.get_bus()
+        binding_ids = [self.__thid] + self._please_ack_ids
+        await bus.unsubscribe_ext(binding_ids)
+        self._please_ack_ids.clear()
+        await super().stop()
+
+    async def send(self, message: Message) -> Dict[Pairwise, Tuple[bool, str]]:
+        """Send message to given participants
+
+        return: List[( str: participant-id, bool: message was successfully sent, str: endpoint response body )]
+        """
+
+        if not self._is_running:
+            await self.start()
+
+        batches = [
+            RoutingBatch(p.their.verkey, p.their.endpoint, p.me.verkey, p.their.routing_keys)
+            for p in self.__theirs
+        ]
+
+        async with _current_hub().get_agent_connection_lazy() as agent:
+            await self._before(message)
+            await self._setup_context(message)
+            responses = await agent.send_message_batched(message, batches)
+            results = {}
+            for p2p, response in zip(self.__theirs, responses):
+                success, body = response
+                results[p2p] = (success, body)
+            return results
+
+    async def get_one(self) -> Tuple[Optional[Pairwise], Optional[Message]]:
+        """Read event from any of participants at given timeout
+
+        return: (Pairwise: participant-id, Message: message from given participant)
+        """
+        if not self._is_running:
+            await self.start()
+        bus = await self._hub.get_bus()
+        expected_binding_ids = [self.__thid] + self._please_ack_ids
+        while True:
+            # re-calc timeout in loop until event income
+            timeout = self._get_io_timeout()
+            if (timeout is not None) and (timeout <= 0):
+                raise SiriusTimeoutIO
+            # wait
+            try:
+                event = await bus.get_message(timeout=timeout)
+            except SiriusTimeoutIO:
+                return None, None
+            except OperationAbortedManually:
+                await self.clean()
+                raise
+            # process event
+            if event.binding_id in expected_binding_ids:
+                p2p = self.__load_p2p_from_verkey(event.sender_verkey)
+                return p2p, event.message
+            else:
+                # co-protocols are competitors, so
+                # they operate in displace multitasking mode
+                logging.warning(
+                    f'Expected binding_id: "{expected_binding_ids}" actually "{event.binding_id}" was received'
+                )
+
+    async def switch(self, message: Message) -> Dict[Pairwise, Tuple[bool, Optional[Message]]]:
+        """Switch state while participants at given timeout give responses
+
+        return: {
+            Pairwise: participant,
+            (
+              bool: message was successfully sent to participant,
+              Message: response message from participant or Null if request message was not successfully sent
+            )
+        }
+        """
+        statuses = await self.send(message)
+        # fill errors to result just now
+        results = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
+        # then work with success participants only
+        success_theirs = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
+        accum = 0
+        while accum < len(success_theirs):
+            p2p, message = await self.get_one()
+            await self._cleanup_context(message)
+            if p2p is None:
+                break
+            if p2p and p2p.their.did in self.__dids:
+                success_theirs[p2p] = (True, message)
+                accum += 1
+        results.update(success_theirs)
+        return results
+
+    async def _before(self, message: Message):
+        thread = ThreadMixin.get_thread(message)
+        if thread is None:  # Don't rewrite externally set thread values
+            thread = ThreadMixin.Thread(thid=self.__thid, pthid=self.__pthid)
+            ThreadMixin.set_thread(message, thread)
+
+    def __load_p2p_from_verkey(self, verkey: str) -> Optional[Pairwise]:
+        for p2p in self.__theirs:
+            if p2p.their.verkey == verkey:
+                return p2p
+        return None

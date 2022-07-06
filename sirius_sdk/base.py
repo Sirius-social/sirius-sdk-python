@@ -11,6 +11,9 @@ from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import *
 
 
+INFINITE_TIMEOUT = -1
+
+
 class JsonSerializable:
 
     @abstractmethod
@@ -116,9 +119,13 @@ class WebSocketConnector(BaseConnector):
         await self.close()
         await self.open()
 
-    async def read(self, timeout: int=None) -> bytes:
+    async def read(self, timeout: int = None) -> bytes:
+        if timeout == INFINITE_TIMEOUT:
+            _timeout = None
+        else:
+            _timeout = timeout or self.__timeout
         try:
-            msg = await self._ws.receive(timeout=timeout or self.__timeout)
+            msg = await self._ws.receive(timeout=_timeout)
         except asyncio.TimeoutError as e:
             raise SiriusTimeoutIO() from e
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:

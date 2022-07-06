@@ -5,7 +5,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent
-from sirius_sdk.errors.exceptions import SiriusTimeoutIO
+from sirius_sdk.errors.exceptions import SiriusTimeoutIO, OperationAbortedManually
 from sirius_sdk.encryption.custom import bytes_to_b58
 from sirius_sdk.messaging import Message, register_message_class
 from .helpers import ServerTestSuite
@@ -359,6 +359,33 @@ async def test_agent_bus(test_suite: ServerTestSuite):
     finally:
         await session1.close()
         await session2.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_bus_abort(test_suite: ServerTestSuite):
+    agent_params = test_suite.get_agent_params('agent1')
+    session = Agent(
+        server_address=agent_params['server_address'],
+        credentials=agent_params['credentials'],
+        p2p=agent_params['p2p'],
+        timeout=5,
+    )
+    await session.open()
+    try:
+        thid = 'thread-id-' + uuid.uuid4().hex
+        ok = await session.bus.subscribe(thid)
+        assert ok is True
+
+        async def __abort():
+            await asyncio.sleep(1)
+            await session.bus.abort()
+
+        asyncio.ensure_future(__abort())
+        with pytest.raises(OperationAbortedManually):
+            await session.bus.get_event()
+
+    finally:
+        await session.close()
 
 
 @pytest.mark.asyncio

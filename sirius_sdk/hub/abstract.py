@@ -82,3 +82,8 @@ class AbstractBus(ABC):
         returns parsed message
         """
         raise NotImplemented
+
+    @abstractmethod
+    async def abort(self):
+        """Abort all active subscribers with raising OperationAbortedManually exception"""
+        raise NotImplemented

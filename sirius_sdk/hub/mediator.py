@@ -225,6 +225,9 @@ class MediatorBus(AbstractBus, TunnelMixin):
     async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
         raise NotImplemented('Does not have sense for Mediator scenarios')
 
+    async def abort(self):
+        raise NotImplemented
+
     @staticmethod
     def __validate(msg: BusOperation, expected_class) -> BusOperation:
         if isinstance(msg, BusProblemReport):

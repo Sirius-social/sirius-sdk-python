@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from multipledispatch import dispatch
 
 from sirius_sdk.messaging import Message
+from sirius_sdk.errors.exceptions import SiriusConnectionClosed
 from sirius_sdk.hub.abstract import AbstractBus
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.storages import AbstractImmutableCollection
@@ -21,7 +22,7 @@ from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.microledgers.impl import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
-from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
+from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint, RoutingBatch
 
 from .bus import RpcBus
 
@@ -324,6 +325,11 @@ class Agent(TransportLayers):
             routing_keys=to.their.routing_keys
         )
 
+    async def send_message_batched(self, message: Message, batches: List[RoutingBatch]) -> List[Any]:
+        self.__check_is_open()
+        results = await self.__rpc.send_message_batched(message, batches)
+        return results
+
     async def generate_qr_code(self, value: str) -> str:
         """Service for QR codes generation
 
@@ -390,4 +396,4 @@ class Agent(TransportLayers):
         if self.__rpc and self.__rpc.is_open:
             return self.__endpoints
         else:
-            raise RuntimeError('Open Agent at first!')
+            raise SiriusConnectionClosed('Open Agent at first!')
