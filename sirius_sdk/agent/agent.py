@@ -9,14 +9,14 @@ from multipledispatch import dispatch
 
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import SiriusConnectionClosed
-from sirius_sdk.hub.abstract import AbstractBus
+from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.wallet.abstract import AbstractCrypto
-from sirius_sdk.agent.ledger import Ledger
+from sirius_sdk.agent.ledger import DKMS
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
@@ -125,7 +125,7 @@ class Agent(TransportLayers):
         self.__check_is_open()
         return self.__wallet
 
-    def ledger(self, name: str) -> Optional[Ledger]:
+    def ledger(self, name: str) -> Optional[DKMS]:
         self.__check_is_open()
         return self.__ledgers.get(name, None)
 
@@ -254,7 +254,7 @@ class Agent(TransportLayers):
         if self.__storage is None:
             self.__storage = InWalletImmutableCollection(self.__wallet.non_secrets)
         for network in self.__rpc.networks:
-            self.__ledgers[network] = Ledger(
+            self.__ledgers[network] = DKMS(
                 name=network, api=self.__wallet.ledger,
                 issuer=self.__wallet.anoncreds, cache=self.__wallet.cache, storage=self.__storage
             )

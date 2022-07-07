@@ -16,9 +16,10 @@ from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
+from sirius_sdk.abstract.bus import AbstractBus
+
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
-from .abstract import AbstractBus
 
 
 __ROOT_HUB = None

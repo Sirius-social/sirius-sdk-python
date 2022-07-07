@@ -1,6 +1,5 @@
 from typing import Optional, List, Union, Any
 
-from sirius_sdk.messaging import Message
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
@@ -10,11 +9,11 @@ from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, \
     AbstractMicroledger, AbstractBatchedAPI
+from sirius_sdk.abstract.bus import AbstractBus
+from sirius_sdk.agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
+from sirius_sdk.agent.wallet.abstract import AnonCredSchema
 
-from .abstract import AbstractBus
 from .core import _current_hub
-from ..agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
-from ..agent.wallet.abstract import AnonCredSchema
 
 
 class DIDProxy(AbstractDID):

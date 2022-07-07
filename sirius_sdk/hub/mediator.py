@@ -11,7 +11,7 @@ from sirius_sdk.didcomm import extentions as didcomm_ext
 from sirius_sdk.base import BaseConnector, INFINITE_TIMEOUT
 from sirius_sdk import AbstractP2PCoProtocol
 from sirius_sdk.errors.exceptions import *
-from sirius_sdk.hub.abstract import AbstractBus
+from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.hub.core import context_get, context_set
 from sirius_sdk.messaging import Message, restore_message_instance
 from sirius_sdk.agent.aries_rfc.feature_0753_bus.messages import BusSubscribeRequest, BusUnsubscribeRequest, \

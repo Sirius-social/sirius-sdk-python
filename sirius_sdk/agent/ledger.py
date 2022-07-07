@@ -264,7 +264,7 @@ class CredentialDefinitionFilters:
         self.__tags['seq_no'] = str(value)
 
 
-class Ledger:
+class DKMS:
 
     def __init__(
             self, name: str, api: AbstractLedger, issuer: AbstractAnonCreds,
@@ -539,3 +539,6 @@ class Ledger:
                                                                                  taa_digest=digest,
                                                                                  mechanism=self.acceptance_mechanism,
                                                                                  time=int(datetime.now().timestamp()))
+
+
+Ledger = DKMS

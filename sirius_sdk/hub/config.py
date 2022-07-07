@@ -9,8 +9,7 @@ from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
-
-from .abstract import AbstractBus
+from sirius_sdk.abstract.bus import AbstractBus
 
 
 class Config:

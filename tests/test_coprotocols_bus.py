@@ -573,3 +573,8 @@ async def test_coprotocol_threaded_theirs_switch_timeout(
     stat1 = statuses[pw2]
     assert stat1[0] is False
     assert stat1[1] is None
+
+
+@pytest.mark.asyncio
+async def test_coprotocol_timeouts():
+    assert 0, 'TODO'

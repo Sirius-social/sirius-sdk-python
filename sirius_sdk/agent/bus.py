@@ -4,7 +4,7 @@ import math
 from typing import Dict
 
 from sirius_sdk.messaging import Message, Type as MsgType
-from sirius_sdk.hub.abstract import AbstractBus
+from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.base import WebSocketConnector, INFINITE_TIMEOUT
 from sirius_sdk.errors.exceptions import SiriusRPCError, SiriusTimeoutIO, OperationAbortedManually

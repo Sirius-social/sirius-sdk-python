@@ -1,3 +1,4 @@
+import warnings
 from typing import Optional, List, Union
 
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
@@ -7,7 +8,7 @@ from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.pairwise import Pairwise
 from sirius_sdk.messaging import Message
-from sirius_sdk.agent.ledger import Ledger
+from sirius_sdk.agent.ledger import Ledger, DKMS
 from sirius_sdk.agent.listener import Listener
 from sirius_sdk.agent.connections import Endpoint
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
@@ -29,7 +30,13 @@ NonSecrets: AbstractNonSecrets = NonSecretsProxy()
 Bus: BusProxy = BusProxy()
 
 
+async def dkms(name: str) -> Optional[DKMS]:
+    async with _current_hub().get_agent_connection_lazy() as agent:
+        return agent.ledger(name)
+
+
 async def ledger(name: str) -> Optional[Ledger]:
+    warnings.warn('Use sirius_sdk.dkms instead of this call', DeprecationWarning)
     async with _current_hub().get_agent_connection_lazy() as agent:
         return agent.ledger(name)
 

@@ -385,7 +385,7 @@ async def run_coroutines(*args, timeout: int = 15):
 async def ensure_cred_def_exists_in_dkms(
         network_name: str, did_issuer: str, schema_name: str, schema_ver: str, attrs: list, tag: str
 ) -> (sirius_sdk.Schema, sirius_sdk.CredentialDefinition):
-    dkms = await sirius_sdk.ledger(network_name)  # Test network is prepared for Demo purposes
+    dkms = await sirius_sdk.dkms(network_name)  # Test network is prepared for Demo purposes
     schema_id, anon_schema = await sirius_sdk.AnonCreds.issuer_create_schema(
         did_issuer, schema_name, schema_ver, attrs
     )

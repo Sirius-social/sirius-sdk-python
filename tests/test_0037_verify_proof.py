@@ -25,7 +25,7 @@ async def run_verifier(
 ) -> (bool, dict):
     try:
         async with sirius_sdk.context(uri, credentials, p2p):
-            ledger = await sirius_sdk.ledger('default')
+            ledger = await sirius_sdk.dkms('default')
             machine = Verifier(prover=prover, ledger=ledger)
             success = await machine.verify(
                 proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
@@ -60,7 +60,7 @@ async def run_prover(
             if delta.seconds > 0:
                 ttl = delta.seconds
         try:
-            ledger = await sirius_sdk.ledger('default')
+            ledger = await sirius_sdk.dkms('default')
             machine = Prover(verifier=verifier, ledger=ledger, time_to_live=ttl, self_attested_identity=self_attested_identity)
             success = await machine.prove(request, master_secret_id)
             if not success:
@@ -87,7 +87,7 @@ async def run_prover_interactive(
         assert isinstance(request, RequestPresentationMessage)
         ttl = 60
         try:
-            ledger = await sirius_sdk.ledger('default')
+            ledger = await sirius_sdk.dkms('default')
             machine = Prover(verifier=verifier, ledger=ledger, time_to_live=ttl, self_attested_identity=self_attested_identity)
             async with machine.prove_interactive(master_secret_id):
                 print('')

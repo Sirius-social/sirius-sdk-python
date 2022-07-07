@@ -5,7 +5,7 @@ from abc import ABC
 from typing import Optional, List, Tuple, Dict
 from datetime import datetime, timedelta
 
-from sirius_sdk.hub.abstract import AbstractBus
+from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.hub.core import Hub
 from sirius_sdk.agent.listener import Event
 from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
