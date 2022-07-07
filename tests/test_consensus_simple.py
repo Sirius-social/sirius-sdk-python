@@ -1,12 +1,9 @@
-import copy
-from typing import List
 from datetime import datetime
 
 import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent, P2PConnection
-from sirius_sdk.agent.microledgers.abstract import AbstractMicroledger
 from sirius_sdk.agent.consensus.simple.state_machines import MicroLedgerSimpleConsensus
 from sirius_sdk.agent.consensus.simple.messages import *
 

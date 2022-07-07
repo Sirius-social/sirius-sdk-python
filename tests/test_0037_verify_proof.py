@@ -9,7 +9,7 @@ import sirius_sdk
 from sirius_sdk import Agent, Pairwise
 from sirius_sdk.agent.codec import encode
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
-from sirius_sdk.agent.ledger import CredentialDefinition
+from sirius_sdk.agent.dkms import CredentialDefinition
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.state_machines import Verifier, Prover, \
     AttribTranslation, RequestPresentationMessage
 from sirius_sdk.agent.aries_rfc.feature_0037_present_proof.interactive import SelfIdentity
@@ -25,8 +25,8 @@ async def run_verifier(
 ) -> (bool, dict):
     try:
         async with sirius_sdk.context(uri, credentials, p2p):
-            ledger = await sirius_sdk.dkms('default')
-            machine = Verifier(prover=prover, ledger=ledger)
+            dkms = await sirius_sdk.dkms('default')
+            machine = Verifier(prover=prover, dkms=dkms)
             success = await machine.verify(
                 proof_request, translation=translation, comment='I am Verifier', proto_version='1.0'
             )
@@ -60,8 +60,8 @@ async def run_prover(
             if delta.seconds > 0:
                 ttl = delta.seconds
         try:
-            ledger = await sirius_sdk.dkms('default')
-            machine = Prover(verifier=verifier, ledger=ledger, time_to_live=ttl, self_attested_identity=self_attested_identity)
+            dkms = await sirius_sdk.dkms('default')
+            machine = Prover(verifier=verifier, dkms=dkms, time_to_live=ttl, self_attested_identity=self_attested_identity)
             success = await machine.prove(request, master_secret_id)
             if not success:
                 print('===================== Prover terminated with error ====================')
@@ -87,8 +87,8 @@ async def run_prover_interactive(
         assert isinstance(request, RequestPresentationMessage)
         ttl = 60
         try:
-            ledger = await sirius_sdk.dkms('default')
-            machine = Prover(verifier=verifier, ledger=ledger, time_to_live=ttl, self_attested_identity=self_attested_identity)
+            dkms = await sirius_sdk.dkms('default')
+            machine = Prover(verifier=verifier, dkms=dkms, time_to_live=ttl, self_attested_identity=self_attested_identity)
             async with machine.prove_interactive(master_secret_id):
                 print('')
                 identity = await machine.interactive.fetch(request)
@@ -128,12 +128,12 @@ async def test_sane(
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
         )
-        ledger = issuer.ledger('default')
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        dkms = issuer.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
 
         print('Register credential def')
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )
@@ -260,12 +260,12 @@ async def test_multiple_provers(
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
         )
-        ledger = issuer.ledger('default')
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        dkms = issuer.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
 
         print('Register credential def')
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )
@@ -397,12 +397,12 @@ async def test_self_attested_attribs(test_suite: ServerTestSuite,
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
         )
-        ledger = issuer.ledger('default')
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        dkms = issuer.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
 
         print('Register credential def')
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )
@@ -522,11 +522,11 @@ async def test_self_identity(
         schema_id, anoncred_schema = await issuer.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'age']
         )
-        ledger = issuer.ledger('default')
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        dkms = issuer.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
         print('Register credential def')
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )
@@ -669,11 +669,11 @@ async def test_prove_interactive(
         schema_id, anoncred_schema = await issuer.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
         )
-        ledger = issuer.ledger('default')
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        dkms = issuer.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
         print('Register credential def')
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )

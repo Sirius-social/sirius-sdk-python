@@ -5,8 +5,8 @@ import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.errors.exceptions import SiriusValidationError, StateMachineAborted, StateMachineTerminatedWithError
 from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol
-from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
-from sirius_sdk.agent.agent import Endpoint
+from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
+from sirius_sdk.abstract.p2p import Endpoint
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping import Ping, Pong
 from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.messages import *

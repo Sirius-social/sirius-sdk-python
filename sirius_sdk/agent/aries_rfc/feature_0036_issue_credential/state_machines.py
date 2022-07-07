@@ -6,12 +6,12 @@ from typing import Union
 from datetime import datetime, timedelta
 
 import sirius_sdk
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub import CoProtocolP2P
 from sirius_sdk.agent.codec import encode
-from sirius_sdk.agent.ledger import Ledger
+from sirius_sdk.agent.dkms import DKMS
 from sirius_sdk.agent.aries_rfc.utils import utc_to_str
-from sirius_sdk.agent.ledger import Schema, CredentialDefinition
+from sirius_sdk.agent.dkms import Schema, CredentialDefinition
 from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
@@ -123,7 +123,7 @@ class Issuer(BaseIssuingStateMachine):
         """
         :param values: credential values {"attr_name": "attr_value"}
         :param schema: credential schema
-        :param cred_def: credential definition prepared and stored in Ledger earlier
+        :param cred_def: credential definition prepared and stored in DKMS earlier
         :param comment: human readable credential comment
         :param preview: credential preview
         :param locale: locale, for example "en" or "ru"
@@ -224,14 +224,14 @@ class Holder(BaseIssuingStateMachine):
 
     async def accept(
             self, offer: OfferCredentialMessage, master_secret_id: str,
-            comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE, ledger: Ledger = None
+            comment: str = None, locale: str = BaseIssueCredentialMessage.DEF_LOCALE, dkms: DKMS = None
     ) -> (bool, Optional[str]):
         """
         :param offer: credential offer
         :param master_secret_id: prover master secret ID
         :param comment: human readable comment
         :param locale: locale, for example "en" or "ru"
-        :param ledger: DKMS to retrieve actual schema and cred_def bodies if this not contains in Offer
+        :param dkms: DKMS to retrieve actual schema and cred_def bodies if this not contains in Offer
         """
         doc_uri = offer.doc_uri
         async with self.coprotocol(pairwise=self.__issuer):
@@ -250,8 +250,8 @@ class Holder(BaseIssuingStateMachine):
                         OFFER_PROCESSING_ERROR, 'Error while parsing cred_offer', notify=True
                     )
                 if not cred_def_body:
-                    if ledger:
-                        cred_def = await ledger.load_cred_def(
+                    if dkms:
+                        cred_def = await dkms.load_cred_def(
                             offer_body['cred_def_id'], submitter_did=self.__issuer.me.did
                         )
                         cred_def_body = cred_def.body

@@ -6,7 +6,7 @@ from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, \
     AbstractMicroledger, AbstractBatchedAPI
 from sirius_sdk.abstract.bus import AbstractBus

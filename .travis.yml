@@ -28,7 +28,7 @@ script:
   - pytest tests/test_storages.py
   - pytest tests/test_wallet.py
   - pytest tests/test_microledgers.py
-  - pytest tests/test_ledgers.py
+  - pytest tests/test_dkms.py
   - pytest tests/test_coprotocols.py
   - pytest tests/test_pairwise.py
   - pytest tests/test_consensus_simple.py

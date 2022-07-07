@@ -7,7 +7,7 @@ from sirius_sdk.messaging import *
 from sirius_sdk.messaging.fields import DIDField
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.connections import AgentRPC, RoutingBatch
-from sirius_sdk.agent.pairwise import TheirEndpoint, Pairwise
+from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 
 

@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 
 from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.hub.core import Hub
-from sirius_sdk.agent.listener import Event
-from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
+from sirius_sdk.abstract.listener import Event
+from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message
 from sirius_sdk.messaging.fields import DIDField

@@ -5,6 +5,7 @@ import datetime
 from abc import ABC, abstractmethod
 from typing import List, Union, Optional
 
+from sirius_sdk.abstract.p2p import Endpoint
 from sirius_sdk.base import WebSocketConnector
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.rpc import AddressedTunnel, build_request, Future
@@ -12,29 +13,6 @@ from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from sirius_sdk.messaging import Message, Type as MessageType
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.agent.transport import http_send
-
-
-class Endpoint:
-    """Active Agent endpoints
-    https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0094-cross-domain-messaging
-    """
-
-    def __init__(self, address: str, routing_keys: List[str], is_default: bool=False):
-        self.__url = address
-        self.__routing_keys = routing_keys
-        self.__is_default = is_default
-
-    @property
-    def address(self):
-        return self.__url
-
-    @property
-    def routing_keys(self) -> List[str]:
-        return self.__routing_keys
-
-    @property
-    def is_default(self):
-        return self.__is_default
 
 
 class BaseAgentConnection(ABC):

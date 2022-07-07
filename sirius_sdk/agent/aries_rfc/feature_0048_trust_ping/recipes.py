@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub import CoProtocolThreadedP2P
 
 from .messages import Ping, Pong

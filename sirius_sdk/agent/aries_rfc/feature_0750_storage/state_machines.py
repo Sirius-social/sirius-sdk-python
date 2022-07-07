@@ -5,8 +5,7 @@ from typing import Optional, Union
 
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
-from sirius_sdk import CoProtocolThreadedP2P
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk import CoProtocolThreadedP2P, Pairwise
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
 
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport

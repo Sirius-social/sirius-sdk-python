@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Any, Union, Tuple, Dict
 from contextlib import asynccontextmanager
 
-from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
-from sirius_sdk.agent.listener import Event
+from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
+from sirius_sdk.abstract.listener import Event
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusConnectionClosed, \
     SiriusTimeoutIO

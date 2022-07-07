@@ -3,7 +3,7 @@ from typing import Optional
 
 import sirius_sdk
 from sirius_sdk.hub import CoProtocolThreadedP2P
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk import Pairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 
 from sirius_sdk.agent.aries_rfc.feature_0113_question_answer.messages import Question, Answer

@@ -7,6 +7,7 @@ from typing import Union, Optional, List
 import aiohttp
 
 import sirius_sdk
+import sirius_sdk.abstract.p2p
 from sirius_sdk.didcomm import extentions as didcomm_ext
 from sirius_sdk.base import BaseConnector, INFINITE_TIMEOUT
 from sirius_sdk import AbstractP2PCoProtocol
@@ -305,7 +306,7 @@ class Mediator:
         my_did_bytes = sirius_sdk.encryption.did_from_verkey(
             sirius_sdk.encryption.b58_to_bytes(my_verkey)
         )
-        self.me = sirius_sdk.Pairwise.Me(
+        self.me = sirius_sdk.abstract.p2p.Pairwise.Me(
             did=sirius_sdk.encryption.bytes_to_b58(my_did_bytes),
             verkey=my_verkey
         )
@@ -324,7 +325,7 @@ class Mediator:
         if routing_keys is None:
             routing_keys = []
         self.__routing_keys = [qualify_key(key) for key in routing_keys]
-        self.__endpoints: List[sirius_sdk.Endpoint] = []
+        self.__endpoints: List[sirius_sdk.abstract.p2p.Endpoint] = []
         self.__bus: Optional[AbstractBus] = None
 
     @property
@@ -336,7 +337,7 @@ class Mediator:
         return self.__did_doc
 
     @property
-    def endpoints(self) -> List[sirius_sdk.Endpoint]:
+    def endpoints(self) -> List[sirius_sdk.abstract.p2p.Endpoint]:
         return self.__endpoints
 
     @property
@@ -352,7 +353,7 @@ class Mediator:
         #   see details: https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
         state_machine = sirius_sdk.aries_rfc.Invitee(
             me=self.me,
-            my_endpoint=sirius_sdk.Endpoint(address=didcomm_ext.return_route.URI_QUEUE_TRANSPORT, routing_keys=[]),
+            my_endpoint=sirius_sdk.abstract.p2p.Endpoint(address=didcomm_ext.return_route.URI_QUEUE_TRANSPORT, routing_keys=[]),
             coprotocol=self._coprotocol
         )
         # 1. Recipient DIDDoc contains Firebase device id inside service with type "FCMService"
@@ -408,7 +409,7 @@ class Mediator:
                     routing_keys = self.__routing_keys
                     routing_keys.extend(mediate_grant['routing_keys'])
                     self.__endpoints.append(
-                        sirius_sdk.Endpoint(
+                        sirius_sdk.abstract.p2p.Endpoint(
                             address=mediate_grant['endpoint'],
                             routing_keys=routing_keys,
                             is_default=True

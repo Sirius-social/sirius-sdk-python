@@ -4,9 +4,8 @@ import asyncio
 import pytest
 
 import sirius_sdk
-from sirius_sdk import Agent
+from sirius_sdk import Agent, TheirEndpoint, Pairwise
 import sirius_sdk.hub.coprotocols_bus
-from sirius_sdk import TheirEndpoint, Pairwise
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.base import Message
 from .conftest import get_pairwise

@@ -8,7 +8,7 @@ import pytest
 import sirius_sdk
 from sirius_sdk.agent.wallet import NYMRole
 from sirius_sdk.agent.aries_rfc.utils import str_to_utc
-from sirius_sdk.agent.ledger import Schema, CredentialDefinition
+from sirius_sdk.agent.dkms import Schema, CredentialDefinition
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines import Issuer, Holder, \
     AttribTranslation, ProposedAttrib, OfferCredentialMessage
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
@@ -92,11 +92,11 @@ async def test_sane(
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3', 'attr4']
         )
-        ledger = issuer.ledger('default')
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        dkms = issuer.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
 
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )
@@ -175,15 +175,15 @@ async def test_issuer_back_compatibility(indy_agent: IndyAgent, test_suite: Serv
         schema_id, anoncred_schema = await agent1.wallet.anoncreds.issuer_create_schema(
             did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3']
         )
-        ledger = issuer.ledger('default')
+        dkms = issuer.dkms('default')
         ok, resp = await issuer.wallet.ledger.write_nym(
             'default', 'Th7MpTaRZVRYnPiabds81Y', did_issuer, verkey_issuer, 'Issuer', NYMRole.TRUST_ANCHOR
         )
         assert ok is True
-        ok, schema = await ledger.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
         assert ok is True
 
-        ok, cred_def = await ledger.register_cred_def(
+        ok, cred_def = await dkms.register_cred_def(
             cred_def=CredentialDefinition(tag='TAG', schema=schema),
             submitter_did=did_issuer
         )

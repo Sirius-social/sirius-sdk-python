@@ -3,8 +3,7 @@ from datetime import datetime
 
 import pytest
 
-from sirius_sdk import Agent
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk import Agent, Pairwise
 from sirius_sdk.messaging import Message
 from sirius_sdk.agent.coprotocols import AbstractCoProtocolTransport
 from .conftest import get_pairwise

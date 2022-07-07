@@ -13,16 +13,16 @@ from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
-from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.wallet.abstract import AbstractCrypto
-from sirius_sdk.agent.ledger import DKMS
+from sirius_sdk.agent.dkms import DKMS
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.microledgers.impl import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
-from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint, RoutingBatch
+from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, RoutingBatch
+from sirius_sdk.abstract.p2p import Endpoint, TheirEndpoint, Pairwise
 
 from .bus import RpcBus
 
@@ -125,7 +125,7 @@ class Agent(TransportLayers):
         self.__check_is_open()
         return self.__wallet
 
-    def ledger(self, name: str) -> Optional[DKMS]:
+    def dkms(self, name: str) -> Optional[DKMS]:
         self.__check_is_open()
         return self.__ledgers.get(name, None)
 
