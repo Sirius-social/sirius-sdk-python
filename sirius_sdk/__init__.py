@@ -2,7 +2,7 @@ from sirius_sdk.agent.agent import Agent
 from sirius_sdk.hub import init, context, endpoints, ledger, dkms, subscribe, ping, send, send_to, \
     generate_qr_code, DID, Crypto, Microledgers, PairwiseList, AnonCreds, CoProtocolThreadedP2P, CoProtocolP2PAnon, \
     CoProtocolP2P, AbstractP2PCoProtocol, CoProtocolThreadedTheirs, Cache, open_communication, NonSecrets, \
-    acquire, release, Config, Bus
+    acquire, release, Config, spawn_coprotocol
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.abstract.p2p import Endpoint, TheirEndpoint, Pairwise
 from sirius_sdk.agent import aries_rfc
@@ -25,5 +25,5 @@ __all__ = [
     "aries_rfc", "CoProtocolThreadedTheirs", "AnonCreds", "Cache", "open_communication", "NonSecrets",
     "Schema", "CredentialDefinition", "AnonCredSchema", "indy_exceptions", "exceptions", "Ledger", "acquire", "release",
     "Config", "didcomm", "recipes", "AbstractPairwiseList", "AbstractCrypto", "AbstractNonSecrets",
-    "AbstractCache", "AbstractDID", "AbstractMicroledgerList", "Bus", "DKMS"
+    "AbstractCache", "AbstractDID", "AbstractMicroledgerList", "DKMS", "spawn_coprotocol"
 ]

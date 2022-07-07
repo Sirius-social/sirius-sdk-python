@@ -543,14 +543,15 @@ async def test_bus_proxy(test_suite: ServerTestSuite):
     params = test_suite.get_agent_params('agent1')
     async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
         thid = 'thid-' + uuid.uuid4().hex
-        ok = await sirius_sdk.Bus.subscribe(thid)
+        bus = await sirius_sdk.spawn_coprotocol()
+        ok = await bus.subscribe(thid)
         assert ok is True
 
         await asyncio.sleep(1)
 
         payload = b'Content-Under-Test'
-        num = await sirius_sdk.Bus.publish(thid, payload)
+        num = await bus.publish(thid, payload)
         assert num > 0
 
-        event = await sirius_sdk.Bus.get_event(timeout=3)
+        event = await bus.get_event(timeout=3)
         assert payload == event.payload

@@ -1,6 +1,7 @@
 import warnings
 from typing import Optional, List, Union
 
+from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
@@ -15,7 +16,7 @@ from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from .config import Config
 from .core import _current_hub, init, context
 from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy, AnonCredsProxy, \
-    CacheProxy, NonSecretsProxy, BusProxy
+    CacheProxy, NonSecretsProxy
 from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P, AbstractP2PCoProtocol, \
     CoProtocolThreadedTheirs, open_communication
 
@@ -26,7 +27,6 @@ PairwiseList: AbstractPairwiseList = PairwiseProxy()
 AnonCreds: AnonCredsProxy = AnonCredsProxy()
 Cache: AbstractCache = CacheProxy()
 NonSecrets: AbstractNonSecrets = NonSecretsProxy()
-Bus: BusProxy = BusProxy()
 
 
 async def dkms(name: str) -> Optional[DKMS]:
@@ -35,6 +35,7 @@ async def dkms(name: str) -> Optional[DKMS]:
 
 
 async def ledger(name: str) -> Optional[Ledger]:
+    """!!! Deprecated Call !!!"""
     warnings.warn('Use sirius_sdk.dkms instead of this call', DeprecationWarning)
     async with _current_hub().get_agent_connection_lazy() as agent:
         return agent.dkms(name)
@@ -43,6 +44,12 @@ async def ledger(name: str) -> Optional[Ledger]:
 async def endpoints() -> List[Endpoint]:
     async with _current_hub().get_agent_connection_lazy() as agent:
         return agent.endpoints
+
+
+async def spawn_coprotocol() -> AbstractBus:
+    async with _current_hub().get_agent_connection_lazy() as agent:
+        bus = await agent.spawn_coprotocol()
+        return bus
 
 
 async def subscribe(group_id: str = None) -> Listener:

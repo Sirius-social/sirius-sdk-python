@@ -28,8 +28,8 @@ class API(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def send(self,
-            message: Message, their_vk: Union[List[str], str],
+    async def send(
+            self, message: Message, their_vk: Union[List[str], str],
             endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
     ):
         raise NotImplemented

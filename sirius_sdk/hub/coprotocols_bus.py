@@ -5,6 +5,7 @@ from abc import ABC
 from typing import Optional, List, Tuple, Dict
 from datetime import datetime, timedelta
 
+import sirius_sdk
 from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.hub.core import Hub
 from sirius_sdk.abstract.listener import Event
@@ -41,14 +42,15 @@ class AbstractCoProtocol(ABC):
         self.__time_to_live = time_to_live
         self.__is_aborted = False
         self.__die_timestamp = None
-        self._hub: Optional[Hub] = None
+        self.__cur_loop: Optional[asyncio.AbstractEventLoop] = None
         self._bus: Optional[AbstractBus] = None
         self._is_running = False
         self._please_ack_ids = []
 
     def __del__(self):
-        if self._is_running and self._hub:
-            self._hub.run_soon(self.clean())
+        if self._is_running and self.__cur_loop and self.__cur_loop.is_running():
+            asyncio.ensure_future(self.clean(), loop=self.__cur_loop)
+            self.__cur_loop = None
 
     @property
     def time_to_live(self) -> Optional[int]:
@@ -79,26 +81,21 @@ class AbstractCoProtocol(ABC):
             self.__die_timestamp = datetime.now() + timedelta(seconds=self.__time_to_live)
         else:
             self.__die_timestamp = None
-        self._hub: Optional[Hub] = _current_hub()
-        async with _current_hub().get_agent_connection_lazy() as agent:
-            self._bus = await agent.spawn_coprotocol()
+        self.__cur_loop: asyncio.get_event_loop()
+        self._bus = await sirius_sdk.spawn_coprotocol()
         self._is_running = True
 
     async def stop(self):
         self._is_running = False
-        self._hub = None
+        self.__cur_loop = None
         self._bus = None
         self._please_ack_ids.clear()
 
     async def abort(self):
         """Useful to Abort running co-protocol outside of current loop"""
-        if self._hub:
-            if not self.__is_aborted:
-                self.__is_aborted = True
-                # Alarm! This call may kill all other co-protocols on the same Hub
-                # await self._hub.abort()
-                #
-                await self.__abort()
+        if not self.__is_aborted:
+            self.__is_aborted = True
+            await self.__abort()
 
     async def clean(self):
         if self._is_running:
