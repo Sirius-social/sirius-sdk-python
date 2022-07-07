@@ -81,7 +81,7 @@ class AbstractCoProtocol(ABC):
             self.__die_timestamp = None
         self._hub: Optional[Hub] = _current_hub()
         async with _current_hub().get_agent_connection_lazy() as agent:
-            self._bus = await agent.spawn()
+            self._bus = await agent.spawn_coprotocol()
         self._is_running = True
 
     async def stop(self):

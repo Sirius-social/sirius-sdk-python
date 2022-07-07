@@ -29,8 +29,7 @@ from .bus import RpcBus
 
 class TransportLayers(ABC):
 
-    @dispatch()
-    async def spawn(self) -> AbstractBus:
+    async def spawn_coprotocol(self) -> AbstractBus:
         raise NotImplemented
 
     @dispatch(str, TheirEndpoint)
@@ -149,8 +148,7 @@ class Agent(TransportLayers):
     def bus(self) -> Optional[AbstractBus]:
         return self.__bus
 
-    @dispatch()
-    async def spawn(self) -> AbstractBus:
+    async def spawn_coprotocol(self) -> AbstractBus:
         bus = RpcBus(connector=self.__rpc.connector, p2p=self.__p2p)
         return bus
 
