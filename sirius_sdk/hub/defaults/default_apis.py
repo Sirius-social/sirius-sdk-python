@@ -1,6 +1,5 @@
 import asyncio
 
-import aiohttp
 import uuid
 import json
 import os.path
@@ -14,8 +13,10 @@ from sirius_sdk.errors.exceptions import SiriusTransportError
 from sirius_sdk.messaging.transport import EndpointTransport
 from sirius_sdk.messaging.forwarding import forward_wired
 
+from .inmemory_bus import InMemoryBus
 
-class APIDefault(APINetworks, APIQRCodes, APITransport):
+
+class APIDefault(APIQRCodes, APITransport, APICoProtocols):
 
     DEF_TIMEOUT = 30
 
@@ -98,9 +99,6 @@ class APIDefault(APINetworks, APIQRCodes, APITransport):
         results = await asyncio.gather(*jobs)
         return list(results)
 
-    def dkms(self, name: str) -> Optional[DKMS]:
-        return None
-
     async def generate_qr_code(self, value: str) -> str:
         qr = pyqrcode.create(content=value)
         base_dir = os.path.abspath(os.curdir)
@@ -108,3 +106,6 @@ class APIDefault(APINetworks, APIQRCodes, APITransport):
         qr.svg(path, scale=2)
         url = pathlib.Path(path).as_uri()
         return url
+
+    async def spawn_coprotocol(self) -> AbstractBus:
+        return InMemoryBus()
