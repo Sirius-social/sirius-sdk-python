@@ -46,7 +46,7 @@ class Subscriptions:
         self.__acquire()
         try:
             observers = self.__subscriptions.get(topic, [])
-            if not filter(lambda x: x.client_id == o.client_id, observers):
+            if not list(filter(lambda x: x.client_id == o.client_id, observers)):
                 observers.append(o)
                 self.__subscriptions[topic] = observers
         finally:
@@ -62,7 +62,7 @@ class Subscriptions:
                 topics_to_process = []
                 for topic in self.__subscriptions.keys():
                     observers = self.__subscriptions.get(topic, [])
-                    if filter(lambda x: x.client_id == client_id, observers):
+                    if list(filter(lambda x: x.client_id == client_id, observers)):
                         topics_to_process.append(topic)
             # Process
             for topic in topics_to_process:
@@ -88,9 +88,9 @@ class Subscriptions:
         try:
             for topic in self.__subscriptions.keys():
                 observers = self.__subscriptions.get(topic, [])
-                found = filter(lambda x: x.client_id == o.client_id, observers)
+                found = list(filter(lambda x: x.client_id == o.client_id, observers))
                 if found:
-                    o = list(found)[0]
+                    o = found[0]
                     break
         finally:
             self.__release()
