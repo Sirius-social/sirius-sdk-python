@@ -1,7 +1,9 @@
+import asyncio
 import uuid
 
 import pytest
 
+from sirius_sdk.errors.exceptions import OperationAbortedManually
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from sirius_sdk.hub.defaults.inmemory_bus import InMemoryBus
 
@@ -38,3 +40,20 @@ async def test_sane():
     assert event.payload == content2
     with pytest.raises(SiriusTimeoutIO):
         await session2.get_event(timeout=3)
+
+
+@pytest.mark.asyncio
+async def test_abort(mediator_invitation: dict):
+    session = InMemoryBus()
+    thid = 'thread-id-' + uuid.uuid4().hex
+
+    ok = await session.subscribe(thid)
+    assert ok is True
+
+    async def __abort():
+        await asyncio.sleep(1)
+        await session.abort()
+
+    asyncio.ensure_future(__abort())
+    with pytest.raises(OperationAbortedManually):
+        await session.get_event()

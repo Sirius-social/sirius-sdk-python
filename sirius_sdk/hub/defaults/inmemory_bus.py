@@ -88,7 +88,7 @@ class Subscriptions:
         try:
             for topic in self.__subscriptions.keys():
                 observers = self.__subscriptions.get(topic, [])
-                found = list(filter(lambda x: x.client_id == o.client_id, observers))
+                found = list(filter(lambda x: x.client_id == client_id, observers))
                 if found:
                     o = found[0]
                     break
