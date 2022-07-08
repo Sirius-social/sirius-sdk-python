@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from sirius_sdk.encryption.p2p import P2PConnection
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
@@ -30,7 +30,7 @@ class Hub:
 
     def __init__(
             self, server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
-            storage: AbstractImmutableCollection = None, crypto: AbstractCrypto = None,
+            storage: AbstractImmutableCollection = None, crypto: APICrypto = None,
             microledgers: AbstractMicroledgerList = None, pairwise_storage: AbstractPairwiseList = None,
             did: AbstractDID = None, anoncreds: AbstractAnonCreds = None, non_secrets: AbstractNonSecrets = None,
             cache: AbstractCache = None, bus: AbstractBus = None, loop: asyncio.AbstractEventLoop = None
@@ -49,7 +49,7 @@ class Hub:
         self.__anoncreds = anoncreds
         self.__non_secrets = non_secrets
         self.__cache = cache
-        self.__bus: Optional[AbstractBus] = bus
+        self.__default_bus: Optional[AbstractBus] = bus
         self.__server_uri = server_uri
         self.__credentials = credentials
         self.__p2p = p2p
@@ -74,7 +74,7 @@ class Hub:
         inst.__non_secrets = self.__non_secrets
         inst.__storage = self.__storage
         inst.__cache = self.__cache
-        inst.__bus = self.__bus
+        inst.__default_bus = self.__default_bus
         return inst
 
     async def abort(self):
@@ -114,7 +114,7 @@ class Hub:
         if self.__agent.is_open:
             await self.__agent.close()
 
-    async def get_crypto(self) -> AbstractCrypto:
+    async def get_crypto(self) -> APICrypto:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
                 return self.__crypto or agent.wallet.crypto
@@ -163,12 +163,8 @@ class Hub:
         else:
             return self.__non_secrets
 
-    async def get_bus(self) -> AbstractBus:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__bus or agent.bus
-        else:
-            return self.__bus
+    async def get_default_bus(self) -> Optional[AbstractBus]:
+        return self.__default_bus
 
     def __create_agent_instance(self):
         if self.__allocate_agent:

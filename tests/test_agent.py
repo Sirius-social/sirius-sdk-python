@@ -116,7 +116,7 @@ async def test_agents_communications(test_suite: ServerTestSuite):
             "comment": "Hi. Are you listening?",
             "response_requested": True
         })
-        await agent1.send_message(
+        await agent1.send(
             message=trust_ping,
             their_vk=entity2['verkey'],
             endpoint=agent2_endpoint,
@@ -178,7 +178,7 @@ async def test_listener_restore_message(test_suite: ServerTestSuite):
             "comment": "Hi. Are you listening?",
             "response_requested": True
         })
-        await agent1.send_message(
+        await agent1.send(
             message=trust_ping,
             their_vk=entity2['verkey'],
             endpoint=agent2_endpoint,
@@ -239,7 +239,7 @@ async def test_agents_trust_ping(test_suite: ServerTestSuite):
             "comment": "Hi. Are you listening?",
             "response_requested": True
         })
-        await agent1.send_message(
+        await agent1.send(
             message=trust_ping,
             their_vk=entity2['verkey'],
             endpoint=agent2_endpoint,
@@ -261,7 +261,7 @@ async def test_agents_trust_ping(test_suite: ServerTestSuite):
                 "comment": "Hi yourself. I'm here."
             }
         )
-        await agent2.send_message(
+        await agent2.send(
             message=ping_response,
             their_vk=entity1['verkey'],
             endpoint=agent1_endpoint,
@@ -437,7 +437,7 @@ async def test_bus_for_threaded_protocol(test_suite: ServerTestSuite):
             my_vk=sender_entity['verkey'],
             routing_keys=[]
         )
-        await sender.send_message(**send_message_kwargs)
+        await sender.send(**send_message_kwargs)
         # Check income
         event = await receiver.bus.get_message(timeout=5)
         assert isinstance(event.message, Message)
@@ -448,7 +448,7 @@ async def test_bus_for_threaded_protocol(test_suite: ServerTestSuite):
         # Unsubscribe
         await receiver.bus.unsubscribe(thid)
         # send again and raise errors on reading
-        await sender.send_message(**send_message_kwargs)
+        await sender.send(**send_message_kwargs)
         with pytest.raises(SiriusTimeoutIO):
             await receiver.bus.get_message(timeout=3)
     finally:
@@ -515,8 +515,8 @@ async def test_bus_for_complex_protocol(test_suite: ServerTestSuite):
             routing_keys=[]
         )
         # Send messages
-        await sender.send_message(**send_message_kwargs1)
-        await sender.send_message(**send_message_kwargs2)
+        await sender.send(**send_message_kwargs1)
+        await sender.send(**send_message_kwargs2)
         # Check income
         event1 = await receiver.bus.get_message(timeout=5)
         event2 = await receiver.bus.get_message(timeout=5)
@@ -529,8 +529,8 @@ async def test_bus_for_complex_protocol(test_suite: ServerTestSuite):
         # Unsubscribe and try again
         await receiver.bus.unsubscribe_ext(binding_ids)
         # Send messages
-        await sender.send_message(**send_message_kwargs1)
-        await sender.send_message(**send_message_kwargs2)
+        await sender.send(**send_message_kwargs1)
+        await sender.send(**send_message_kwargs2)
         with pytest.raises(SiriusTimeoutIO):
             await receiver.bus.get_message(timeout=5)
     finally:
@@ -539,7 +539,7 @@ async def test_bus_for_complex_protocol(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
-async def test_bus_proxy(test_suite: ServerTestSuite):
+async def test_spawn_coprotocol(test_suite: ServerTestSuite):
     params = test_suite.get_agent_params('agent1')
     async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
         thid = 'thid-' + uuid.uuid4().hex

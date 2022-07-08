@@ -12,9 +12,8 @@ import aiohttp
 import pytest
 import sirius_sdk
 
-from sirius_sdk import Agent, Pairwise
+from sirius_sdk import Agent, Pairwise, APICrypto
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
-from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract import AbstractDID
 from sirius_sdk.agent.wallet.abstract import AbstractPairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
@@ -413,7 +412,7 @@ async def fix_timeout(caption: str):
     print(f'Timeout for {caption}: {delta.total_seconds()} secs, utc1: {stamp1} utc2: {stamp2}')
 
 
-class LocalCryptoManager(AbstractCrypto):
+class LocalCryptoManager(APICrypto):
 
     """Crypto module on device side, for example Indy-Wallet or HSM or smth else
 

@@ -7,11 +7,10 @@ from os.path import abspath, relpath, dirname, join as path_join
 import pytest
 
 import sirius_sdk
-from sirius_sdk import Agent, Pairwise
+from sirius_sdk import Agent, Pairwise, APICrypto
 from sirius_sdk.hub.mediator import Mediator
 from sirius_sdk.rpc import AddressedTunnel
 from sirius_sdk.encryption import create_keypair, bytes_to_b58, P2PConnection
-from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from .helpers import InMemoryChannel, ServerTestSuite, IndyAgent
 
 

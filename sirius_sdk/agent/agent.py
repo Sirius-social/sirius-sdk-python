@@ -2,7 +2,7 @@ import asyncio
 import logging
 from enum import IntEnum
 from abc import ABC, abstractmethod
-from typing import List, Union, Optional, Any
+from typing import List, Union, Optional, Any, Tuple
 from urllib.parse import urlparse
 
 from multipledispatch import dispatch
@@ -10,27 +10,26 @@ from multipledispatch import dispatch
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import SiriusConnectionClosed
 from sirius_sdk.abstract.bus import AbstractBus
+from sirius_sdk.abstract.api import APIQRCodes, APICoProtocols, APINetworks, APIRouter, APIDistributedLocks, \
+    APITransport, APICrypto
+from sirius_sdk.abstract.batching import RoutingBatch
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
-from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from sirius_sdk.agent.dkms import DKMS
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.microledgers.impl import MicroledgerList
 from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
-from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, RoutingBatch
+from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection
 from sirius_sdk.abstract.p2p import Endpoint, TheirEndpoint, Pairwise
 
 from .bus import RpcBus
 
 
 class TransportLayers(ABC):
-
-    async def spawn_coprotocol(self) -> AbstractBus:
-        raise NotImplemented
 
     @dispatch(str, TheirEndpoint)
     @abstractmethod
@@ -68,7 +67,7 @@ class SpawnStrategy(IntEnum):
     CONCURRENT = 2
 
 
-class Agent(TransportLayers):
+class Agent(APIQRCodes, APICoProtocols, APINetworks, APIRouter, APITransport, APIDistributedLocks, TransportLayers):
     """
     Agent connection in the self-sovereign identity ecosystem.
 
@@ -82,7 +81,7 @@ class Agent(TransportLayers):
             p2p: P2PConnection, timeout: int = BaseAgentConnection.IO_TIMEOUT,
             loop: asyncio.AbstractEventLoop = None, storage: AbstractImmutableCollection = None,
             name: str = None, spawn_strategy: SpawnStrategy = SpawnStrategy.PARALLEL,
-            external_crypto: AbstractCrypto = None
+            external_crypto: APICrypto = None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -286,7 +285,7 @@ class Agent(TransportLayers):
         )
         return success
 
-    async def send_message(
+    async def send(
             self, message: Message, their_vk: Union[List[str], str],
             endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
     ) -> (bool, Message):
@@ -322,7 +321,7 @@ class Agent(TransportLayers):
         :param to: Pairwise (P2P) connection that have been established outside
         """
         self.__check_is_open()
-        await self.send_message(
+        await self.send(
             message=message,
             their_vk=to.their.verkey,
             endpoint=to.their.endpoint,
@@ -330,7 +329,7 @@ class Agent(TransportLayers):
             routing_keys=to.their.routing_keys
         )
 
-    async def send_message_batched(self, message: Message, batches: List[RoutingBatch]) -> List[Any]:
+    async def send_batched(self, message: Message, batches: List[RoutingBatch]) -> List[Tuple[bool, str]]:
         self.__check_is_open()
         results = await self.__rpc.send_message_batched(message, batches)
         return results

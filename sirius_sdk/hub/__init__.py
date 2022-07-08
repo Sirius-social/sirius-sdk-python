@@ -3,7 +3,7 @@ from typing import Optional, List, Union
 
 from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
@@ -21,7 +21,7 @@ from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P
     CoProtocolThreadedTheirs, open_communication
 
 DID: AbstractDID = DIDProxy()
-Crypto: AbstractCrypto = CryptoProxy()
+Crypto: APICrypto = CryptoProxy()
 Microledgers: AbstractMicroledgerList = MicroledgersProxy()
 PairwiseList: AbstractPairwiseList = PairwiseProxy()
 AnonCreds: AnonCredsProxy = AnonCredsProxy()
@@ -47,9 +47,13 @@ async def endpoints() -> List[Endpoint]:
 
 
 async def spawn_coprotocol() -> AbstractBus:
-    async with _current_hub().get_agent_connection_lazy() as agent:
-        bus = await agent.spawn_coprotocol()
-        return bus
+    overridden_bus = await _current_hub().get_default_bus()
+    if overridden_bus:
+        return overridden_bus
+    else:
+        async with _current_hub().get_agent_connection_lazy() as agent:
+            bus = await agent.spawn_coprotocol()
+            return bus
 
 
 async def subscribe(group_id: str = None) -> Listener:
@@ -67,7 +71,7 @@ async def send(
         endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
 ):
     async with _current_hub().get_agent_connection_lazy() as agent:
-        await agent.send_message(
+        await agent.send(
             message=message, their_vk=their_vk,
             endpoint=endpoint, my_vk=my_vk, routing_keys=routing_keys
         )

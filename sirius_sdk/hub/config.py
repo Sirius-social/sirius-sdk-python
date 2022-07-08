@@ -3,7 +3,7 @@ from typing import Union, Dict, Any, Optional
 from sirius_sdk.encryption.p2p import P2PConnection
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
@@ -87,7 +87,7 @@ class Config:
         return self
 
     def override(
-            self, crypto: AbstractCrypto = None, did: AbstractDID = None,
+            self, crypto: APICrypto = None, did: AbstractDID = None,
             microledgers: AbstractMicroledgerList = None, storage: AbstractImmutableCollection = None,
             pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None,
             anon_cred: AbstractAnonCreds = None, bus: AbstractBus = None, **kwargs
@@ -110,7 +110,7 @@ class Config:
             self.__overrides['bus'] = bus
         return self
 
-    def override_crypto(self, dependency: AbstractCrypto) -> "Config":
+    def override_crypto(self, dependency: APICrypto) -> "Config":
         self.__overrides['crypto'] = dependency
         return self
 

@@ -2,7 +2,6 @@ from enum import Enum
 
 from sirius_sdk.agent.wallet.abstract.did import *
 from sirius_sdk.agent.wallet.abstract.cache import *
-from sirius_sdk.agent.wallet.abstract.crypto import *
 from sirius_sdk.agent.wallet.abstract.ledger import *
 from sirius_sdk.agent.wallet.abstract.pairwise import *
 from sirius_sdk.agent.wallet.abstract.anoncreds import *
@@ -32,6 +31,6 @@ class KeyDerivationMethod(Enum):
 
 
 __all__ = [
-    "KeyDerivationMethod", "AbstractCrypto", "AbstractDID", "AbstractAnonCreds", "AbstractCache",
+    "KeyDerivationMethod", "AbstractDID", "AbstractAnonCreds", "AbstractCache",
     "AbstractLedger", "AbstractPairwise", "AbstractNonSecrets"
 ]

@@ -7,14 +7,13 @@ from datetime import datetime, timedelta
 
 import sirius_sdk
 from sirius_sdk.abstract.bus import AbstractBus
-from sirius_sdk.hub.core import Hub
 from sirius_sdk.abstract.listener import Event
+from sirius_sdk.abstract.batching import RoutingBatch
 from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message
 from sirius_sdk.messaging.fields import DIDField
 from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedManually, SiriusTimeoutIO
-from sirius_sdk.agent.connections import RoutingBatch
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage
 from sirius_sdk.agent.aries_rfc.decorators import PLEASE_ACK_DECORATOR as ARIES_PLEASE_ACK_DECORATOR
 from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin, PleaseAckMixin
@@ -183,7 +182,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
         async with _current_hub().get_agent_connection_lazy() as agent:
             await self._before(message, include_please_ack=False)
             await self._setup_context(message)
-            await agent.send_message(
+            await agent.send(
                 message=message, their_vk=self.__their_vk, endpoint=self.__endpoint,
                 my_vk=self.__my_vk, routing_keys=self.__routing_keys
             )
@@ -373,7 +372,7 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         async with _current_hub().get_agent_connection_lazy() as agent:
             await self._before(message)
             await self._setup_context(message)
-            responses = await agent.send_message_batched(message, batches)
+            responses = await agent.send_batched(message, batches)
             results = {}
             for p2p, response in zip(self.__theirs, responses):
                 success, body = response

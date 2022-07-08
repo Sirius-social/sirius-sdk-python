@@ -5,14 +5,15 @@ import datetime
 from abc import ABC, abstractmethod
 from typing import List, Union, Optional
 
+from sirius_sdk.abstract.batching import RoutingBatch
 from sirius_sdk.abstract.p2p import Endpoint
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.base import WebSocketConnector
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.rpc import AddressedTunnel, build_request, Future
-from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from sirius_sdk.messaging import Message, Type as MessageType
 from sirius_sdk.errors.exceptions import *
-from sirius_sdk.agent.transport import http_send
+from sirius_sdk.messaging.transport import http_send
 
 
 class BaseAgentConnection(ABC):
@@ -23,7 +24,7 @@ class BaseAgentConnection(ABC):
     def __init__(
             self, server_address: str, credentials: bytes,
             p2p: P2PConnection, timeout: int = IO_TIMEOUT,
-            loop: asyncio.AbstractEventLoop = None, external_crypto: AbstractCrypto = None,
+            loop: asyncio.AbstractEventLoop = None, external_crypto: APICrypto = None,
             extra: dict = None
     ):
         self._connector = WebSocketConnector(
@@ -67,7 +68,7 @@ class BaseAgentConnection(ABC):
     async def create(
             cls, server_address: str, credentials: bytes,
             p2p: P2PConnection, timeout: int = IO_TIMEOUT,
-            loop: asyncio.AbstractEventLoop = None, external_crypto: AbstractCrypto = None,
+            loop: asyncio.AbstractEventLoop = None, external_crypto: APICrypto = None,
             extra: dict = None
     ):
         instance = cls(server_address, credentials, p2p, timeout, loop, external_crypto, extra)
@@ -90,22 +91,6 @@ class BaseAgentConnection(ABC):
 
     async def _setup(self, context: Message):
         pass
-
-
-class RoutingBatch(dict):
-
-    def __init__(
-            self, their_vk: Union[List[str], str], endpoint: str,
-            my_vk: Optional[str] = None, routing_keys: Optional[List[str]] = None, *args, **kwargs
-    ):
-        super().__init__(*args, **kwargs)
-        if isinstance(their_vk, str):
-            self['recipient_verkeys'] = [their_vk]
-        else:
-            self['recipient_verkeys'] = their_vk
-        self['endpoint_address'] = endpoint
-        self['sender_verkey'] = my_vk
-        self['routing_keys'] = routing_keys or []
 
 
 class AgentRPC(BaseAgentConnection):
@@ -444,7 +429,7 @@ class AgentEvents(BaseAgentConnection):
     def balancing_group(self) -> str:
         return self.__balancing_group
 
-    async def pull(self, timeout: int=None) -> Message:
+    async def pull(self, timeout: int = None) -> Message:
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
         data = None
