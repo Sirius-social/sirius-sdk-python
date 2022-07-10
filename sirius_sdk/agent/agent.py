@@ -10,7 +10,7 @@ from multipledispatch import dispatch
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import SiriusConnectionClosed
 from sirius_sdk.abstract.bus import AbstractBus
-from sirius_sdk.abstract.api import APIQRCodes, APICoProtocols, APINetworks, APIRouter, APIDistributedLocks, \
+from sirius_sdk.abstract.api import APIContents, APICoProtocols, APINetworks, APIRouter, APIDistributedLocks, \
     APITransport, APICrypto
 from sirius_sdk.abstract.batching import RoutingBatch
 from sirius_sdk.encryption import P2PConnection
@@ -67,7 +67,9 @@ class SpawnStrategy(IntEnum):
     CONCURRENT = 2
 
 
-class Agent(APIQRCodes, APICoProtocols, APINetworks, APIRouter, APITransport, APIDistributedLocks, TransportLayers):
+class Agent(
+    APIContents, APICoProtocols, APINetworks, APIRouter, APITransport, APIDistributedLocks, TransportLayers
+):
     """
     Agent connection in the self-sovereign identity ecosystem.
 
@@ -134,7 +136,7 @@ class Agent(APIQRCodes, APICoProtocols, APINetworks, APIRouter, APITransport, AP
         return self.__endpoints
 
     @property
-    def microledgers(self) -> AbstractMicroledgerList:
+    def microledgers(self) -> Optional[AbstractMicroledgerList]:
         self.__check_is_open()
         return self.__microledgers
 
@@ -373,6 +375,9 @@ class Agent(APIQRCodes, APICoProtocols, APINetworks, APIRouter, APITransport, AP
         await self.__rpc.remote_call(
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/release'
         )
+
+    async def get_endpoints(self) -> List[Endpoint]:
+        return self.endpoints
 
     async def reopen(self, kill_tasks: bool = False):
         self.__check_is_open()

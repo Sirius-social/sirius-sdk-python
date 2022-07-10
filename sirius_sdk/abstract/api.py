@@ -27,7 +27,7 @@ class APINetworks(ABC):
 class APIRouter(ABC):
 
     @abstractmethod
-    async def endpoints(self) -> List[Endpoint]:
+    async def get_endpoints(self) -> List[Endpoint]:
         raise NotImplemented
 
     @abstractmethod
@@ -64,7 +64,7 @@ class APITransport(ABC):
         raise NotImplemented
 
 
-class APIQRCodes(ABC):
+class APIContents(ABC):
 
     @abstractmethod
     async def generate_qr_code(self, value: str) -> str:

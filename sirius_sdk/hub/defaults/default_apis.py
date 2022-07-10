@@ -16,7 +16,7 @@ from sirius_sdk.messaging.forwarding import forward_wired
 from .inmemory_bus import InMemoryBus
 
 
-class APIDefault(APIQRCodes, APITransport, APICoProtocols):
+class APIDefault(APIContents, APITransport, APICoProtocols):
 
     DEF_TIMEOUT = 30
 

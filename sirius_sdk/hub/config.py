@@ -4,14 +4,14 @@ from typing import Union, Dict, Any, Optional
 from sirius_sdk.encryption.p2p import P2PConnection
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.abstract.api import APICrypto
+from sirius_sdk.abstract.api import APICrypto, APITransport, APIContents, APIDistributedLocks, \
+    APICoProtocols, APIRouter, APINetworks
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
-from sirius_sdk.abstract.api import APICoProtocols
 
 
 class Config:
@@ -27,6 +27,11 @@ class Config:
         anoncreds: AbstractAnonCreds = None
         cache: AbstractCache = None
         coprotocols: APICoProtocols = None
+        transport: APITransport = None
+        contents: APIContents = None
+        distr_locks: APIDistributedLocks = None
+        router: APIRouter = None
+        networks: APINetworks = None
 
     @dataclass
     class CloudOpts:
@@ -125,7 +130,9 @@ class Config:
             self, crypto: APICrypto = None, did: AbstractDID = None,
             microledgers: AbstractMicroledgerList = None, storage: AbstractImmutableCollection = None,
             pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None,
-            anon_cred: AbstractAnonCreds = None, coprotocols: APICoProtocols = None, **kwargs
+            anon_cred: AbstractAnonCreds = None, coprotocols: APICoProtocols = None, router: APIRouter = None,
+            transport: APITransport = None, contents: APIContents = None,
+            distr_locks: APIDistributedLocks = None, networks: APINetworks = None, **kwargs
     ) -> "Config":
         if crypto:
             self.__overrides.crypto = crypto
@@ -143,6 +150,16 @@ class Config:
             self.__overrides.anon_cred = anon_cred
         if coprotocols:
             self.__overrides.coprotocols = coprotocols
+        if transport:
+            self.__overrides.transport = transport
+        if contents:
+            self.__overrides.contents = contents
+        if distr_locks:
+            self.__overrides.distr_locks = distr_locks
+        if router:
+            self.__overrides.router = router
+        if networks:
+            self.__overrides.networks = networks
         return self
 
     def override_crypto(self, dependency: APICrypto) -> "Config":
@@ -175,4 +192,24 @@ class Config:
 
     def override_coprotocols(self, dependency: APICoProtocols) -> "Config":
         self.__overrides.coprotocols = dependency
+        return self
+
+    def override_transport(self, dependency: APITransport) -> "Config":
+        self.__overrides.transport = dependency
+        return self
+
+    def override_contents(self, dependency: APIContents) -> "Config":
+        self.__overrides.contents = dependency
+        return self
+
+    def override_distr_locks(self, dependency: APIDistributedLocks) -> "Config":
+        self.__overrides.distr_locks = dependency
+        return self
+
+    def override_router(self, dependency: APIRouter) -> "Config":
+        self.__overrides.router = dependency
+        return self
+
+    def override_networks(self, dependency: APINetworks) -> "Config":
+        self.__overrides.networks = dependency
         return self

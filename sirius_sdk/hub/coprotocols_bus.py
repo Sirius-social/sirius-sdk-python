@@ -179,13 +179,12 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
             raise SiriusPendingOperation('You must Setup protocol instance at first')
         if not self._is_running:
             await self.start()
-        async with _current_hub().get_agent_connection_lazy() as agent:
-            await self._before(message, include_please_ack=False)
-            await self._setup_context(message)
-            await agent.send(
-                message=message, their_vk=self.__their_vk, endpoint=self.__endpoint,
-                my_vk=self.__my_vk, routing_keys=self.__routing_keys
-            )
+        await self._before(message, include_please_ack=False)
+        await self._setup_context(message)
+        await sirius_sdk.send(
+            message=message, their_vk=self.__their_vk, endpoint=self.__endpoint,
+            my_vk=self.__my_vk, routing_keys=self.__routing_keys
+        )
 
     async def get_one(self) -> (Optional[Message], str, Optional[str]):
         """Accumulate event from participant
@@ -369,15 +368,14 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
             for p in self.__theirs
         ]
 
-        async with _current_hub().get_agent_connection_lazy() as agent:
-            await self._before(message)
-            await self._setup_context(message)
-            responses = await agent.send_batched(message, batches)
-            results = {}
-            for p2p, response in zip(self.__theirs, responses):
-                success, body = response
-                results[p2p] = (success, body)
-            return results
+        await self._before(message)
+        await self._setup_context(message)
+        responses = await sirius_sdk.send_batched(message, batches)
+        results = {}
+        for p2p, response in zip(self.__theirs, responses):
+            success, body = response
+            results[p2p] = (success, body)
+        return results
 
     async def get_one(self) -> Tuple[Optional[Pairwise], Optional[Message]]:
         """Read event from any of participants at given timeout

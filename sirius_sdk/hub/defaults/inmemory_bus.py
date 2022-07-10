@@ -40,15 +40,15 @@ class Subscriptions:
     def __init__(self):
         self.__lock = Lock()
         # Map topic to observers-list
-        self.__subscriptions: Dict[str, List[Observer]] = {}
+        self.__subscriptions_singleton: Dict[str, List[Observer]] = {}
 
     def subscribe(self, topic: str, o: Observer):
         self.__acquire()
         try:
-            observers = self.__subscriptions.get(topic, [])
+            observers = self.__subscriptions_singleton.get(topic, [])
             if not list(filter(lambda x: x.client_id == o.client_id, observers)):
                 observers.append(o)
-                self.__subscriptions[topic] = observers
+                self.__subscriptions_singleton[topic] = observers
         finally:
             self.__release()
 
@@ -60,21 +60,21 @@ class Subscriptions:
             else:
                 # unsubscribe all topics for specified client_id
                 topics_to_process = []
-                for topic in self.__subscriptions.keys():
-                    observers = self.__subscriptions.get(topic, [])
+                for topic in self.__subscriptions_singleton.keys():
+                    observers = self.__subscriptions_singleton.get(topic, [])
                     if list(filter(lambda x: x.client_id == client_id, observers)):
                         topics_to_process.append(topic)
             # Process
             for topic in topics_to_process:
-                observers = self.__subscriptions.get(topic, [])
-                self.__subscriptions[topic] = [o for o in observers if o.client_id != client_id]
+                observers = self.__subscriptions_singleton.get(topic, [])
+                self.__subscriptions_singleton[topic] = [o for o in observers if o.client_id != client_id]
         finally:
             self.__release()
 
     def notify(self, topic: str, payload: bytes) -> int:
         self.__acquire()
         try:
-            observers = self.__subscriptions.get(topic, [])
+            observers = self.__subscriptions_singleton.get(topic, [])
         finally:
             self.__release()
         # Notify all
@@ -86,8 +86,8 @@ class Subscriptions:
         o: Optional[Observer] = None
         self.__acquire()
         try:
-            for topic in self.__subscriptions.keys():
-                observers = self.__subscriptions.get(topic, [])
+            for topic in self.__subscriptions_singleton.keys():
+                observers = self.__subscriptions_singleton.get(topic, [])
                 found = list(filter(lambda x: x.client_id == client_id, observers))
                 if found:
                     o = found[0]
@@ -107,7 +107,7 @@ class Subscriptions:
 
 class InMemoryBus(AbstractBus):
 
-    __subscriptions = Subscriptions()
+    __subscriptions_singleton = Subscriptions()
 
     def __init__(self, crypto: APICrypto = None, loop: asyncio.AbstractEventLoop = None):
         self.__crypto = crypto or sirius_sdk.Crypto
@@ -118,7 +118,7 @@ class InMemoryBus(AbstractBus):
         self.__observer = Observer(client_id=self.__client_id, queue=self.__queue, loop=loop)
 
     async def subscribe(self, thid: str) -> bool:
-        self.__subscriptions.subscribe(thid, self.__observer)
+        self.__subscriptions_singleton.subscribe(thid, self.__observer)
         return True
 
     async def subscribe_ext(
@@ -127,13 +127,13 @@ class InMemoryBus(AbstractBus):
         raise NotImplemented
 
     async def unsubscribe(self, thid: str):
-        self.__subscriptions.unsubscribe(client_id=self.__client_id, topics=[thid])
+        self.__subscriptions_singleton.unsubscribe(client_id=self.__client_id, topics=[thid])
 
     async def unsubscribe_ext(self, binding_ids: List[str]):
-        self.__subscriptions.unsubscribe(client_id=self.__client_id, topics=binding_ids)
+        self.__subscriptions_singleton.unsubscribe(client_id=self.__client_id, topics=binding_ids)
 
     async def publish(self, thid: str, payload: bytes) -> int:
-        num = self.__subscriptions.notify(thid, payload)
+        num = self.__subscriptions_singleton.notify(thid, payload)
         return num
 
     async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:
@@ -166,4 +166,4 @@ class InMemoryBus(AbstractBus):
         )
 
     async def abort(self):
-        self.__subscriptions.notify_abort(self.__client_id)
+        self.__subscriptions_singleton.notify_abort(self.__client_id)

@@ -50,9 +50,12 @@ async def test_pack_messages():
     assert decrypted['recipient_verkey'] == vk_receiver
     assert decrypted['sender_verkey'] == vk_sender
 
-    alien = InMemoryCrypto()
+    alien_key = 'BntaRZtrnqHE6WYNgJCmcqC3kwwfFrvgXwdTJumywcGc'
+    packed = await sender.pack_message(
+        message=message, recipient_verkeys=[alien_key], sender_verkey=vk_sender
+    )
     with pytest.raises(SiriusCryptoError):
-        await alien.unpack_message(packed)
+        await receiver.unpack_message(packed)
 
 
 @pytest.mark.asyncio

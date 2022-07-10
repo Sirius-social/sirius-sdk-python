@@ -95,7 +95,7 @@ async def test_override_crypto():
 
 
 @pytest.mark.asyncio
-async def test_override_bus():
+async def test_override_coprotocols():
     cfg = sirius_sdk.Config().override_coprotocols(dependency=OverriddenCoprotocols())
     async with sirius_sdk.context(cfg):
         bus = await sirius_sdk.spawn_coprotocol()
