@@ -51,7 +51,7 @@ class APITransport(ABC):
     @abstractmethod
     async def send(
             self, message: Message, their_vk: Union[List[str], str],
-            endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
+            endpoint: str, my_vk: Optional[str] = None, routing_keys: Optional[List[str]] = None
     ):
         raise NotImplemented
 

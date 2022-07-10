@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 from datetime import datetime
 
 from sirius_sdk.base import JsonSerializable
-from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractImmutableCollection
 from sirius_sdk.errors.indy_exceptions import LedgerNotFound
 from sirius_sdk.errors.exceptions import SiriusInvalidPayloadStructure, SiriusValidationError
 from sirius_sdk.agent.wallet.abstract.ledger import AbstractLedger, NYMRole

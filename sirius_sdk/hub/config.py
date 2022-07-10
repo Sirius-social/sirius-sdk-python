@@ -10,7 +10,7 @@ from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
-from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 
 

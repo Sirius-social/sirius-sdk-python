@@ -75,8 +75,14 @@ class RpcBus(AbstractBus):
         return resp.recipients_num
 
     async def get_event(self, timeout: int = None) -> AbstractBus.BytesEvent:
-        cut_stamp = datetime.datetime.now()
-        wait_timeout = timeout if timeout is not None else INFINITE_TIMEOUT
+
+        if timeout is not None:
+            wait_timeout = math.ceil(timeout)
+            cut_stamp = datetime.datetime.now() + datetime.timedelta(seconds=wait_timeout)
+        else:
+            wait_timeout = INFINITE_TIMEOUT
+            cut_stamp = None
+
         while True:
             payload = await self.__connector.read(wait_timeout)
             ok, resp = restore_message_instance(json.loads(payload.decode()))

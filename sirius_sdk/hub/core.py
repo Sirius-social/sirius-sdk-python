@@ -13,16 +13,16 @@ from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
-from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, SpawnStrategy
-from sirius_sdk.abstract.bus import AbstractBus
 
 from .defaults.default_apis import APIDefault
-from .defaults.inmemory_crypto import InMemoryCrypto as DefaultCryptoService
+from .defaults.default_crypto import DefaultCryptoService as DefaultCryptoService
+from .defaults.default_storage import InMemoryKeyValueStorage
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
-
+from .mediator import Mediator
 
 __ROOT_HUB = None
 __THREAD_LOCAL_HUB = threading.local()
@@ -31,37 +31,34 @@ __THREAD_LOCAL_HUB = threading.local()
 class Hub:
 
     def __init__(self, config: Config, loop: asyncio.AbstractEventLoop = None):
+
         self.__config: Config = config
-        self.__storage: Optional[AbstractImmutableCollection] = config.overrides.storage
         self.__loop = loop or asyncio.get_event_loop()
         self.__agent: Optional[Agent] = None
-        # Crypto
-        self.__crypto: Optional[APICrypto] = config.overrides.crypto
+        self.__allocate_agent = False
+        self.__mediator: Optional[Mediator] = None
+        self.__allocate_mediator = False
+
+        self.__storage: Optional[AbstractImmutableCollection] = config.overrides.storage
+        if self.__storage is None:
+            logging.warning(
+                'Storage will be set to InMemory-Storage as default, it will outcome issues in production environments'
+            )
+            self.__storage = InMemoryKeyValueStorage()
+
         # Check if configured as cloud-agent
         if config.cloud_opts.is_filled:
             self.__allocate_agent = True
-            self.__create_agent_instance(external_crypto=self.__crypto)
+            self.__create_agent_instance(external_crypto=config.overrides.crypto)
         elif config.mediator_opts.is_filled:
-            pass
-            # TODO
+            self.__allocate_mediator = True
+            self.__create_mediator_instance(pairwise_resolver=config.overrides.pairwise_storage)
         else:
             logging.warning('You should configure cloud-agent or mediator options')
-            self.__allocate_agent = False
-        self.__default_api: APIDefault = APIDefault(self.__crypto)
-        self.__default_crypto: APICrypto = DefaultCryptoService()
-        # Microledgers and other services
-        self.__microledgers = config.overrides.microledgers
-        self.__pairwise_storage = config.overrides.pairwise_storage
-        self.__did = config.overrides.did
-        self.__anoncreds = config.overrides.anoncreds
-        self.__non_secrets = config.overrides.non_secrets
-        self.__cache = config.overrides.cache
-        self.__contents: Optional[APIContents] = config.overrides.contents
-        self.__transport: Optional[APITransport] = config.overrides.coprotocols
-        self.__coprotocols: Optional[AbstractBus] = config.overrides.coprotocols
-        self.__distr_locks: Optional[APIDistributedLocks] = config.overrides.distr_locks
-        self.__router: Optional[APIRouter] = config.overrides.router
-        self.__networks: Optional[APINetworks] = config.overrides.networks
+        # Crypto and default services
+        self.__crypto: Optional[APICrypto] = config.overrides.crypto
+        self.__default_api: APIDefault = APIDefault()
+        self.__default_crypto: APICrypto = DefaultCryptoService(self.__storage)
 
     def __del__(self):
         if self.__allocate_agent and self.__agent.is_open and self.__loop.is_running():
@@ -77,7 +74,7 @@ class Hub:
         if self.__loop.is_running():
             if self.__loop == asyncio.get_event_loop():
                 old_agent = self.__agent
-                self.__create_agent_instance(external_crypto=self.__crypto)
+                self.__create_agent_instance(external_crypto=self.__config.overrides.crypto)
                 if old_agent.is_open:
                     await old_agent.close()
             else:
@@ -90,23 +87,28 @@ class Hub:
 
     @asynccontextmanager
     async def get_agent_connection_lazy(self):
-        if not self.__allocate_agent:
+        if self.__allocate_agent:
+            if not self.__agent.is_open:
+                await self.__agent.open()
+            yield self.__agent
+        elif self.__allocate_mediator:
+            if not self.__mediator.is_connected:
+                await self.__mediator.connect()
+            yield self.__mediator
+        else:
             yield None
-        if not self.__agent.is_open:
-            await self.__agent.open()
-        yield self.__agent
 
     async def open(self):
-        if not self.__allocate_agent:
+        if not (self.__allocate_agent or self.__allocate_mediator):
             return
-        async with self.get_agent_connection_lazy() as agent:
+        async with self.get_agent_connection_lazy():
             pass
 
     async def close(self):
-        if not self.__allocate_agent:
-            return
-        if self.__agent.is_open:
+        if self.__allocate_agent and self.__agent and self.__agent.is_open:
             await self.__agent.close()
+        if self.__allocate_mediator and self.__mediator and self.__mediator.is_connected:
+            await self.__mediator.disconnect()
 
     async def get_crypto(self) -> APICrypto:
         if self.__allocate_agent:
@@ -118,80 +120,92 @@ class Hub:
     async def get_microledgers(self) -> Optional[AbstractMicroledgerList]:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__microledgers or agent.microledgers
+                return self.__config.overrides.microledgers or agent.microledgers
         else:
-            return self.__microledgers
+            return self.__config.overrides.microledgers
 
     async def get_pairwise_list(self) -> Optional[AbstractPairwiseList]:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__pairwise_storage or agent.pairwise_list
+                return self.__config.overrides.pairwise_storage or agent.pairwise_list
         else:
-            return self.__pairwise_storage
+            return self.__config.overrides.pairwise_storage
 
     async def get_did(self) -> Optional[AbstractDID]:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__did or agent.wallet.did
+                return self.__config.overrides.did or agent.wallet.did
         else:
-            return self.__did
+            return self.__config.overrides.did
 
     async def get_anoncreds(self) -> Optional[AbstractAnonCreds]:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__anoncreds or agent.wallet.anoncreds
+                return self.__config.overrides.anoncreds or agent.wallet.anoncreds
         else:
-            return self.__anoncreds
+            return self.__config.overrides.anoncreds
 
     async def get_cache(self) -> Optional[AbstractCache]:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__cache or agent.wallet.cache
+                return self.__config.overrides.cache or agent.wallet.cache
         else:
-            return self.__cache
+            return self.__config.overrides.cache
 
     async def get_non_secrets(self) -> Optional[AbstractNonSecrets]:
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                return self.__non_secrets or agent.wallet.non_secrets
+                return self.__config.overrides.non_secrets or agent.wallet.non_secrets
         else:
-            return self.__non_secrets
+            return self.__config.overrides.non_secrets
 
     async def get_coprotocols(self) -> Optional[APICoProtocols]:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__coprotocols or agent
-        return self.__coprotocols or self.__default_api
+        api: Optional[APICoProtocols] = None
+        if self.__allocate_agent or self.__allocate_mediator:
+            async with self.get_agent_connection_lazy() as conn:
+                if isinstance(conn, APICoProtocols):
+                    api = conn
+        return self.__config.overrides.coprotocols or api or self.__default_api
 
     async def get_transport(self) -> Optional[APITransport]:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__transport or agent
-        return self.__transport or self.__default_api
+        api: Optional[APITransport] = None
+        if self.__allocate_agent or self.__allocate_mediator:
+            async with self.get_agent_connection_lazy() as conn:
+                if isinstance(conn, APITransport):
+                    api = conn
+        return self.__config.overrides.coprotocols or api or self.__default_api
 
     async def get_contents(self) -> Optional[APIContents]:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__contents or agent
-        return self.__contents or self.__default_api
+        api: Optional[APIContents] = None
+        if self.__allocate_agent or self.__allocate_mediator:
+            async with self.get_agent_connection_lazy() as conn:
+                if isinstance(conn, APIContents):
+                    api = conn
+        return self.__config.overrides.contents or api or self.__default_api
 
     async def get_distr_locks(self) -> Optional[APIDistributedLocks]:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__distr_locks or agent
-        return self.__distr_locks or self.__default_api
+        api: Optional[APIDistributedLocks] = None
+        if self.__allocate_agent or self.__allocate_mediator:
+            async with self.get_agent_connection_lazy() as conn:
+                if isinstance(conn, APIDistributedLocks):
+                    api = conn
+        return self.__config.overrides.distr_locks or api or self.__default_api
 
     async def get_router(self) -> Optional[APIRouter]:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__router or agent
-        return self.__router
+        api: Optional[APIRouter] = None
+        if self.__allocate_agent or self.__allocate_mediator:
+            async with self.get_agent_connection_lazy() as conn:
+                if isinstance(conn, APIRouter):
+                    api = conn
+        return self.__config.overrides.router or api
 
     async def get_networks(self) -> Optional[APINetworks]:
-        if self.__allocate_agent:
-            async with self.get_agent_connection_lazy() as agent:
-                return self.__networks or agent
-        return self.__networks
+        api: Optional[APINetworks] = None
+        if self.__allocate_agent or self.__allocate_mediator:
+            async with self.get_agent_connection_lazy() as conn:
+                if isinstance(conn, APINetworks):
+                    api = conn
+        return self.__config.overrides.networks or api
 
     async def ping(self) -> bool:
         success = False
@@ -211,6 +225,15 @@ class Hub:
                 storage=self.__storage,
                 spawn_strategy=SpawnStrategy.CONCURRENT,
                 external_crypto=external_crypto
+            )
+
+    def __create_mediator_instance(self, pairwise_resolver: AbstractPairwiseList = None):
+        if self.__allocate_mediator:
+            self.__mediator = Mediator(
+                uri=self.__config.mediator_opts.uri,
+                my_verkey=self.__config.mediator_opts.my_verkey,
+                mediator_verkey=self.__config.mediator_opts.mediator_verkey,
+                pairwise_resolver=pairwise_resolver
             )
 
 

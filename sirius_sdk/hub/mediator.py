@@ -2,19 +2,22 @@ import json
 import asyncio
 import math
 import datetime
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Dict
 
 import aiohttp
 
 import sirius_sdk
 import sirius_sdk.abstract.p2p
+from sirius_sdk.abstract.listener import AbstractListener, Event
 from sirius_sdk.didcomm import extentions as didcomm_ext
 from sirius_sdk.base import BaseConnector, INFINITE_TIMEOUT
-from sirius_sdk import AbstractP2PCoProtocol
+from sirius_sdk.abstract.p2p import Endpoint
+from sirius_sdk.hub.coprotocols_bus import AbstractP2PCoProtocol
+from sirius_sdk.abstract.api import APIRouter
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.abstract.bus import AbstractBus
-from sirius_sdk.hub.core import context_get, context_set
 from sirius_sdk.messaging import Message, restore_message_instance
+from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.aries_rfc.feature_0753_bus.messages import BusSubscribeRequest, BusUnsubscribeRequest, \
     BusProblemReport, BusBindResponse, BusPublishRequest, BusPublishResponse, BusEvent, BusOperation
 
@@ -98,7 +101,12 @@ class TunnelMixin:
         return packed
 
     async def unpack(self, jwe: bytes) -> (Optional[Message], str, Optional[str]):
-        message, sender_vk, recip_vk = await sirius_sdk.Crypto.unpack_message(jwe)
+
+        if b'protected' in jwe:
+            message, sender_vk, recip_vk = await sirius_sdk.Crypto.unpack_message(jwe)
+        else:
+            message, sender_vk, recip_vk = json.loads(jwe.decode()), None, None
+
         if type(message) is str:
             payload = json.loads(message)
         elif type(message) is bytes:
@@ -114,7 +122,7 @@ class TunnelMixin:
             return Message(**payload), sender_vk, recip_vk
 
 
-class MediatorCoProtocol(AbstractP2PCoProtocol, TunnelMixin):
+class MediatorCoProtocol(TunnelMixin, AbstractP2PCoProtocol):
 
     def __init__(
             self,
@@ -166,6 +174,7 @@ class MediatorBus(AbstractBus, TunnelMixin):
         self._mediator_verkey = mediator_verkey
         self._my_verkey = my_verkey
         self.__client_id = str(id(self))
+        self.__binding_ids: Dict[str, str] = {}
 
     @property
     def connector(self) -> MediatorConnector:
@@ -222,11 +231,13 @@ class MediatorBus(AbstractBus, TunnelMixin):
         return resp.recipients_num
 
     async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:
-        cut_stamp = datetime.datetime.now()
+
         if timeout is not None:
             wait_timeout = math.ceil(timeout)
+            cut_stamp = datetime.datetime.now() + datetime.timedelta(seconds=wait_timeout)
         else:
             wait_timeout = INFINITE_TIMEOUT
+            cut_stamp = None
 
         while True:
             jwe = await self.connector.read(wait_timeout)
@@ -263,24 +274,66 @@ class MediatorBus(AbstractBus, TunnelMixin):
             raise SiriusRPCError(f'Unexpected response type: {msg.__class__.__name__}')
 
     def __get_binding_id(self, thid: str) -> Optional[str]:
-        ctx = context_get(self.BINDINGS_CTX_ID, default={})
-        return ctx.get(thid, None)
+        return self.__binding_ids.get(thid, None)
 
     def __pop_binding_id(self, thid: str) -> Optional[str]:
-        ctx = context_get(self.BINDINGS_CTX_ID, default={})
-        bid = ctx.get(thid, None)
+        bid = self.__binding_ids.get(thid, None)
         if bid is not None:
-            del ctx[thid]
-            context_set(self.BINDINGS_CTX_ID, ctx)
+            del self.__binding_ids[thid]
         return bid
 
     def __set_binding_id(self, thid: str, binding_id: str):
-        ctx = context_get(self.BINDINGS_CTX_ID, default={})
-        ctx[thid] = binding_id
-        context_set(self.BINDINGS_CTX_ID, ctx)
+        self.__binding_ids[thid] = binding_id
 
 
-class Mediator:
+class MediatorListener(TunnelMixin, AbstractListener):
+
+    def __init__(
+            self, connector: MediatorConnector, my_verkey: str,
+            mediator_verkey: str, pairwise_resolver: AbstractPairwiseList = None
+    ):
+        self.__connector: MediatorConnector = connector
+        self.__pairwise_resolver = pairwise_resolver
+        self._mediator_verkey = mediator_verkey
+        self._my_verkey = my_verkey
+
+    @property
+    def connector(self) -> MediatorConnector:
+        return self.__connector
+
+    @property
+    def mediator_verkey(self) -> str:
+        return self._mediator_verkey
+
+    @property
+    def my_verkey(self) -> str:
+        return self._my_verkey
+
+    def is_open(self) -> bool:
+        return self.__connector.is_open
+
+    async def get_one(self, timeout: int = None) -> Event:
+        if timeout is None:
+            wait_timeout = INFINITE_TIMEOUT
+        else:
+            wait_timeout = timeout
+        payload = await self.connector.read(timeout=wait_timeout)
+        message, sender_vk, recip_vk = await self.unpack(payload)
+        if sender_vk is not None and self.__pairwise_resolver is not None:
+            p2p = await self.__pairwise_resolver.load_for_verkey(sender_vk)
+        else:
+            p2p = None
+        kwargs = {
+           '@type': 'https://didcomm.org/sirius_rpc/1.0/event',
+           'message': message,
+           'recipient_verkey': recip_vk,
+           'sender_verkey': sender_vk
+        }
+        event = Event(pairwise=p2p, **kwargs)
+        return event
+
+
+class Mediator(APIRouter):
 
     FIREBASE_SERVICE_TYPE = 'FCMService'
 
@@ -289,8 +342,10 @@ class Mediator:
             firebase_device_id: str = None,
             mediator_label: str = None,
             routing_keys: List[str] = None,
-            timeout: int = MediatorConnector.IO_TIMEOUT
+            timeout: int = MediatorConnector.IO_TIMEOUT,
+            pairwise_resolver: AbstractPairwiseList = None
     ):
+        self.__pairwise_resolver = pairwise_resolver
         self._connector = MediatorConnector(
             uri=uri, timeout=timeout,
             http_headers={
@@ -353,7 +408,10 @@ class Mediator:
         #   see details: https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
         state_machine = sirius_sdk.aries_rfc.Invitee(
             me=self.me,
-            my_endpoint=sirius_sdk.abstract.p2p.Endpoint(address=didcomm_ext.return_route.URI_QUEUE_TRANSPORT, routing_keys=[]),
+            my_endpoint=sirius_sdk.abstract.p2p.Endpoint(
+                address=didcomm_ext.return_route.URI_QUEUE_TRANSPORT,
+                routing_keys=[]
+            ),
             coprotocol=self._coprotocol
         )
         # 1. Recipient DIDDoc contains Firebase device id inside service with type "FCMService"
@@ -434,3 +492,15 @@ class Mediator:
             self.__is_connected = False
             self.__did_doc = None
             self.__bus = None
+
+    async def get_endpoints(self) -> List[Endpoint]:
+        return self.__endpoints
+
+    async def subscribe(self, group_id: str = None) -> AbstractListener:
+        listener = MediatorListener(
+            connector=self._connector,
+            my_verkey=self._coprotocol.my_verkey,
+            mediator_verkey=self._coprotocol.mediator_verkey,
+            pairwise_resolver=self.__pairwise_resolver
+        )
+        return listener

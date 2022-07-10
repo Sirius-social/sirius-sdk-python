@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from abc import ABC
 from typing import Optional, List, Tuple, Dict
@@ -17,8 +16,6 @@ from sirius_sdk.errors.exceptions import SiriusContextError, OperationAbortedMan
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage
 from sirius_sdk.agent.aries_rfc.decorators import PLEASE_ACK_DECORATOR as ARIES_PLEASE_ACK_DECORATOR
 from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin, PleaseAckMixin
-
-from .core import _current_hub
 
 
 class AbstractCoProtocol(ABC):

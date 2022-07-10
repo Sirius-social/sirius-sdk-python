@@ -14,7 +14,7 @@ from sirius_sdk.abstract.api import APIContents, APICoProtocols, APINetworks, AP
     APITransport, APICrypto
 from sirius_sdk.abstract.batching import RoutingBatch
 from sirius_sdk.encryption import P2PConnection
-from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
 from sirius_sdk.agent.dkms import DKMS
@@ -289,7 +289,7 @@ class Agent(
 
     async def send(
             self, message: Message, their_vk: Union[List[str], str],
-            endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
+            endpoint: str, my_vk: Optional[str] = None, routing_keys: Optional[List[str]] = None
     ) -> (bool, Message):
         """
         Implementation of basicmessage feature
