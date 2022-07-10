@@ -4,6 +4,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk.abstract.bus import AbstractBus
+from sirius_sdk.abstract.api import APICoProtocols
 from sirius_sdk import APICrypto
 
 from .helpers import ServerTestSuite
@@ -38,6 +39,12 @@ class OverriddenBus(AbstractBus):
 
     async def abort(self):
         raise OverriddenMethodCalled
+
+
+class OverriddenCoprotocols(APICoProtocols):
+
+    async def spawn_coprotocol(self) -> AbstractBus:
+        return OverriddenBus()
 
 
 class OverriddenCrypto(APICrypto):
@@ -89,7 +96,7 @@ async def test_override_crypto():
 
 @pytest.mark.asyncio
 async def test_override_bus():
-    cfg = sirius_sdk.Config().override_bus(dependency=OverriddenBus())
+    cfg = sirius_sdk.Config().override_coprotocols(dependency=OverriddenCoprotocols())
     async with sirius_sdk.context(cfg):
         bus = await sirius_sdk.spawn_coprotocol()
         with pytest.raises(OverriddenMethodCalled):

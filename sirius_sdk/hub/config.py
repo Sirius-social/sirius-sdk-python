@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Union, Dict, Any, Optional
 
 from sirius_sdk.encryption.p2p import P2PConnection
@@ -6,29 +7,63 @@ from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
+from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
-from sirius_sdk.abstract.bus import AbstractBus
+from sirius_sdk.abstract.api import APICoProtocols
 
 
 class Config:
 
+    @dataclass
+    class Overrides:
+        crypto: APICrypto = None
+        did: AbstractDID = None
+        microledgers: AbstractMicroledgerList = None
+        storage: AbstractImmutableCollection = None
+        pairwise_storage: AbstractPairwiseList = None
+        non_secrets: AbstractNonSecrets = None
+        anoncreds: AbstractAnonCreds = None
+        cache: AbstractCache = None
+        coprotocols: APICoProtocols = None
+
+    @dataclass
+    class CloudOpts:
+        server_uri: str = None
+        credentials: Union[str, bytes] = None
+        p2p: P2PConnection = None
+        io_timeout: int = None
+
+        @property
+        def is_filled(self) -> bool:
+            return self.server_uri is not None and self.credentials is not None and self.p2p is not None
+
+    @dataclass
+    class MediatorOpts:
+        uri: str = None
+        my_verkey: str = None
+        mediator_verkey: str = None
+
+        @property
+        def is_filled(self) -> bool:
+            return self.uri is not None and self.my_verkey is not None and self.mediator_verkey is not None
+
     def __init__(self):
-        self.__overrides = {}
-        self.__cloud_opts = {}
-        self.__mediator_opts = {}
+        self.__overrides = self.Overrides()
+        self.__cloud_opts = self.CloudOpts()
+        self.__mediator_opts = self.MediatorOpts()
 
     @property
-    def overrides(self) -> Dict[str, Any]:
+    def overrides(self) -> Overrides:
         return self.__overrides
 
     @property
-    def cloud_opts(self) -> Dict[str, Any]:
+    def cloud_opts(self) -> CloudOpts:
         return self.__cloud_opts
 
     @property
-    def mediator_opts(self) -> Dict[str, Any]:
+    def mediator_opts(self) ->MediatorOpts:
         return self.__mediator_opts
 
     def setup_cloud(
@@ -47,14 +82,14 @@ class Config:
         # setup cloud agent connection url
         if server_uri is None:
             raise SiriusInitializationError('"server_uri" must be set')
-        self.__cloud_opts = {'server_uri': server_uri}
+        self.__cloud_opts.server_uri = server_uri
         # setup credentials
         if credentials is None:
             raise SiriusInitializationError('"credentials" must be set')
         elif type(credentials) is str:
-            self.__cloud_opts['credentials'] = credentials.encode()
+            self.__cloud_opts.credentials = credentials.encode()
         elif type(credentials) is bytes:
-            self.__cloud_opts['credentials'] = credentials
+            self.__cloud_opts.credentials = credentials
         else:
             raise SiriusInitializationError('Unexpected credentials type. Expected str or bytes')
         # setup p2p connection
@@ -73,71 +108,71 @@ class Config:
                 raise SiriusInitializationError('p2p "my_keys" attribute is not base58 keys list')
             if len(my_keys) != 2:
                 raise SiriusInitializationError('p2p "my_keys" attribute unexpected structure')
-            self.__cloud_opts['p2p'] = P2PConnection(my_keys=tuple(my_keys), their_verkey=their_verkey)
+            self.__cloud_opts.p2p = P2PConnection(my_keys=tuple(my_keys), their_verkey=their_verkey)
         elif type(p2p) is P2PConnection:
-            self.__cloud_opts['p2p'] = p2p
+            self.__cloud_opts.p2p = p2p
         else:
             raise SiriusInitializationError('Unexpected p2p type')
         if io_timeout:
-            self.__cloud_opts['io_timeout'] = io_timeout
+            self.__cloud_opts.io_timeout = io_timeout
         return self
 
     def setup_mediator(self, uri: str, my_verkey: str, mediator_verkey: str) -> "Config":
-        self.__mediator_opts = {'uri': uri, 'my_verkey': my_verkey, 'mediator_verkey': mediator_verkey}
+        self.__mediator_opts = self.MediatorOpts(uri=uri, my_verkey=my_verkey, mediator_verkey=mediator_verkey)
         return self
 
     def override(
             self, crypto: APICrypto = None, did: AbstractDID = None,
             microledgers: AbstractMicroledgerList = None, storage: AbstractImmutableCollection = None,
             pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None,
-            anon_cred: AbstractAnonCreds = None, bus: AbstractBus = None, **kwargs
+            anon_cred: AbstractAnonCreds = None, coprotocols: APICoProtocols = None, **kwargs
     ) -> "Config":
         if crypto:
-            self.__overrides['crypto'] = crypto
+            self.__overrides.crypto = crypto
         if did:
-            self.__overrides['did'] = did
+            self.__overrides.did = did
         if microledgers:
-            self.__overrides['microledgers'] = microledgers
+            self.__overrides.microledgers = microledgers
         if storage:
-            self.__overrides['storage'] = storage
+            self.__overrides.storage = storage
         if pairwise_storage:
-            self.__overrides['pairwise_storage'] = pairwise_storage
+            self.__overrides.pairwise_storage = pairwise_storage
         if non_secrets:
-            self.__overrides['non_secrets'] = non_secrets
+            self.__overrides.non_secrets = non_secrets
         if anon_cred:
-            self.__overrides['anon_cred'] = anon_cred
-        if bus:
-            self.__overrides['bus'] = bus
+            self.__overrides.anon_cred = anon_cred
+        if coprotocols:
+            self.__overrides.coprotocols = coprotocols
         return self
 
     def override_crypto(self, dependency: APICrypto) -> "Config":
-        self.__overrides['crypto'] = dependency
+        self.__overrides.crypto = dependency
         return self
 
     def override_did(self, dependency: AbstractDID) -> "Config":
-        self.__overrides['did'] = dependency
+        self.__overrides.did = dependency
         return self
 
     def override_microledgers(self, dependency: AbstractMicroledgerList) -> "Config":
-        self.__overrides['microledgers'] = dependency
+        self.__overrides.microledgers = dependency
         return self
 
     def override_storage(self, dependency: AbstractImmutableCollection) -> "Config":
-        self.__overrides['storage'] = dependency
+        self.__overrides.storage = dependency
         return self
 
     def override_pairwise_storage(self, dependency: AbstractPairwiseList) -> "Config":
-        self.__overrides['pairwise_storage'] = dependency
+        self.__overrides.pairwise_storage = dependency
         return self
 
     def override_non_secrets(self, dependency: AbstractNonSecrets) -> "Config":
-        self.__overrides['non_secrets'] = dependency
+        self.__overrides.non_secrets = dependency
         return self
 
     def override_anon_cred(self, dependency: AbstractAnonCreds) -> "Config":
-        self.__overrides['anon_cred'] = dependency
+        self.__overrides.anon_cred = dependency
         return self
 
-    def override_bus(self, dependency: AbstractBus) -> "Config":
-        self.__overrides['bus'] = dependency
+    def override_coprotocols(self, dependency: APICoProtocols) -> "Config":
+        self.__overrides.coprotocols = dependency
         return self

@@ -1,6 +1,6 @@
 import asyncio
+import logging
 import warnings
-import functools
 import threading
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -8,16 +8,18 @@ from contextlib import asynccontextmanager
 from sirius_sdk.encryption.p2p import P2PConnection
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.abstract.api import APICrypto
+from sirius_sdk.abstract.api import APICrypto, APICoProtocols
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
 from sirius_sdk.storages import AbstractImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
-from sirius_sdk.agent.agent import Agent, BaseAgentConnection, SpawnStrategy
+from sirius_sdk.agent.agent import Agent, SpawnStrategy
 from sirius_sdk.abstract.bus import AbstractBus
 
+from .defaults.default_apis import APIDefault
+from .defaults.inmemory_crypto import InMemoryCrypto as DefaultCryptoService
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
 
@@ -28,44 +30,37 @@ __THREAD_LOCAL_HUB = threading.local()
 
 class Hub:
 
-    def __init__(
-            self, server_uri: str = None, credentials: bytes = None, p2p: P2PConnection = None, io_timeout: int = None,
-            storage: AbstractImmutableCollection = None, crypto: APICrypto = None,
-            microledgers: AbstractMicroledgerList = None, pairwise_storage: AbstractPairwiseList = None,
-            did: AbstractDID = None, anoncreds: AbstractAnonCreds = None, non_secrets: AbstractNonSecrets = None,
-            cache: AbstractCache = None, bus: AbstractBus = None, loop: asyncio.AbstractEventLoop = None
-    ):
-        if server_uri or credentials or p2p:
-            if server_uri and credentials and p2p:
-                self.__allocate_agent = True
-            else:
-                raise RuntimeError('You must specify server_uri, credentials, p2p')
-        else:
-            self.__allocate_agent = False
-        self.__crypto = crypto
-        self.__microledgers = microledgers
-        self.__pairwise_storage = pairwise_storage
-        self.__did = did
-        self.__anoncreds = anoncreds
-        self.__non_secrets = non_secrets
-        self.__cache = cache
-        self.__default_bus: Optional[AbstractBus] = bus
-        self.__server_uri = server_uri
-        self.__credentials = credentials
-        self.__p2p = p2p
-        self.__timeout = io_timeout or BaseAgentConnection.IO_TIMEOUT
-        self.__storage = storage
+    def __init__(self, config: Config, loop: asyncio.AbstractEventLoop = None):
+        self.__config = config
+        self.__storage = config.overrides.storage
         self.__loop = loop or asyncio.get_event_loop()
-        self.__create_agent_instance()
+        if config.cloud_opts.is_filled:
+            self.__allocate_agent = True
+            self.__create_agent_instance()
+        elif config.mediator_opts.is_filled:
+            pass
+            # TODO
+        else:
+            logging.warning('You should configure cloud-agent or mediator options')
+            self.__allocate_agent = False
+        # Crypto
+        self.__crypto = config.overrides.crypto or DefaultCryptoService()
+        default_api = APIDefault(self.__crypto)
+        # Microledgers and other services
+        self.__microledgers = config.overrides.microledgers
+        self.__pairwise_storage = config.overrides.pairwise_storage
+        self.__did = config.overrides.did
+        self.__anoncreds = config.overrides.anoncreds
+        self.__non_secrets = config.overrides.non_secrets
+        self.__cache = config.overrides.cache
+        self.__coprotocols: Optional[AbstractBus] = config.overrides.coprotocols
 
     def __del__(self):
         if self.__allocate_agent and self.__agent.is_open and self.__loop.is_running():
             asyncio.ensure_future(self.__agent.close(), loop=self.__loop)
 
     def copy(self):
-        inst = Hub(
-            server_uri=self.__server_uri, credentials=self.__credentials, p2p=self.__p2p
-        )
+        inst = Hub(config=self.__config)
         inst.__crypto = self.__crypto
         inst.__microledgers = self.__microledgers
         inst.__pairwise_storage = self.__pairwise_storage
@@ -74,7 +69,7 @@ class Hub:
         inst.__non_secrets = self.__non_secrets
         inst.__storage = self.__storage
         inst.__cache = self.__cache
-        inst.__default_bus = self.__default_bus
+        inst.__coprotocols = self.__coprotocols
         return inst
 
     async def abort(self):
@@ -163,63 +158,64 @@ class Hub:
         else:
             return self.__non_secrets
 
-    async def get_default_bus(self) -> Optional[AbstractBus]:
-        return self.__default_bus
+    async def get_coprotocols(self) -> Optional[APICoProtocols]:
+        if self.__allocate_agent:
+            async with self.get_agent_connection_lazy() as agent:
+                return self.__coprotocols or agent
+        return self.__coprotocols
 
     def __create_agent_instance(self):
         if self.__allocate_agent:
             self.__agent = Agent(
-                server_address=self.__server_uri,
-                credentials=self.__credentials,
-                p2p=self.__p2p,
-                timeout=self.__timeout,
+                server_address=self.__config.cloud_opts.server_uri,
+                credentials=self.__config.cloud_opts.credentials,
+                p2p=self.__config.cloud_opts.p2p,
+                timeout=self.__config.cloud_opts.io_timeout,
                 loop=self.__loop,
                 storage=self.__storage,
                 spawn_strategy=SpawnStrategy.CONCURRENT
             )
 
 
-def deprecated_init_params(f):
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if args:
-            first_arg = args[0]
-            if type(first_arg) is not Config:
-                warnings.warn('Use sirius_sdk.Config to configure SDK', DeprecationWarning)
-        if kwargs:
-            for arg in kwargs.keys():
-                warnings.warn(f'{arg} param is Deprecated. Use sirius_sdk.Config to configure SDK', DeprecationWarning)
-        if args:
-            first = args[0]
-            if type(first) is Config:
-                cfg = first
-            else:
-                cfg = Config()
-            if len(args) >= 3:
-                opts = list(args)[:3]
-                cfg.setup_cloud(*opts)
+def __restore_config_from_kwargs(*args, **kwargs) -> Config:
+    if args:
+        first_arg = args[0]
+        if type(first_arg) is not Config:
+            warnings.warn('Use sirius_sdk.Config to configure SDK', DeprecationWarning)
+    if kwargs:
+        for arg in kwargs.keys():
+            warnings.warn(f'{arg} param is Deprecated. Use sirius_sdk.Config to configure SDK', DeprecationWarning)
+    if args:
+        first = args[0]
+        if type(first) is Config:
+            cfg = first
         else:
             cfg = Config()
+        if len(args) >= 3:
+            opts = list(args)[:3]
+            cfg.setup_cloud(*opts)
+    else:
+        cfg = Config()
 
-        server_uri = kwargs.pop('server_uri', None) or kwargs.pop('server_address', None)
-        credentials = kwargs.pop('credentials', None)
-        p2p = kwargs.pop('p2p', None)
-        io_timeout = kwargs.pop('io_timeout', None)
-        if server_uri and credentials and p2p:
-            cfg.setup_cloud(server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout)
+    server_uri = kwargs.pop('server_uri', None) or kwargs.pop('server_address', None)
+    credentials = kwargs.pop('credentials', None)
+    p2p = kwargs.pop('p2p', None)
+    io_timeout = kwargs.pop('io_timeout', None)
+    if server_uri and credentials and p2p:
+        cfg.setup_cloud(server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout)
 
-        cfg.override(**kwargs)
-        new_kwargs = cfg.cloud_opts
-        new_kwargs.update(cfg.overrides)
-        return f(**new_kwargs)
-    return wrapper
+    cfg.override(**kwargs)
+    return cfg
 
 
-@deprecated_init_params
-def init(*args, **kwargs):
+def init(cfg: Config = None, *args, **kwargs):
+
+    if cfg is None:
+        warnings.warn('Use sirius_sdk.Config to configure SDK', DeprecationWarning)
+        cfg = __restore_config_from_kwargs(*args, **kwargs)
+
     global __ROOT_HUB
-    root = Hub(**kwargs)
+    root = Hub(cfg)
     loop = asyncio.get_event_loop()
     if loop.is_running():
         raise SiriusInitializationError('You must call this method outside coroutine')
@@ -228,9 +224,17 @@ def init(*args, **kwargs):
 
 
 @asynccontextmanager
-@deprecated_init_params
-async def context(*args, **kwargs):
-    hub = Hub(**kwargs)
+async def context(cfg: Config = None, *args, **kwargs):
+
+    if cfg is not None and not isinstance(cfg, Config):
+        first_arg = cfg
+        cfg = None
+        args = tuple([first_arg] + list(args))
+    if cfg is None:
+        warnings.warn('Use sirius_sdk.Config to configure SDK', DeprecationWarning)
+        cfg = __restore_config_from_kwargs(*args, **kwargs)
+
+    hub = Hub(cfg)
     old_hub = __get_thread_local_gub()
     __THREAD_LOCAL_HUB.instance = hub
     try:

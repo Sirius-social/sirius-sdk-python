@@ -47,13 +47,9 @@ async def endpoints() -> List[Endpoint]:
 
 
 async def spawn_coprotocol() -> AbstractBus:
-    overridden_bus = await _current_hub().get_default_bus()
-    if overridden_bus:
-        return overridden_bus
-    else:
-        async with _current_hub().get_agent_connection_lazy() as agent:
-            bus = await agent.spawn_coprotocol()
-            return bus
+    api = await _current_hub().get_coprotocols()
+    bus = await api.spawn_coprotocol()
+    return bus
 
 
 async def subscribe(group_id: str = None) -> Listener:
