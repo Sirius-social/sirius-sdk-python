@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import sirius_sdk
 from sirius_sdk.abstract.p2p import Pairwise
-from sirius_sdk.hub import CoProtocolP2P
+from sirius_sdk.hub.coprotocols_bus import CoProtocolP2P
 from sirius_sdk.agent.dkms import DKMS
 from sirius_sdk.agent.aries_rfc.utils import utc_to_str
 from sirius_sdk.agent.wallet.abstract.cache import CacheOptions

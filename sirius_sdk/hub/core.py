@@ -19,7 +19,7 @@ from sirius_sdk.agent.agent import Agent, SpawnStrategy
 
 from .defaults.default_apis import APIDefault
 from .defaults.default_crypto import DefaultCryptoService as DefaultCryptoService
-from .defaults.default_storage import InMemoryKeyValueStorage
+from .defaults.default_storage import InMemoryImmutableCollection, InMemoryKeyValueStorage
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
 from .mediator import Mediator
@@ -44,7 +44,7 @@ class Hub:
             logging.warning(
                 'Storage will be set to InMemory-Storage as default, it will outcome issues in production environments'
             )
-            self.__storage = InMemoryKeyValueStorage()
+            self.__storage = InMemoryImmutableCollection()
 
         # Check if configured as cloud-agent
         if config.cloud_opts.is_filled:
@@ -58,7 +58,7 @@ class Hub:
         # Crypto and default services
         self.__crypto: Optional[APICrypto] = config.overrides.crypto
         self.__default_api: APIDefault = APIDefault()
-        self.__default_crypto: APICrypto = DefaultCryptoService(self.__storage)
+        self.__default_crypto: APICrypto = DefaultCryptoService(storage=InMemoryKeyValueStorage())
 
     def __del__(self):
         if self.__allocate_agent and self.__agent.is_open and self.__loop.is_running():

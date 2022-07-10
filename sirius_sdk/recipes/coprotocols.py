@@ -2,7 +2,7 @@ import contextlib
 from typing import Union, List, Dict
 
 import sirius_sdk
-from sirius_sdk import Pairwise
+from sirius_sdk.abstract.p2p import Pairwise
 
 
 @contextlib.asynccontextmanager

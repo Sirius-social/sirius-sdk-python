@@ -1,24 +1,13 @@
-import threading
-from typing import Any, Dict, ClassVar
+import json
+import base64
+from typing import Any, Optional
 
 from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.abstract.storage import AbstractKeyValueStorage
-from sirius_sdk.encryption.ed25519 import *
+from sirius_sdk.encryption import ed25519
+from sirius_sdk.encryption import b58_to_bytes
+from sirius_sdk.errors.exceptions import SiriusCryptoError
 from sirius_sdk.hub.defaults.default_storage import InMemoryKeyValueStorage
-
-
-class CryptoStorageSingleton:
-
-    def __init__(self):
-        self.__lock = threading.Lock()
-        self.keys_metadata: Dict[str, dict] = {}
-        self.pk_2_sk: Dict[str, bytes] = {}
-
-    def acquire(self):
-        self.__lock.acquire(blocking=True)
-
-    def release(self):
-        self.__lock.release()
 
 
 class DefaultCryptoService(APICrypto):
@@ -30,8 +19,8 @@ class DefaultCryptoService(APICrypto):
         self.storage = storage or InMemoryKeyValueStorage()
 
     async def create_key(self, seed: str = None, crypto_type: str = None) -> str:
-        pk_bytes, sk_bytes = create_keypair(seed.encode() if seed else None)
-        pk_b58 = bytes_to_b58(pk_bytes)
+        pk_bytes, sk_bytes = ed25519.create_keypair(seed.encode() if seed else None)
+        pk_b58 = ed25519.bytes_to_b58(pk_bytes)
         await self.storage.select_db(self.DB_KEYS)
         await self.storage.set(pk_b58, sk_bytes)
         return pk_b58
@@ -51,17 +40,17 @@ class DefaultCryptoService(APICrypto):
         await self.__check_verkey_exists(signer_vk)
         await self.storage.select_db(self.DB_KEYS)
         sk_bytes = await self.storage.get(signer_vk)
-        signed = sign_message(msg, sk_bytes)
+        signed = ed25519.sign_message(msg, sk_bytes)
         return signed
 
     async def crypto_verify(self, signer_vk: str, msg: bytes, signature: bytes) -> bool:
         signer_vk_bytes = b58_to_bytes(signer_vk)
-        success = verify_signed_message(signer_vk_bytes, msg, signature)
+        success = ed25519.verify_signed_message(signer_vk_bytes, msg, signature)
         return success
 
     async def anon_crypt(self, recipient_vk: str, msg: bytes) -> bytes:
         vk_bytes = b58_to_bytes(recipient_vk)
-        encrypted = crypto_box_seal(msg, vk_bytes)
+        encrypted = ed25519.crypto_box_seal(msg, vk_bytes)
         return encrypted
 
     async def anon_decrypt(self, recipient_vk: str, encrypted_msg: bytes) -> bytes:
@@ -69,7 +58,7 @@ class DefaultCryptoService(APICrypto):
         await self.storage.select_db(self.DB_KEYS)
         sk_bytes = await self.storage.get(recipient_vk)
         vk_bytes = b58_to_bytes(recipient_vk)
-        decrypt = crypto_box_seal_open(vk_bytes, sk_bytes, encrypted_msg)
+        decrypt = ed25519.crypto_box_seal_open(vk_bytes, sk_bytes, encrypted_msg)
         return decrypt
 
     async def pack_message(self, message: Any, recipient_verkeys: list, sender_verkey: str = None) -> bytes:
@@ -84,7 +73,7 @@ class DefaultCryptoService(APICrypto):
         else:
             await self.storage.select_db(self.DB_KEYS)
             sender_sigkey_bytes = await self.storage.get(sender_verkey)
-        jwe = pack_message(
+        jwe = ed25519.pack_message(
             message=message,
             to_verkeys=recipient_verkeys_bytes,
             from_verkey=sender_verkey_bytes,
@@ -119,7 +108,7 @@ class DefaultCryptoService(APICrypto):
 
                 if not my_sk:
                     raise SiriusCryptoError('Unknown key in recipient list')
-                unpacked = unpack_message(
+                unpacked = ed25519.unpack_message(
                     enc_message=jwe, my_verkey=my_vk, my_sigkey=my_sk
                 )
                 return {

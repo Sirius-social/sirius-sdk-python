@@ -4,7 +4,7 @@ import contextlib
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.errors.exceptions import SiriusValidationError, StateMachineAborted, StateMachineTerminatedWithError
-from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol
+from sirius_sdk.hub.coprotocols_bus import AbstractP2PCoProtocol
 from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
 from sirius_sdk.abstract.p2p import Endpoint
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status

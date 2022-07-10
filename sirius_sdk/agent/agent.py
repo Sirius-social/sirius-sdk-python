@@ -22,44 +22,10 @@ from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.microledgers.impl import MicroledgerList
-from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
 from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection
 from sirius_sdk.abstract.p2p import Endpoint, TheirEndpoint, Pairwise
 
 from .bus import RpcBus
-
-
-class TransportLayers(ABC):
-
-    @dispatch(str, TheirEndpoint)
-    @abstractmethod
-    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(Pairwise)
-    @abstractmethod
-    async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str, Pairwise)
-    @abstractmethod
-    async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str)
-    @abstractmethod
-    async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str, Pairwise, str)
-    @abstractmethod
-    async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str, str)
-    @abstractmethod
-    async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
 
 
 class SpawnStrategy(IntEnum):
@@ -67,9 +33,7 @@ class SpawnStrategy(IntEnum):
     CONCURRENT = 2
 
 
-class Agent(
-    APIContents, APICoProtocols, APINetworks, APIRouter, APITransport, APIDistributedLocks, TransportLayers
-):
+class Agent(APIContents, APICoProtocols, APINetworks, APIRouter, APITransport, APIDistributedLocks):
     """
     Agent connection in the self-sovereign identity ecosystem.
 
@@ -150,99 +114,15 @@ class Agent(
         return self.__bus
 
     async def spawn_coprotocol(self) -> AbstractBus:
-        bus = RpcBus(connector=self.__rpc.connector, p2p=self.__p2p)
+        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
+            rpc = await AgentRPC.create(
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
+            )
+        else:
+            rpc = self.__rpc
+        bus = RpcBus(connector=rpc.connector, p2p=self.__p2p)
         return bus
-
-    @dispatch(str, TheirEndpoint)
-    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p,
-                self.__timeout, self.__loop, self.__external_crypto_service
-            )
-        else:
-            rpc = self.__rpc
-        return TheirEndpointCoProtocolTransport(
-            my_verkey=my_verkey,
-            endpoint=endpoint,
-            rpc=rpc
-        )
-
-    @dispatch(Pairwise)
-    async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p,
-                self.__timeout, self.__loop, self.__external_crypto_service
-            )
-        else:
-            rpc = self.__rpc
-        return PairwiseCoProtocolTransport(
-            pairwise=pairwise,
-            rpc=rpc
-        )
-
-    @dispatch(str, Pairwise)
-    async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p,
-                self.__timeout, self.__loop, self.__external_crypto_service
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=pairwise,
-            rpc=rpc
-        )
-
-    @dispatch(str)
-    async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p,
-                self.__timeout, self.__loop, self.__external_crypto_service
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=None,
-            rpc=rpc
-        )
-
-    @dispatch(str, Pairwise, str)
-    async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p,
-                self.__timeout, self.__loop, self.__external_crypto_service
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=pairwise,
-            rpc=rpc,
-            pthid=pthid
-        )
-
-    @dispatch(str, str)
-    async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p,
-                self.__timeout, self.__loop, self.__external_crypto_service
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=None,
-            rpc=rpc,
-            pthid=pthid
-        )
 
     async def open(self):
         self.__rpc = await AgentRPC.create(

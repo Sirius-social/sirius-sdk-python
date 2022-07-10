@@ -296,6 +296,10 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         self.__received_orders = {}
         self._setup(their_verkey=to.their.verkey, endpoint=to.their.address, my_verkey=to.me.verkey)
 
+    @property
+    def thid(self) -> str:
+        return self.__thid
+
     async def _subscribe_to_events(self):
         ok = await self._bus.subscribe(thid=self.__thid)
         if ok:
