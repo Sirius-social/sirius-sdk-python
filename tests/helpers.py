@@ -435,7 +435,8 @@ class LocalCryptoManager(APICrypto):
         raise NotImplemented
 
     async def get_key_metadata(self, verkey: str) -> Optional[dict]:
-        raise NotImplemented
+        self.__check_verkey(verkey)
+        return None
 
     async def crypto_sign(self, signer_vk: str, msg: bytes) -> bytes:
         vk, sk = self.__check_verkey(signer_vk)

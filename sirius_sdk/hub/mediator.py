@@ -13,11 +13,12 @@ from sirius_sdk.didcomm import extentions as didcomm_ext
 from sirius_sdk.base import BaseConnector, INFINITE_TIMEOUT
 from sirius_sdk.abstract.p2p import Endpoint
 from sirius_sdk.hub.coprotocols_bus import AbstractP2PCoProtocol
-from sirius_sdk.abstract.api import APIRouter
+from sirius_sdk.abstract.api import APIRouter, APICoProtocols
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.abstract.bus import AbstractBus
 from sirius_sdk.messaging import Message, restore_message_instance
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
+from sirius_sdk.agent.aries_rfc.did_doc import DIDDoc
 from sirius_sdk.agent.aries_rfc.feature_0753_bus.messages import BusSubscribeRequest, BusUnsubscribeRequest, \
     BusProblemReport, BusBindResponse, BusPublishRequest, BusPublishResponse, BusEvent, BusOperation
 
@@ -200,7 +201,15 @@ class MediatorBus(AbstractBus, TunnelMixin):
         return True
 
     async def subscribe_ext(self, sender_vk: List[str], recipient_vk: List[str], protocols: List[str]) -> (bool, List[str]):
-        raise NotImplemented('Mediator does not have access to Wallet or secrets')
+        binding_id = []
+        for _sender_vk in sender_vk:
+            for _recipient_vk in recipient_vk:
+                for protocol in protocols:
+                    thid = self.__binding_id_from_attrs(_sender_vk, _recipient_vk, protocol)
+                    success = await self.subscribe(thid)
+                    if success:
+                        binding_id.append(thid)
+        return len(binding_id) > 0, binding_id
 
     async def unsubscribe(self, thid: str):
         binding_id = self.__pop_binding_id(thid)
@@ -257,7 +266,8 @@ class MediatorBus(AbstractBus, TunnelMixin):
                     raise SiriusTimeoutIO
 
     async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
-        raise NotImplemented('Does not have sense for Mediator scenarios')
+        bytes_event = await self.get_event(timeout)
+        raise NotImplementedError('Does not have sense for Mediator scenarios')
 
     async def abort(self):
         request = BusUnsubscribeRequest(client_id=self.__client_id, aborted=True)
@@ -285,12 +295,16 @@ class MediatorBus(AbstractBus, TunnelMixin):
     def __set_binding_id(self, thid: str, binding_id: str):
         self.__binding_ids[thid] = binding_id
 
+    @staticmethod
+    def __binding_id_from_attrs(sender_vk: Optional[str], recipient_vk: Optional[str], protocol: str) -> str:
+        return f'protocol:{sender_vk}/{recipient_vk}/{protocol}'
+
 
 class MediatorListener(TunnelMixin, AbstractListener):
 
     def __init__(
-            self, connector: MediatorConnector, my_verkey: str,
-            mediator_verkey: str, pairwise_resolver: AbstractPairwiseList = None
+            self, connector: MediatorConnector, my_verkey: Optional[str],
+            mediator_verkey: Optional[str], pairwise_resolver: AbstractPairwiseList = None
     ):
         self.__connector: MediatorConnector = connector
         self.__pairwise_resolver = pairwise_resolver
@@ -333,9 +347,10 @@ class MediatorListener(TunnelMixin, AbstractListener):
         return event
 
 
-class Mediator(APIRouter):
+class Mediator(APIRouter, APICoProtocols):
 
     FIREBASE_SERVICE_TYPE = 'FCMService'
+    DEFAULT_GROUP_ID = 'default'
 
     def __init__(
             self, uri: str, my_verkey: str, mediator_verkey: str,
@@ -403,45 +418,17 @@ class Mediator(APIRouter):
         if self.__is_connected:
             return
         # Run P2P connection establishment according Aries-RFC0160
-        # - RFC: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
-        # - recipient declare endpoint address as "ws://" that means communication is established over duplex channel
-        #   see details: https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
-        state_machine = sirius_sdk.aries_rfc.Invitee(
-            me=self.me,
-            my_endpoint=sirius_sdk.abstract.p2p.Endpoint(
-                address=didcomm_ext.return_route.URI_QUEUE_TRANSPORT,
-                routing_keys=[]
-            ),
-            coprotocol=self._coprotocol
-        )
-        # 1. Recipient DIDDoc contains Firebase device id inside service with type "FCMService"
-        did_doc = sirius_sdk.aries_rfc.ConnRequest.build_did_doc(
-            did=self.me.did,
-            verkey=self.me.verkey,
-            endpoint=didcomm_ext.return_route.URI_QUEUE_TRANSPORT
-        )
-        did_doc_extra = {'service': did_doc['service']}
-        if self.firebase_device_id:
-            did_doc_extra['service'].append({
-                "id": 'did:peer:' + self.me.did + ";indy",
-                "type": self.FIREBASE_SERVICE_TYPE,
-                "recipientKeys": [],
-                "priority": 1,
-                "serviceEndpoint": self.firebase_device_id
-            })
-        # 2. Establish connection with Mediator
         if not self._connector.is_open:
             await self._connector.open()
         try:
             self.__is_connected = True
-            success, p2p = await state_machine.create_connection(
-                invitation=self._mediator_invitation,
-                my_label=f'did:peer:{self.me.did}',
-                did_doc=did_doc_extra
+            success, mediator_did_doc = await self.__connect_to_mediator(
+                endpoint=didcomm_ext.return_route.URI_QUEUE_TRANSPORT,
+                firebase_device_id=self.firebase_device_id
             )
             if success:
                 # 3. P2P successfully established
-                self.__did_doc = p2p.their.did_doc
+                self.__did_doc = mediator_did_doc
                 if self.__routing_keys:
                     # 4. Actualize routing_keys
                     keys_request = sirius_sdk.aries_rfc.KeylistQuery()
@@ -497,10 +484,77 @@ class Mediator(APIRouter):
         return self.__endpoints
 
     async def subscribe(self, group_id: str = None) -> AbstractListener:
-        listener = MediatorListener(
+        # Re-Open RPC
+        # await self._connector.open()
+        # Redeclare Group-ID in DIDDoc to re-schedule downstream
+        success, diddoc = await self.__connect_to_mediator(
+            endpoint='ws://',
+            group_id=group_id or self.DEFAULT_GROUP_ID
+        )
+        if success:
+            diddoc = DIDDoc(diddoc)
+            mediator_services = diddoc.extract_service(high_priority=True, type_='MediatorService')
+            uri = mediator_services['serviceEndpoint']
+            conn = MediatorConnector(uri)
+            await conn.open()
+            listener = MediatorListener(
+                connector=conn,
+                my_verkey=None,
+                mediator_verkey=None
+            )
+            return listener
+        else:
+            raise SiriusRPCError('Error while configure load-balancer')
+
+    async def spawn_coprotocol(self) -> AbstractBus:
+        bus = MediatorBus(
             connector=self._connector,
             my_verkey=self._coprotocol.my_verkey,
-            mediator_verkey=self._coprotocol.mediator_verkey,
-            pairwise_resolver=self.__pairwise_resolver
+            mediator_verkey=self._coprotocol.mediator_verkey
         )
-        return listener
+        return bus
+
+    async def __connect_to_mediator(
+            self, endpoint: str = didcomm_ext.return_route.URI_QUEUE_TRANSPORT,
+            firebase_device_id: str = None, group_id: str = None
+    ) -> (bool, Optional[dict]):
+        # Run P2P connection establishment according Aries-RFC0160
+        # - RFC: https://github.com/hyperledger/aries-rfcs/tree/master/features/0160-connection-protocol
+        # - recipient declare endpoint address as "ws://" that means communication is established over duplex channel
+        #   see details: https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
+        state_machine = sirius_sdk.aries_rfc.Invitee(
+            me=self.me,
+            my_endpoint=sirius_sdk.abstract.p2p.Endpoint(
+                address=didcomm_ext.return_route.URI_QUEUE_TRANSPORT,
+                routing_keys=[]
+            ),
+            coprotocol=self._coprotocol
+        )
+        # 1. Recipient DIDDoc contains Firebase device id inside service with type "FCMService"
+        did_doc = sirius_sdk.aries_rfc.ConnRequest.build_did_doc(
+            did=self.me.did,
+            verkey=self.me.verkey,
+            endpoint=endpoint
+        )
+        if group_id is not None:
+            services_num = len(did_doc['service'])
+            for n in range(services_num):
+                did_doc['service'][n]['group_id'] = group_id
+        did_doc_extra = {'service': did_doc['service']}
+        if firebase_device_id:
+            did_doc_extra['service'].append({
+                "id": 'did:peer:' + self.me.did + ";indy",
+                "type": self.FIREBASE_SERVICE_TYPE,
+                "recipientKeys": [],
+                "priority": 1,
+                "serviceEndpoint": firebase_device_id
+            })
+        success, p2p = await state_machine.create_connection(
+            invitation=self._mediator_invitation,
+            my_label=f'did:peer:{self.me.did}',
+            did_doc=did_doc_extra
+        )
+        if success:
+            return True, p2p.their.did_doc
+        else:
+            return False, None

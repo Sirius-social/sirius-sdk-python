@@ -4,10 +4,12 @@ import asyncio
 import pytest
 
 import sirius_sdk
+from sirius_sdk.abstract.listener import AbstractListener
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO, OperationAbortedManually
 from sirius_sdk.abstract.api import APIRouter, APITransport
 from sirius_sdk.hub.defaults.default_apis import APIDefault
 from sirius_sdk.hub.defaults.default_crypto import DefaultCryptoService
+from sirius_sdk.hub.mediator import Mediator
 from sirius_sdk.messaging import Message
 from tests.conftest import create_mediator_instance
 from tests.helpers import LocalCryptoManager, LocalDIDManager
@@ -141,6 +143,7 @@ async def test_router_interface_for_wired_messages(mediator_invitation: dict):
             my_endpoint = my_endpoints[0]
 
             listener = await my_router.subscribe()
+            await asyncio.sleep(1)
             message = Message({
                 '@id': 'trust-ping-message-' + uuid.uuid4().hex,
                 '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping',
@@ -178,6 +181,7 @@ async def test_router_interface_for_json_messages(mediator_invitation: dict):
             my_endpoint = my_endpoints[0]
 
             listener = await my_router.subscribe()
+            await asyncio.sleep(1)
             message = Message({
                 '@id': 'trust-ping-message-' + uuid.uuid4().hex,
                 '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping',
@@ -219,12 +223,14 @@ async def test_router_and_bus_stream_intersection(mediator_invitation: dict):
 
             # 1. Allocate Listener
             listener = await session1_listener.subscribe()
+            await asyncio.sleep(1)
             message = Message({
                 '@id': 'trust-ping-message-' + uuid.uuid4().hex,
                 '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping',
                 "comment": "Hi. Are you listening?",
             })
 
+            print('#')
             # Check-1: Send packed message to check listener is OK but bus listener ignore message
             await their_transport.send(
                 message=message, their_vk=my_vk_for_messaging,
@@ -249,3 +255,68 @@ async def test_router_and_bus_stream_intersection(mediator_invitation: dict):
         finally:
             await session1_listener.disconnect()
             await session2_bus.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_load_balancer_with_group_id(mediator_invitation: dict):
+    group1 = 'group1'
+    group2 = 'group2'
+    async with sirius_sdk.context(crypto=LocalCryptoManager(), did=LocalDIDManager()):
+
+        my_vk = await sirius_sdk.Crypto.create_key()
+        my_vk_for_messaging = await sirius_sdk.Crypto.create_key()
+        their_crypto = LocalCryptoManager()
+        their_transport: APITransport = APIDefault(their_crypto)
+        their_vk = await their_crypto.create_key()
+
+        session1_group1 = create_mediator_instance(mediator_invitation, my_vk)
+        session2_group1 = create_mediator_instance(mediator_invitation, my_vk)
+        session3_group2 = create_mediator_instance(mediator_invitation, my_vk)
+        await session1_group1.connect()
+        await session2_group1.connect()
+        await session3_group2.connect()
+        try:
+            my_endpoints = await session1_group1.get_endpoints()
+            assert len(my_endpoints) > 0
+            my_endpoint = my_endpoints[0]
+
+            async def listen_async(session: Mediator, group: str):
+                listener = await session.subscribe(group)
+                event = await listener.get_one()
+                return event.message, group
+
+            fut1 = asyncio.ensure_future(listen_async(session1_group1, group1))
+            fut2 = asyncio.ensure_future(listen_async(session2_group1, group1))
+            fut3 = asyncio.ensure_future(listen_async(session3_group2, group2))
+            await asyncio.sleep(3)
+
+            message = Message({
+                '@id': 'trust-ping-message-' + uuid.uuid4().hex,
+                '@type': 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/trust_ping/1.0/ping',
+                "comment": "Hi. Are you listening?",
+            })
+
+            # Send packed message
+            await their_transport.send(
+                message=message, their_vk=my_vk_for_messaging,
+                endpoint=my_endpoint.address, my_vk=their_vk, routing_keys=my_endpoint.routing_keys
+            )
+
+            print('1')
+            done, pending = await asyncio.wait(
+                [
+                    fut1, fut2, fut3
+                ],
+                timeout=5, return_when=asyncio.ALL_COMPLETED
+            )
+            print('#1')
+            results = [tsk.result() for tsk in list(done)]
+            print(repr(results))
+            assert len(done) == 2
+            assert len(pending) == 1
+            assert all([res[0] == message for res in results])
+            assert set([res[1] for res in results]) == {group1, group2}
+        finally:
+            await session1_group1.disconnect()
+            await session2_group1.disconnect()
+            await session3_group2.disconnect()

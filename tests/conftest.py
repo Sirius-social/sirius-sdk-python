@@ -203,6 +203,16 @@ def mediator_invitation() -> dict:
     }
 
 
+@pytest.fixture()
+def mediator_uri(mediator_invitation: dict) -> str:
+    return mediator_invitation['serviceEndpoint']
+
+
+@pytest.fixture()
+def mediator_verkey(mediator_invitation: dict) -> str:
+    return mediator_invitation['recipientKeys'][0]
+
+
 async def get_pairwise(me: Agent, their: Agent) -> sirius_sdk.Pairwise:
     suite = get_suite_singleton()
     me_params = suite.get_agent_params(me.name)

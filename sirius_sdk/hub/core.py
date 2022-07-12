@@ -302,9 +302,9 @@ async def context(cfg: Config = None, *args, **kwargs):
     old_hub = __get_thread_local_gub()
     __THREAD_LOCAL_HUB.instance = hub
     try:
-        await hub.open()
         old_hub_coro = context_get('hub')
         context_set('hub', hub)
+        await hub.open()
         try:
             yield
         finally:
