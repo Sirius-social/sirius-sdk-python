@@ -7,7 +7,6 @@ import pytest
 import sirius_sdk
 from sirius_sdk import Agent
 from sirius_sdk.base import WebSocketConnector, Message
-from sirius_sdk.agent.coprotocols import ThreadBasedCoProtocolTransport
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 from tests.helpers import ServerTestSuite
 from tests.conftest import get_pairwise
