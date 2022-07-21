@@ -1,4 +1,5 @@
 import base64
+from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -169,3 +170,42 @@ class AttachesMixin:
         if "~attach" not in self:
             self["~attach"] = []
         self["~attach"] += [att]
+
+
+class ReturnRouteMixin:
+    """
+    https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
+    https://github.com/decentralized-identity/didcomm-messaging/blob/main/extensions/return_route/main.md
+    """
+
+    class RouteType(Enum):
+        NONE = 'none'
+        ALL = 'all'
+        THREAD = 'thread'
+
+    @property
+    def return_route(self) -> RouteType:
+        return self.get_return_route(self)
+
+    @return_route.setter
+    def return_route(self, value: RouteType):
+        self.set_return_route(self, value)
+
+    @classmethod
+    def get_return_route(cls, message: Message) -> RouteType:
+        value = message.get(TRANSPORT_DECORATOR, {}).get('return_route', None)
+        if value is None:
+            return cls.RouteType.NONE
+        else:
+            if value == cls.RouteType.ALL.value:
+                return cls.RouteType.ALL
+            elif value == cls.RouteType.THREAD.value:
+                return cls.RouteType.THREAD
+            else:
+                return cls.RouteType.NONE
+
+    @classmethod
+    def set_return_route(cls, message: Message, transport: RouteType):
+        message[TRANSPORT_DECORATOR] = {
+            'return_route': transport.value
+        }
