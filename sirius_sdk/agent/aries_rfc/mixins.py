@@ -1,13 +1,36 @@
 import base64
+import dataclasses
+import datetime
+import logging
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Any, Union
 
+from pytime import pytime
 from sirius_sdk.base import Message
 from .decorators import *
 
 
+def parse_datetime(val: str) -> Optional[datetime.datetime]:
+    orig_val = val
+    if val:
+        if val[-1] == 'Z' and len(val.split(' ')) == 2:
+            val = val[:-1].replace(' ', 'T')
+        for func in [pytime.parse, datetime.datetime.fromisoformat]:
+            try:
+                return func(val)
+            except Exception as e:
+                pass
+        logging.warning(f'Error while parsing string formatted datetime "{orig_val}"')
+        return None
+    else:
+        return None
+
+
 class PleaseAckMixin:
+    """Explains how one party can request an acknowledgment to and clarify the status of processes.
+       - RFC Aries: https://github.com/hyperledger/aries-rfcs/tree/main/features/0317-please-ack
+    """
 
     @property
     def ack_message_id(self) -> Optional[str]:
@@ -15,7 +38,6 @@ class PleaseAckMixin:
 
     @property
     def please_ack(self) -> bool:
-        """https://github.com/hyperledger/aries-rfcs/tree/master/features/0317-please-ack"""
         return self.get(PLEASE_ACK_DECORATOR, None) is not None
 
     @please_ack.setter
@@ -31,6 +53,10 @@ class PleaseAckMixin:
 
 
 class ThreadMixin:
+    """Definition of the message @id field and the ~thread decorator
+
+      - RFC Aries: https://github.com/hyperledger/aries-rfcs/tree/main/concepts/0008-message-id-and-threading
+    """
 
     @dataclass
     class Thread:
@@ -155,8 +181,8 @@ class Attach(dict):
 
 
 class AttachesMixin:
-    """
-    https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0017-attachments
+    """Explains the three canonical ways to attach data to an agent message.
+      - RFC Aries: https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0017-attachments
     """
 
     @property
@@ -173,9 +199,11 @@ class AttachesMixin:
 
 
 class ReturnRouteMixin:
-    """
-    https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
-    https://github.com/decentralized-identity/didcomm-messaging/blob/main/extensions/return_route/main.md
+    """Agents can indicate that an inbound message transmission may also be used as a return route for messages.
+       This allows for transports of increased efficiency as well as agents without an inbound route.
+
+      - RFC Aries(v1): https://github.com/hyperledger/aries-rfcs/tree/main/features/0092-transport-return-route
+      - RFC DIDComm(v2): https://github.com/decentralized-identity/didcomm-messaging/blob/main/extensions/return_route/main.md
     """
 
     class RouteType(Enum):
@@ -209,3 +237,109 @@ class ReturnRouteMixin:
         message[TRANSPORT_DECORATOR] = {
             'return_route': transport.value
         }
+
+
+class TimingMixin:
+    """Explain how timing of agent messages can be communicated and constrained.
+
+      - RFC Aries: https://github.com/hyperledger/aries-rfcs/tree/main/features/0032-message-timing
+    """
+
+    @dataclass
+    class Timing:
+        # The timestamp when the preceding message in this thread (the one that elicited this message as a response)
+        # was received. Or, on a dynamically composed forward message, the timestamp when an upstream relay first
+        # received the message it's now asking to be forwarded.
+        in_time: datetime.datetime = None
+
+        # The timestamp when the message was emitted
+        out_time: datetime.datetime = None
+
+        #  Ideally, the decorated message should be processed by the the specified timestamp
+        stale_time: datetime.datetime = None
+
+        # The decorated message should be considered invalid or expired if encountered after the specified timestamp
+        expires_time: datetime.datetime = None
+
+        # Wait at least this many milliseconds before processing the message
+        delay_milli: int = None
+
+        # Wait until this time before processing the message
+        wait_until_time: datetime.datetime = None
+
+        def __init__(
+                self, in_time: Union[str, datetime.datetime] = None, out_time: Union[str, datetime.datetime] = None,
+                stale_time: Union[str, datetime.datetime] = None, expires_time: Union[str, datetime.datetime] = None,
+                delay_milli: int = None, wait_until_time: Union[str, datetime.datetime] = None, **kwargs
+        ):
+            self.in_time = self.__read_value_safe('in_time', in_time)
+            self.out_time = self.__read_value_safe('out_time', out_time)
+            self.stale_time = self.__read_value_safe('stale_time', stale_time)
+            self.expires_time = self.__read_value_safe('expires_time', expires_time)
+            self.delay_milli = self.__read_value_safe('delay_milli', delay_milli)
+            self.wait_until_time = self.__read_value_safe('wait_until_time', wait_until_time)
+
+        @property
+        def is_filled(self) -> bool:
+            return any(
+                [t is not None for t in (self.in_time, self.out_time, self.stale_time, self.expires_time, self.delay_milli, self.wait_until_time)]
+            )
+
+        def to_json(self) -> dict:
+            obj = dataclasses.asdict(self)
+            return {key: obj[key] for key, value in obj.items() if value is not None}
+
+        def create_from_json(self, js: dict) -> 'TimingMixin.Timing':
+            upd_kwargs = {}
+            for key, value in js.items():
+                safe_val = self.__read_value_safe(key, value)
+                upd_kwargs[key] = safe_val
+            return dataclasses.replace(self, **upd_kwargs)
+
+        def __read_value_safe(self, name: str, value: Any) -> Any:
+            fields = dataclasses.fields(self)
+            actual_fields = list(filter(lambda f: f.name == name, fields))
+            if actual_fields:
+                field = actual_fields[0]
+                if field.type == type(value):
+                    return value
+                else:
+                    if field.type == int:
+                        if isinstance(value, str) and value.isdigit():
+                            return int(value)
+                        else:
+                            return None
+                    elif field.type == datetime.datetime:
+                        if isinstance(value, str):
+                            return parse_datetime(value)
+                        else:
+                            return None
+                    else:
+                        return None
+            else:
+                return None
+
+    @property
+    def timing(self) -> Timing:
+        return self.get_timing(self)
+
+    @timing.setter
+    def timing(self, value: Timing):
+        self.set_timing(self, value)
+
+    @classmethod
+    def get_timing(cls, message: Message) -> Optional[Timing]:
+        js = message.get(TIMING_DECORATOR, {})
+        if js:
+            value = TimingMixin.Timing(**js)
+            return value if value.is_filled else None
+        else:
+            return None
+
+    @classmethod
+    def set_timing(cls, message: Message, value: Timing):
+        js = value.to_json() if value else {}
+        if js:
+            message[TIMING_DECORATOR] = js
+        elif TIMING_DECORATOR in message.keys():
+            del message[TIMING_DECORATOR]
