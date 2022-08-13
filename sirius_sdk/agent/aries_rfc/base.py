@@ -1,7 +1,7 @@
 from sirius_sdk.messaging import Message, Type, validate_common_blocks, register_message_class
 from sirius_sdk.errors.exceptions import *
 
-from .mixins import PleaseAckMixin, ThreadMixin, AttachesMixin
+from .mixins import PleaseAckMixin, ThreadMixin, AttachesMixin, TimingMixin
 from .decorators import *
 
 
@@ -9,7 +9,7 @@ VALID_DOC_URI = ['https://didcomm.org/', 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/']
 ARIES_DOC_URI = VALID_DOC_URI[1]
 
 
-class AriesProtocolMessage(PleaseAckMixin, ThreadMixin, AttachesMixin, Message):
+class AriesProtocolMessage(PleaseAckMixin, ThreadMixin, AttachesMixin, TimingMixin, Message):
 
     DOC_URI = ARIES_DOC_URI
     PROTOCOL = None

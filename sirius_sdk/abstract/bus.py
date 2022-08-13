@@ -17,12 +17,12 @@ class AbstractBus(ABC):
 
     @dataclass
     class BytesEvent:
-        binding_id: str
+        thread_id: str
         payload: bytes
 
     @dataclass
     class MessageEvent:
-        binding_id: str
+        thread_id: str
         message: Message
         sender_verkey: Optional[str]
         recipient_verkey: Optional[str]
@@ -52,7 +52,7 @@ class AbstractBus(ABC):
         raise NotImplemented
 
     @abstractmethod
-    async def unsubscribe_ext(self, binding_ids: List[str]):
+    async def unsubscribe_ext(self, thids: List[str]):
         """UnSubscribe from events stream marked with specific binding-ids
         """
         raise NotImplemented

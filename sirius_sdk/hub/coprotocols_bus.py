@@ -77,7 +77,7 @@ class AbstractCoProtocol(ABC):
             self.__die_timestamp = datetime.now() + timedelta(seconds=self.__time_to_live)
         else:
             self.__die_timestamp = None
-        self.__cur_loop: asyncio.get_event_loop()
+        self.__cur_loop = asyncio.get_event_loop()
         self._bus = await sirius_sdk.spawn_coprotocol()
         self._is_running = True
 
@@ -203,7 +203,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
                 await self.clean()
                 raise
             # process event
-            if event.binding_id in expected_binding_ids:
+            if event.thread_id in expected_binding_ids:
                 return event.message, event.sender_verkey, event.recipient_verkey
             else:
                 # co-protocols are competitors, so
@@ -385,7 +385,7 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         """
         if not self._is_running:
             await self.start()
-        expected_binding_ids = [self.__thid] + self._please_ack_ids
+        expected_thread_ids = [self.__thid] + self._please_ack_ids
         while True:
             # re-calc timeout in loop until event income
             timeout = self._get_io_timeout()
@@ -400,14 +400,14 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
                 await self.clean()
                 raise
             # process event
-            if event.binding_id in expected_binding_ids:
+            if event.thread_id in expected_thread_ids:
                 p2p = self.__load_p2p_from_verkey(event.sender_verkey)
                 return p2p, event.message
             else:
                 # co-protocols are competitors, so
                 # they operate in displace multitasking mode
                 logging.warning(
-                    f'Expected binding_id: "{expected_binding_ids}" actually "{event.binding_id}" was received'
+                    f'Expected thread_id: "{expected_thread_ids}" actually "{event.thread_id}" was received'
                 )
 
     async def switch(self, message: Message) -> Dict[Pairwise, Tuple[bool, Optional[Message]]]:

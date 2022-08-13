@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import logging
 import warnings
 import threading
@@ -13,7 +15,7 @@ from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
-from sirius_sdk.abstract.storage import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractKeyValueStorage
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.agent import Agent, SpawnStrategy
 
@@ -23,6 +25,7 @@ from .defaults.default_storage import InMemoryImmutableCollection, InMemoryKeyVa
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
 from .mediator import Mediator
+from .backgrounds import BackgroundScheduler
 
 __ROOT_HUB = None
 __THREAD_LOCAL_HUB = threading.local()
@@ -39,7 +42,7 @@ class Hub:
         self.__mediator: Optional[Mediator] = None
         self.__allocate_mediator = False
 
-        self.__storage: Optional[AbstractImmutableCollection] = config.overrides.storage
+        self.__storage: Optional[AbstractKeyValueStorage] = config.overrides.storage
         if self.__storage is None:
             logging.warning(
                 'Storage will be set to InMemory-Storage as default, it will outcome issues in production environments'
@@ -58,11 +61,14 @@ class Hub:
         # Crypto and default services
         self.__crypto: Optional[APICrypto] = config.overrides.crypto
         self.__default_api: APIDefault = APIDefault()
-        self.__default_crypto: APICrypto = DefaultCryptoService(storage=InMemoryKeyValueStorage())
+        self.__default_crypto: APICrypto = DefaultCryptoService(storage=self.__storage)
 
     def __del__(self):
-        if self.__allocate_agent and self.__agent.is_open and self.__loop.is_running():
-            asyncio.ensure_future(self.__agent.close(), loop=self.__loop)
+        if self.__loop and self.__loop.is_running():
+            if self.__agent is not None and self.__agent.is_open:
+                asyncio.ensure_future(self.__agent.close(), loop=self.__loop)
+            if self.__mediator is not None and self.__mediator.is_connected:
+                asyncio.ensure_future(self.__mediator.disconnect(), loop=self.__loop)
 
     def copy(self):
         inst = Hub(config=self.__config)
@@ -211,7 +217,10 @@ class Hub:
         success = False
         if self.__allocate_agent:
             async with self.get_agent_connection_lazy() as agent:
-                success = await agent.ping()
+                if isinstance(agent, Agent):
+                    success = await agent.ping()
+                elif isinstance(agent, Mediator):
+                    success = agent.is_connected
         return success
 
     def __create_agent_instance(self, external_crypto: APICrypto):

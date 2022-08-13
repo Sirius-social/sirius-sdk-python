@@ -9,9 +9,10 @@ from .p2p import Pairwise
 
 class Event(Message):
 
-    def __init__(self, pairwise: Pairwise = None, *args, **kwargs):
+    def __init__(self, pairwise: Pairwise = None, jwe: bytes = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__pairwise = pairwise
+        self.__jwe = jwe
 
     @property
     def pairwise(self) -> Pairwise:
@@ -39,6 +40,10 @@ class Event(Message):
     @property
     def content_type(self) -> Optional[str]:
         return self.get('content_type', None)
+
+    @property
+    def jwe(self) -> Optional[bytes]:
+        return self.__jwe
 
     @property
     def extra(self) -> Optional[dict]:

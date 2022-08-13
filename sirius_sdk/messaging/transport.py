@@ -7,7 +7,7 @@ class EndpointTransport:
 
     def __init__(self, keepalive_timeout: float = 15):
         self.__keep_alive_connector = aiohttp.TCPConnector(
-            verify_ssl=False,  # Do not verify SSL due to all messages encrypted
+            ssl=False,  # Do not verify SSL due to all messages encrypted
             use_dns_cache=False,
             limit=0,  # No connections limit
             keepalive_timeout=keepalive_timeout

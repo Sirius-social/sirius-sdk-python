@@ -197,7 +197,7 @@ def mediator_invitation() -> dict:
         '@type': 'https://didcomm.org/connections/1.0/invitation',
         '@id': uuid.uuid4().hex,
         'label': 'Testable-Mediator',
-        'recipientKeys': ['F5BERxEyX6uDhgXCbizxJB1z3SGnjHbjfzwuTytuK4r5'],
+        'recipientKeys': ['F5BERxEyX6uDhgXCbizxJB1z3SGnjHbjfzwuTytuK4r5'],  # AQND3FcDw5XtT7db5QMWydWp9kp6Z9Xc9Eu95GHDkRK1
         'serviceEndpoint': 'ws://localhost:8000/ws',
         'routingKeys': [],
     }

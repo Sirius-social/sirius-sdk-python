@@ -129,8 +129,8 @@ class InMemoryBus(AbstractBus):
     async def unsubscribe(self, thid: str):
         self.__subscriptions_singleton.unsubscribe(client_id=self.__client_id, topics=[thid])
 
-    async def unsubscribe_ext(self, binding_ids: List[str]):
-        self.__subscriptions_singleton.unsubscribe(client_id=self.__client_id, topics=binding_ids)
+    async def unsubscribe_ext(self, thids: List[str]):
+        self.__subscriptions_singleton.unsubscribe(client_id=self.__client_id, topics=thids)
 
     async def publish(self, thid: str, payload: bytes) -> int:
         num = self.__subscriptions_singleton.notify(thid, payload)
@@ -150,7 +150,7 @@ class InMemoryBus(AbstractBus):
         if event.abort:
             raise OperationAbortedManually
         else:
-            return AbstractBus.BytesEvent(binding_id=event.topic, payload=event.payload)
+            return AbstractBus.BytesEvent(thread_id=event.topic, payload=event.payload)
 
     async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
         event = await self.get_event(timeout)
@@ -159,7 +159,7 @@ class InMemoryBus(AbstractBus):
         if not ok:
             msg = Message(**decrypted['message'])
         return AbstractBus.MessageEvent(
-            binding_id=event.binding_id,
+            thread_id=event.thread_id,
             message=msg,
             sender_verkey=decrypted.get('sender_verkey', None),
             recipient_verkey=decrypted.get('recipient_verkey', None)

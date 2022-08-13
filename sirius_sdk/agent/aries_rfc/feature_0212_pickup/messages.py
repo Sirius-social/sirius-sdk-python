@@ -86,12 +86,10 @@ class PickUpStatusResponse(BasePickUpMessage):
 class PickUpBatchRequest(BasePickUpMessage):
     NAME = 'batch-pickup'
 
-    def __init__(self, batch_size: int = None, pending_timeout: int = None, *args, **kwargs):
+    def __init__(self, batch_size: int = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if batch_size is not None:
             self['batch_size'] = batch_size
-        if pending_timeout is not None:
-            self['pending_timeout'] = pending_timeout
 
     @property
     def batch_size(self) -> Optional[str]:
@@ -171,15 +169,12 @@ class PickUpListResponse(BasePickUpMessage):
 class PickUpNoop(BasePickUpMessage):
     NAME = 'noop'
 
-    def __init__(self, pending_timeout: int = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if pending_timeout is not None:
-            self['pending_timeout'] = pending_timeout
-
-    @property
-    def pending_timeout(self) -> Optional[int]:
-        return self.get('pending_timeout', 0)
-
 
 class PickUpProblemReport(AriesProblemReport, metaclass=RegisterMessage):
+    DOC_URI = BasePickUpMessage.DOC_URI
     PROTOCOL = BasePickUpMessage.PROTOCOL
+
+    # Problem Codes
+    PROBLEM_CODE_EMPTY = 'empty_queue'
+    PROBLEM_CODE_INVALID_REQ = 'invalid_request'
+    PROBLEM_CODE_TIMEOUT_OCCURRED = 'timeout_occurred'

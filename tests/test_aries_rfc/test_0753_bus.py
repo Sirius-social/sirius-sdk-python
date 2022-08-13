@@ -22,32 +22,32 @@ async def test_messages():
     op_subscribe1 = BusSubscribeRequest(cast1)
     assert op_subscribe1.cast.thid == 'some-thread-id'
     assert op_subscribe1.cast.sender_vk is None and op_subscribe1.cast.recipient_vk is None
-    assert op_subscribe1.client_id is None
+    assert op_subscribe1.thread_id is None
 
     op_subscribe2 = BusSubscribeRequest(cast2)
     assert op_subscribe2.cast.thid is None
     assert op_subscribe2.cast.sender_vk == 'VK2'
     assert op_subscribe2.cast.recipient_vk == 'VK1'
 
-    bind = BusBindResponse(binding_id='some-bind-id')
-    assert bind.binding_id == 'some-bind-id'
-    assert bind.client_id is None
+    bind = BusBindResponse(thread_id='some-bind-id')
+    assert bind.thread_id == 'some-bind-id'
+    assert bind.parent_thread_id is None
 
     ok, msg = restore_message_instance(
         {
             '@type': 'https://didcomm.org/bus/1.0/bind',
-            'binding_id': 'some-binding-id2'
+            '~thread': {'thid': 'some-binding-id2'}
         }
     )
     assert ok is True
     assert isinstance(msg, BusBindResponse)
-    assert msg.binding_id == 'some-binding-id2'
-    assert msg.client_id is None
+    assert msg.thread_id == 'some-binding-id2'
+    assert msg.parent_thread_id is None
 
-    op_subscribe_client_id = BusSubscribeRequest(cast1, client_id='client-id')
-    assert op_subscribe_client_id.client_id == 'client-id'
-    op_bind_client_id = BusBindResponse(binding_id='some-bind-id', client_id='client-id')
-    assert op_bind_client_id.client_id == 'client-id'
+    op_subscribe_client_id = BusSubscribeRequest(cast1, parent_thread_id='client-id')
+    assert op_subscribe_client_id.parent_thread_id == 'client-id'
+    op_bind_client_id = BusBindResponse(thread_id='some-bind-id', parent_thread_id='client-id')
+    assert op_bind_client_id.parent_thread_id == 'client-id'
     op_unsubscr_client_id = BusUnsubscribeRequest(client_id='client-id', aborted=True)
     assert op_unsubscr_client_id.client_id == 'client-id'
     assert op_unsubscr_client_id.aborted is True

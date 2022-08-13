@@ -1,7 +1,8 @@
 import json
 import asyncio
+import logging
 import math
-import datetime
+import hashlib
 from typing import Union, Optional, List, Dict
 
 import aiohttp
@@ -16,11 +17,12 @@ from sirius_sdk.hub.coprotocols_bus import AbstractP2PCoProtocol
 from sirius_sdk.abstract.api import APIRouter, APICoProtocols
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.abstract.bus import AbstractBus
-from sirius_sdk.messaging import Message, restore_message_instance
+from sirius_sdk.messaging import Message, restore_message_instance, Type as MsgType
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.agent.aries_rfc.did_doc import DIDDoc
-from sirius_sdk.agent.aries_rfc.feature_0753_bus.messages import BusSubscribeRequest, BusUnsubscribeRequest, \
-    BusProblemReport, BusBindResponse, BusPublishRequest, BusPublishResponse, BusEvent, BusOperation
+from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin as AriesThreadMixin
+from sirius_sdk.agent.aries_rfc.feature_0753_bus.messages import *
+from sirius_sdk.agent.aries_rfc.feature_0212_pickup.messages import *
 
 
 def qualify_key(key: str) -> str:
@@ -101,10 +103,11 @@ class TunnelMixin:
         )
         return packed
 
-    async def unpack(self, jwe: bytes) -> (Optional[Message], str, Optional[str]):
+    async def unpack(self, jwe: bytes) -> (Optional[Union[Message, bytes]], str, Optional[str]):
 
         if b'protected' in jwe:
-            message, sender_vk, recip_vk = await sirius_sdk.Crypto.unpack_message(jwe)
+            decrypted = await sirius_sdk.Crypto.unpack_message(jwe)
+            message, sender_vk, recip_vk = decrypted['message'], decrypted['sender_verkey'], decrypted['recipient_verkey']
         else:
             message, sender_vk, recip_vk = json.loads(jwe.decode()), None, None
 
@@ -116,11 +119,14 @@ class TunnelMixin:
             payload = message
         else:
             raise SiriusInvalidMessage('Unexpected message type')
-        success, msg = restore_message_instance(payload)
-        if success:
-            return msg, sender_vk, recip_vk
+        if 'protected' in payload:
+            return message.encode(), sender_vk, recip_vk
         else:
-            return Message(**payload), sender_vk, recip_vk
+            success, msg = restore_message_instance(payload)
+            if success:
+                return msg, sender_vk, recip_vk
+            else:
+                return Message(**payload), sender_vk, recip_vk
 
 
 class MediatorCoProtocol(TunnelMixin, AbstractP2PCoProtocol):
@@ -190,13 +196,13 @@ class MediatorBus(AbstractBus, TunnelMixin):
         return self._my_verkey
 
     async def subscribe(self, thid: str) -> bool:
-        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid), client_id=self.__client_id)
+        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid), parent_thread_id=self.__client_id)
         payload = await self.pack(request)
         await self.connector.write(payload)
         jwe = await self.connector.read()
         resp, _, _ = await self.unpack(jwe)
         self.__validate(resp, expected_class=BusBindResponse)
-        if resp.binding_id != thid:
+        if resp.thread_id != thid:
             self.__set_binding_id(thid, resp.binding_id)
         return True
 
@@ -214,24 +220,24 @@ class MediatorBus(AbstractBus, TunnelMixin):
     async def unsubscribe(self, thid: str):
         binding_id = self.__pop_binding_id(thid)
         request = BusUnsubscribeRequest(
-            binding_id=binding_id or thid,
+            thread_id=binding_id or thid,
             need_answer=False,  # don't wait response
         )
         payload = await self.pack(request)
         await self.connector.write(payload)
 
-    async def unsubscribe_ext(self, binding_ids: List[str]):
+    async def unsubscribe_ext(self, thids: List[str]):
         request = BusUnsubscribeRequest(
-            binding_id=binding_ids,
+            thread_id=thids,
             need_answer=False,  # don't wait response
-            client_id=self.__client_id
+            parent_thread_id=self.__client_id
         )
         payload = await self.pack(request)
         await self.connector.write(payload)
 
     async def publish(self, thid: str, payload: bytes) -> int:
         binding_id = self.__get_binding_id(thid)
-        request = BusPublishRequest(binding_id=binding_id or thid, payload=payload)
+        request = BusPublishRequest(thread_id=binding_id or thid, payload=payload)
         payload = await self.pack(request)
         await self.connector.write(payload)
         jwe = await self.connector.read()
@@ -240,37 +246,73 @@ class MediatorBus(AbstractBus, TunnelMixin):
         return resp.recipients_num
 
     async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:
+        expire_at = datetime.datetime.now() + datetime.timedelta(seconds=timeout) if timeout is not None else None
 
-        if timeout is not None:
-            wait_timeout = math.ceil(timeout)
-            cut_stamp = datetime.datetime.now() + datetime.timedelta(seconds=wait_timeout)
-        else:
-            wait_timeout = INFINITE_TIMEOUT
-            cut_stamp = None
+        def __in_loop__() -> bool:
+            if expire_at is None:
+                return True
+            else:
+                return datetime.datetime.now() <= expire_at
 
-        while True:
-            jwe = await self.connector.read(wait_timeout)
-            event, _, _ = await self.unpack(jwe)
-            if isinstance(event, BusEvent):
-                return AbstractBus.BytesEvent(binding_id=event.binding_id, payload=event.payload)
-            elif isinstance(event, BusBindResponse):
-                if event.aborted is True and event.client_id == self.__client_id:
-                    raise OperationAbortedManually('Bus events awaiting was aborted by user')
-            elif isinstance(event, BusProblemReport):
-                raise SiriusRPCError(event.explain)
-
-            if wait_timeout != INFINITE_TIMEOUT:
-                _ = (cut_stamp - datetime.datetime.now()).total_seconds()
-                wait_timeout = math.ceil(_)
-                if wait_timeout <= 0:
-                    raise SiriusTimeoutIO
+        while __in_loop__():
+            if expire_at is None:
+                pending_timeout = None
+            else:
+                dt_diff = expire_at - datetime.datetime.now()
+                pending_timeout = dt_diff.total_seconds()
+            request = PickUpNoop(pending_timeout=math.ceil(pending_timeout) if pending_timeout is not None else None)
+            request.please_ack = True
+            payload = await self.pack(request)
+            await self.connector.write(payload)
+            jwe = await self.connector.read()
+            resp, sender_vk, recip_vk = await self.unpack(jwe)
+            if isinstance(resp, Message):
+                thread = ThreadMixin.get_thread(resp)
+                if thread and (thread.pthid == self.__client_id) or (thread.thid == request.id):
+                    if isinstance(resp, BusEvent):
+                        return AbstractBus.BytesEvent(thread_id=resp.thread_id, payload=resp.payload)
+                    elif isinstance(resp, BusBindResponse):
+                        if resp.aborted is True and resp.parent_thread_id == self.__client_id:
+                            raise OperationAbortedManually('Bus events awaiting was aborted by user')
+                    elif isinstance(resp, BusProblemReport):
+                        raise SiriusRPCError(resp.explain)
+                    elif isinstance(resp, PickUpProblemReport):
+                        if resp.problem_code == PickUpProblemReport.PROBLEM_CODE_EMPTY:
+                            raise SiriusTimeoutIO
+                        else:
+                            raise SiriusRPCError(resp.explain)
+                else:
+                    logging.warning(
+                        f'Bus listener: message was ignored cause of unexpected thread binging, '
+                        f'expected pthid: {self.__client_id}'
+                    )
+                    logging.warning(json.dumps(resp, indent=2, sort_keys=True))
+            if isinstance(resp, bytes):
+                logging.critical('Unexpected bytes received')
+                # fwd, fwd_sender_vk, fwd_recip_vk = await self.unpack(resp)
+                # await self.__raise_bus_message(fwd, resp, fwd_sender_vk, fwd_recip_vk)
 
     async def get_message(self, timeout: float = None) -> AbstractBus.MessageEvent:
-        bytes_event = await self.get_event(timeout)
-        raise NotImplementedError('Does not have sense for Mediator scenarios')
+        event = await self.get_event(timeout)
+        decrypted = await sirius_sdk.Crypto.unpack_message(event.payload)
+        message = decrypted['message']
+        if isinstance(message, str):
+            message = json.loads(message)
+        if message.get('@type', None):
+            ok, msg = restore_message_instance(decrypted)
+            if not ok:
+                msg = Message(**message)
+            return AbstractBus.MessageEvent(
+                thread_id=event.thread_id,
+                message=msg,
+                sender_verkey=decrypted.get('sender_verkey', None),
+                recipient_verkey=decrypted.get('recipient_verkey', None)
+            )
+        else:
+            raise SiriusRPCError('Unexpected message format')
 
     async def abort(self):
-        request = BusUnsubscribeRequest(client_id=self.__client_id, aborted=True)
+        request = BusUnsubscribeRequest(parent_thread_id=self.__client_id, aborted=True)
         payload = await self.pack(request)
         await self.connector.write(payload)
 
@@ -294,6 +336,13 @@ class MediatorBus(AbstractBus, TunnelMixin):
 
     def __set_binding_id(self, thid: str, binding_id: str):
         self.__binding_ids[thid] = binding_id
+
+    async def __raise_bus_message(self, decrypted: Message, jwe: bytes, sender_vk, recip_vk):
+        if '@type' in decrypted:
+            thread = AriesThreadMixin.get_thread(decrypted)
+            if thread and thread.thid:
+                num = await self.publish(thread.thid, jwe)
+                print('')
 
     @staticmethod
     def __binding_id_from_attrs(sender_vk: Optional[str], recipient_vk: Optional[str], protocol: str) -> str:
@@ -341,7 +390,8 @@ class MediatorListener(TunnelMixin, AbstractListener):
            '@type': 'https://didcomm.org/sirius_rpc/1.0/event',
            'message': message,
            'recipient_verkey': recip_vk,
-           'sender_verkey': sender_vk
+           'sender_verkey': sender_vk,
+           'jwe': payload
         }
         event = Event(pairwise=p2p, **kwargs)
         return event
@@ -351,6 +401,8 @@ class Mediator(APIRouter, APICoProtocols):
 
     FIREBASE_SERVICE_TYPE = 'FCMService'
     DEFAULT_GROUP_ID = 'default'
+    # Reserved group-id
+    COPROTOCOLS_GROUP_ID = 'coprotocols_group_id_for_decrypt'
 
     def __init__(
             self, uri: str, my_verkey: str, mediator_verkey: str,
@@ -360,18 +412,23 @@ class Mediator(APIRouter, APICoProtocols):
             timeout: int = MediatorConnector.IO_TIMEOUT,
             pairwise_resolver: AbstractPairwiseList = None
     ):
+        self.__uri = uri
+        self.__timeout = timeout
         self.__pairwise_resolver = pairwise_resolver
         self._connector = MediatorConnector(
-            uri=uri, timeout=timeout,
+            uri=self.__uri, timeout=self.__timeout,
             http_headers={
                 didcomm_ext.return_route.HEADER_NAME: didcomm_ext.return_route.RouteType.ALL.value
             }
         )
+        self.__my_verkey = my_verkey
+        self.__mediator_verkey = mediator_verkey
+        self.__mediator_label = mediator_label
         self._coprotocol = MediatorCoProtocol(
             connector=self._connector,
-            my_verkey=my_verkey,
-            mediator_verkey=mediator_verkey,
-            time_to_live=timeout
+            my_verkey=self.__my_verkey,
+            mediator_verkey=self.__mediator_verkey,
+            time_to_live=self.__timeout
         )
         my_did_bytes = sirius_sdk.encryption.did_from_verkey(
             sirius_sdk.encryption.b58_to_bytes(my_verkey)
@@ -385,8 +442,8 @@ class Mediator(APIRouter, APICoProtocols):
         )
         self.firebase_device_id = firebase_device_id
         self._mediator_invitation = sirius_sdk.aries_rfc.Invitation(
-            label=mediator_label or 'Mediator',
-            recipient_keys=[mediator_verkey],
+            label=self.__mediator_label or 'Mediator',
+            recipient_keys=[self.__mediator_verkey],
             endpoint=uri
         )
         self._endpoints = []
@@ -397,6 +454,14 @@ class Mediator(APIRouter, APICoProtocols):
         self.__routing_keys = [qualify_key(key) for key in routing_keys]
         self.__endpoints: List[sirius_sdk.abstract.p2p.Endpoint] = []
         self.__bus: Optional[AbstractBus] = None
+
+    def copy(self) -> "Mediator":
+        inst = Mediator(
+            uri=self.__uri, my_verkey=self.__my_verkey, mediator_verkey=self.__mediator_verkey,
+            mediator_label=self.__mediator_label, routing_keys=self.__routing_keys, timeout=self.__timeout,
+            pairwise_resolver=self.__pairwise_resolver
+        )
+        return inst
 
     @property
     def is_connected(self) -> bool:
@@ -424,7 +489,8 @@ class Mediator(APIRouter, APICoProtocols):
             self.__is_connected = True
             success, mediator_did_doc = await self.__connect_to_mediator(
                 endpoint=didcomm_ext.return_route.URI_QUEUE_TRANSPORT,
-                firebase_device_id=self.firebase_device_id
+                firebase_device_id=self.firebase_device_id,
+                group_id='off'
             )
             if success:
                 # 3. P2P successfully established
@@ -485,7 +551,8 @@ class Mediator(APIRouter, APICoProtocols):
 
     async def subscribe(self, group_id: str = None) -> AbstractListener:
         # Re-Open RPC
-        # await self._connector.open()
+        await self._connector.close()
+        await self._connector.open()
         # Redeclare Group-ID in DIDDoc to re-schedule downstream
         success, diddoc = await self.__connect_to_mediator(
             endpoint='ws://',

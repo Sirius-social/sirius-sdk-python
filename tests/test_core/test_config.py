@@ -25,10 +25,13 @@ class OverriddenBus(AbstractBus):
     async def unsubscribe(self, thid: str):
         raise OverriddenMethodCalled
 
-    async def unsubscribe_ext(self, binding_ids: List[str]):
+    async def unsubscribe_ext(self, thids: List[str]):
         raise OverriddenMethodCalled
 
     async def publish(self, thid: str, payload: bytes) -> int:
+        raise OverriddenMethodCalled
+
+    async def publish_ext(self, binding_ids: List[str], payload: bytes) -> int:
         raise OverriddenMethodCalled
 
     async def get_event(self, timeout: float = None) -> AbstractBus.BytesEvent:

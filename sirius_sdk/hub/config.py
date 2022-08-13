@@ -10,7 +10,7 @@ from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
-from sirius_sdk.abstract.storage import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractKeyValueStorage
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 
 
@@ -21,7 +21,7 @@ class Config:
         crypto: APICrypto = None
         did: AbstractDID = None
         microledgers: AbstractMicroledgerList = None
-        storage: AbstractImmutableCollection = None
+        storage: AbstractKeyValueStorage = None
         pairwise_storage: AbstractPairwiseList = None
         non_secrets: AbstractNonSecrets = None
         anoncreds: AbstractAnonCreds = None
@@ -68,7 +68,7 @@ class Config:
         return self.__cloud_opts
 
     @property
-    def mediator_opts(self) ->MediatorOpts:
+    def mediator_opts(self) -> MediatorOpts:
         return self.__mediator_opts
 
     def setup_cloud(
@@ -128,7 +128,7 @@ class Config:
 
     def override(
             self, crypto: APICrypto = None, did: AbstractDID = None,
-            microledgers: AbstractMicroledgerList = None, storage: AbstractImmutableCollection = None,
+            microledgers: AbstractMicroledgerList = None, storage: AbstractKeyValueStorage = None,
             pairwise_storage: AbstractPairwiseList = None, non_secrets: AbstractNonSecrets = None,
             anon_cred: AbstractAnonCreds = None, coprotocols: APICoProtocols = None, router: APIRouter = None,
             transport: APITransport = None, contents: APIContents = None,
@@ -174,7 +174,7 @@ class Config:
         self.__overrides.microledgers = dependency
         return self
 
-    def override_storage(self, dependency: AbstractImmutableCollection) -> "Config":
+    def override_storage(self, dependency: AbstractKeyValueStorage) -> "Config":
         self.__overrides.storage = dependency
         return self
 

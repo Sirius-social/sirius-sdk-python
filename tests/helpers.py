@@ -474,7 +474,7 @@ class LocalCryptoManager(APICrypto):
         )
         return packed
 
-    async def unpack_message(self, jwe: bytes):
+    async def unpack_message(self, jwe: bytes) -> dict:
         jwe = json.loads(jwe.decode())
         protected = jwe['protected']
         payload = json.loads(base64.b64decode(protected))
@@ -493,8 +493,11 @@ class LocalCryptoManager(APICrypto):
             my_verkey=vk,
             my_sigkey=sk
         )
-        message = json.loads(message)
-        return message, sender_vk, recip_vk
+        return {
+            'message': message,
+            'recipient_verkey': recip_vk,
+            'sender_verkey': sender_vk
+        }
 
     def __check_verkey(self, verkey: str) -> (bytes, bytes):
         verkey_bytes = b58_to_bytes(verkey)
@@ -507,11 +510,15 @@ class LocalCryptoManager(APICrypto):
 class LocalDIDManager(AbstractDID):
     """You may override this code block with Aries-Askar"""
 
-    def __init__(self):
+    def __init__(self, crypto: LocalCryptoManager = None):
         self._storage = dict()
+        self._crypto = crypto
 
     async def create_and_store_my_did(self, did: str = None, seed: str = None, cid: bool = None) -> (str, str):
-        raise NotImplemented
+        if self._crypto:
+            vk = await self._crypto.create_key(seed, cid)
+            did = did_from_verkey(b58_to_bytes(vk))
+            return bytes_to_b58(did), vk
 
     async def store_their_did(self, did: str, verkey: str = None) -> None:
         descriptor = self._storage.get(did, {})

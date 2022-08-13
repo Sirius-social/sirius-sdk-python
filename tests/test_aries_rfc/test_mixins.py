@@ -1,9 +1,6 @@
 import datetime
 import uuid
 
-import pytest
-from pytime import pytime
-
 from sirius_sdk.agent.aries_rfc.mixins import *
 
 

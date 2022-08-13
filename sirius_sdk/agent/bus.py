@@ -11,6 +11,7 @@ from sirius_sdk.errors.exceptions import SiriusRPCError, SiriusTimeoutIO, Operat
 from sirius_sdk.messaging import restore_message_instance
 
 from .aries_rfc.feature_0753_bus.messages import *
+from .aries_rfc.feature_0212_pickup.messages import PickUpNoop, PickUpProblemReport
 
 
 class RpcBus(AbstractBus):
@@ -24,12 +25,12 @@ class RpcBus(AbstractBus):
         self.__client_id = str(id(self))
 
     async def subscribe(self, thid: str) -> bool:
-        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid), client_id=self.__client_id)
+        request = BusSubscribeRequest(cast=BusSubscribeRequest.Cast(thid=thid), parent_thread_id=self.__client_id)
         resp = await self.__rfc(request)
         self.__validate(resp, expected_class=BusBindResponse)
         assert isinstance(resp, BusBindResponse)
-        if resp.binding_id != thid:
-            self.__set_binding_id(thid, resp.binding_id)
+        if resp.thread_id != thid:
+            self.__set_binding_id(thid, resp.thread_id)
         return True
 
     async def subscribe_ext(self, sender_vk: List[str], recipient_vk: List[str], protocols: List[str]) -> (bool, List[str]):
@@ -39,36 +40,36 @@ class RpcBus(AbstractBus):
                 recipient_vk=recipient_vk,
                 protocols=protocols
             ),
-            client_id=self.__client_id
+            parent_thread_id=self.__client_id
         )
         resp = await self.__rfc(request)
         self.__validate(resp, expected_class=BusBindResponse)
         assert isinstance(resp, BusBindResponse)
-        if isinstance(resp.binding_id, str):
-            binding_ids = [resp.binding_id]
+        if isinstance(resp.thread_id, str):
+            thread_ids = [resp.thread_id]
         else:
-            binding_ids = resp.binding_id
-        return True, binding_ids
+            thread_ids = resp.thread_id
+        return True, thread_ids
 
     async def unsubscribe(self, thid: str):
         binding_id = self.__pop_binding_id(thid) or thid
-        request = BusUnsubscribeRequest(binding_id=binding_id, need_answer=False)
+        request = BusUnsubscribeRequest(thread_id=binding_id, need_answer=False)
         await self.__rfc(request, wait_response=False)
 
-    async def unsubscribe_ext(self, binding_ids: List[str]):
+    async def unsubscribe_ext(self, thids: List[str]):
         actual_binding_ids = []
-        for bid in binding_ids:
-            actual_bid = self.__pop_binding_id(bid) or bid
-            actual_binding_ids.append(actual_bid)
+        for thid in thids:
+            actual_thid = self.__pop_binding_id(thid) or thid
+            actual_binding_ids.append(actual_thid)
         request = BusUnsubscribeRequest(
-            binding_id=actual_binding_ids,
+            thread_id=actual_binding_ids,
             need_answer=False  # don't wait response
         )
         await self.__rfc(request, wait_response=False)
 
     async def publish(self, thid: str, payload: bytes) -> int:
         binding_id = self.__get_binding_id(thid) or thid
-        request = BusPublishRequest(binding_id=binding_id, payload=payload)
+        request = BusPublishRequest(thread_id=binding_id, payload=payload)
         resp = await self.__rfc(request)
         self.__validate(resp, expected_class=BusPublishResponse)
         assert isinstance(resp, BusPublishResponse)
@@ -83,17 +84,27 @@ class RpcBus(AbstractBus):
             wait_timeout = INFINITE_TIMEOUT
             cut_stamp = None
 
+        noop = PickUpNoop()
+        if timeout is not None:
+            noop.timing = PickUpNoop.Timing(delay_milli=timeout*1000)
+        await self.__connector.write(noop)
+
         while True:
             payload = await self.__connector.read(wait_timeout)
             ok, resp = restore_message_instance(json.loads(payload.decode()))
             if ok:
                 if isinstance(resp, BusEvent):
-                    return AbstractBus.BytesEvent(binding_id=resp.binding_id, payload=resp.payload)
+                    return AbstractBus.BytesEvent(thread_id=resp.thread_id, payload=resp.payload)
                 elif isinstance(resp, BusBindResponse):
-                    if resp.aborted is True and resp.client_id == self.__client_id:
+                    if resp.aborted is True and resp.parent_thread_id == self.__client_id:
                         raise OperationAbortedManually('Bus events awaiting was aborted by user')
                 elif isinstance(resp, BusProblemReport):
                     raise SiriusRPCError(resp.explain)
+                elif isinstance(resp, PickUpProblemReport):
+                    if resp.problem_code == PickUpProblemReport.PROBLEM_CODE_TIMEOUT_OCCURRED:
+                        raise SiriusTimeoutIO(resp.explain)
+                    else:
+                        SiriusRPCError(resp.explain)
             if wait_timeout != INFINITE_TIMEOUT:
                 _ = (cut_stamp - datetime.datetime.now()).total_seconds()
                 wait_timeout = math.ceil(_)
@@ -111,7 +122,7 @@ class RpcBus(AbstractBus):
                     msg = Message(**decrypted['message'])
 
                 return AbstractBus.MessageEvent(
-                    binding_id=event.binding_id,
+                    thread_id=event.thread_id,
                     message=msg,
                     sender_verkey=decrypted.get('sender_verkey', None),
                     recipient_verkey=decrypted.get('recipient_verkey', None)
@@ -120,7 +131,7 @@ class RpcBus(AbstractBus):
             raise SiriusRPCError('Unexpected message format')
 
     async def abort(self):
-        request = BusUnsubscribeRequest(client_id=self.__client_id, aborted=True)
+        request = BusUnsubscribeRequest(parent_thread_id=self.__client_id, aborted=True)
         await self.__rfc(request, wait_response=False)
 
     async def __rfc(self, request: BusOperation, wait_response: bool = True) -> Optional[BusOperation]:
