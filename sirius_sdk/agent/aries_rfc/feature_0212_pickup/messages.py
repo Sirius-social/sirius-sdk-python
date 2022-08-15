@@ -95,10 +95,6 @@ class PickUpBatchRequest(BasePickUpMessage):
     def batch_size(self) -> Optional[str]:
         return self.get('batch_size', None)
 
-    @property
-    def pending_timeout(self) -> Optional[int]:
-        return self.get('pending_timeout', 0)
-
 
 class PickUpBatchResponse(BasePickUpMessage):
 

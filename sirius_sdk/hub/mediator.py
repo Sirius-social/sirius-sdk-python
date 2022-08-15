@@ -256,11 +256,17 @@ class MediatorBus(AbstractBus, TunnelMixin):
 
         while __in_loop__():
             if expire_at is None:
-                pending_timeout = None
+                wait_timeout = None
             else:
                 dt_diff = expire_at - datetime.datetime.now()
-                pending_timeout = dt_diff.total_seconds()
-            request = PickUpNoop(pending_timeout=math.ceil(pending_timeout) if pending_timeout is not None else None)
+                wait_timeout = dt_diff.total_seconds()
+
+            request = PickUpNoop()
+            if wait_timeout is not None:
+                request.timing = PickUpNoop.Timing(delay_milli=math.ceil(wait_timeout * 1000))
+            else:
+                request.timing = PickUpNoop.Timing(delay_milli=5*60 * 1000)  # wait for 5 min by default
+
             request.please_ack = True
             payload = await self.pack(request)
             await self.connector.write(payload)
@@ -277,8 +283,11 @@ class MediatorBus(AbstractBus, TunnelMixin):
                     elif isinstance(resp, BusProblemReport):
                         raise SiriusRPCError(resp.explain)
                     elif isinstance(resp, PickUpProblemReport):
-                        if resp.problem_code == PickUpProblemReport.PROBLEM_CODE_EMPTY:
-                            raise SiriusTimeoutIO
+                        if resp.problem_code == PickUpProblemReport.PROBLEM_CODE_TIMEOUT_OCCURRED:
+                            if wait_timeout is not None:
+                                raise SiriusTimeoutIO
+                            else:
+                                continue
                         else:
                             raise SiriusRPCError(resp.explain)
                 else:

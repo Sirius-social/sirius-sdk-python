@@ -435,8 +435,10 @@ async def test_coprotocols_ping_pong(mediator_uri: str, mediator_verkey: str):
 
     async def requester(cfg: sirius_sdk.Config, to: sirius_sdk.Pairwise):
         async with sirius_sdk.context(cfg):
+            print('%')
             bus = await sirius_sdk.spawn_coprotocol()
             await bus.subscribe(thid=thread_id)
+            print('%')
             await asyncio.sleep(1)
             for n in range(test_msg_count):
                 print('#')
@@ -444,7 +446,8 @@ async def test_coprotocols_ping_pong(mediator_uri: str, mediator_verkey: str):
                     '@id': 'trust-ping-message-' + uuid.uuid4().hex,
                     '@type': 'https://didcomm.org/trust_ping/1.0/ping',
                     "comment": "Hi. Are you listening?",
-                    "counter": n
+                    "counter": n,
+                    "done": n == test_msg_count-1
                 })
                 ThreadMixin.set_thread(req, ThreadMixin.Thread(thid=thread_id))
                 print('#')
@@ -452,17 +455,19 @@ async def test_coprotocols_ping_pong(mediator_uri: str, mediator_verkey: str):
                 print('#')
                 resp = await bus.get_message()
                 print('#')
+        print('Done')
 
     async def responder(cfg: sirius_sdk.Config, to: sirius_sdk.Pairwise):
         async with sirius_sdk.context(cfg):
+            print('%')
             bus = await sirius_sdk.spawn_coprotocol()
             await bus.subscribe(thid=thread_id)
+            print('%')
             await asyncio.sleep(1)
             while True:
                 print('#')
                 event = await bus.get_message()
                 req = event.message
-                print('#')
                 assert str(req.type) == 'https://didcomm.org/trust_ping/1.0/ping'
                 resp = Message({
                     '@id': 'trust-ping-message-' + uuid.uuid4().hex,
@@ -473,21 +478,25 @@ async def test_coprotocols_ping_pong(mediator_uri: str, mediator_verkey: str):
                 print('#')
                 await sirius_sdk.send_to(resp, to)
                 print('#')
+                if req['done'] is True:
+                    return
 
-    async def decrypting_in_background(cfg: sirius_sdk.Config):
+    async def decrypting_in_background(cfg: sirius_sdk.Config, label: str = ''):
         async with sirius_sdk.context(cfg):
-            listener = await sirius_sdk.subscribe('DECRYPTING')
+            print(f'{label}')
+            listener = await sirius_sdk.subscribe(f'DECRYPTING-{label}')
             bus = await sirius_sdk.spawn_coprotocol()
             async for e in listener:
                 if e.message and isinstance(e.message, Message) and e.jwe:
                     thread = ThreadMixin.get_thread(e.message)
                     if thread and thread.thid:
-                        await bus.publish(thread.thid, e.jwe)
+                        num = await bus.publish(thread.thid, e.jwe)
+                        assert num > 0
 
     await run_coroutines(
         requester(cfg1, p2p1),
         responder(cfg2, p2p2),
-        decrypting_in_background(cfg1),
-        decrypting_in_background(cfg2),
-        timeout=1000
+        decrypting_in_background(cfg1, 'Requester'),
+        decrypting_in_background(cfg2, 'Responder'),
+        timeout=5
     )

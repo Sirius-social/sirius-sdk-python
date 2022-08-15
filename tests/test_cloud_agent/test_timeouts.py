@@ -69,6 +69,7 @@ async def test_agent_rcv_timeout(test_suite: ServerTestSuite):
         await conn_with_little_global_timeout.close()
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_state_machines_timeout(test_suite: ServerTestSuite):
     params_me = test_suite.get_agent_params('agent4')
