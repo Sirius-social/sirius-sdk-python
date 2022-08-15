@@ -13,7 +13,7 @@ from sirius_sdk.abstract.listener import AbstractListener, Event
 from sirius_sdk.didcomm import extentions as didcomm_ext
 from sirius_sdk.base import BaseConnector, INFINITE_TIMEOUT
 from sirius_sdk.abstract.p2p import Endpoint
-from sirius_sdk.hub.coprotocols_bus import AbstractP2PCoProtocol
+from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol
 from sirius_sdk.abstract.api import APIRouter, APICoProtocols
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.abstract.bus import AbstractBus

@@ -2,7 +2,7 @@ from typing import Optional
 
 from sirius_sdk import Pairwise
 from sirius_sdk.agent import Pong, Ping
-from sirius_sdk.hub.coprotocols_bus import CoProtocolThreadedP2P
+from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 
 
 async def ping_their(their: Pairwise, comment: str = None, wait_timeout: int = 15) -> (bool, Optional[Pong]):

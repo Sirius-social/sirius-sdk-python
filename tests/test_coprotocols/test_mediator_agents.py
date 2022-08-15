@@ -5,7 +5,7 @@ import pytest
 
 import sirius_sdk
 from sirius_sdk import Agent, TheirEndpoint, Pairwise
-import sirius_sdk.hub.coprotocols_bus
+import sirius_sdk.hub.coprotocols
 from sirius_sdk.errors.exceptions import *
 from tests.conftest import get_pairwise
 from sirius_sdk.messaging import Message
@@ -16,7 +16,7 @@ from .helpers import MSG_LOG, check_msg_log, TEST_MSG_TYPES
 
 
 async def routine1(
-        co: sirius_sdk.hub.coprotocols_bus.AbstractP2PCoProtocol,
+        co: sirius_sdk.hub.coprotocols.AbstractP2PCoProtocol,
         cfg: sirius_sdk.Config, **kwargs
 ):
     async with sirius_sdk.context(cfg):
@@ -44,7 +44,7 @@ async def routine1(
 
 
 async def routine2(
-        co: sirius_sdk.hub.coprotocols_bus.AbstractP2PCoProtocol,
+        co: sirius_sdk.hub.coprotocols.AbstractP2PCoProtocol,
         cfg: sirius_sdk.Config, **kwargs
 ):
     async with sirius_sdk.context(cfg):
@@ -93,8 +93,8 @@ async def test__their_endpoint_coprotocol(mediator_uri: str, mediator_verkey: st
     # FIRE!!!
     their1 = TheirEndpoint(agent2_endpoint, my_vk2)
     their2 = TheirEndpoint(agent1_endpoint, my_vk1)
-    co1 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2PAnon(my_vk1, their1, ['test_protocol'])
-    co2 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2PAnon(my_vk2, their2, ['test_protocol'])
+    co1 = sirius_sdk.hub.coprotocols.CoProtocolP2PAnon(my_vk1, their1, ['test_protocol'])
+    co2 = sirius_sdk.hub.coprotocols.CoProtocolP2PAnon(my_vk2, their2, ['test_protocol'])
     MSG_LOG.clear()
     await run_coroutines(
         routine1(co1, cfg1),
@@ -159,8 +159,8 @@ async def test__threadbased_coprotocol(mediator_uri: str, mediator_verkey: str):
     )
 
     thread_id = 'threadbased_coprotocol-' + uuid.uuid4().hex
-    co1 = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thread_id, pairwise1)
-    co2 = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thread_id, pairwise2)
+    co1 = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thread_id, pairwise1)
+    co2 = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thread_id, pairwise2)
     MSG_LOG.clear()
     await run_coroutines(
         routine1(co1, cfg1),

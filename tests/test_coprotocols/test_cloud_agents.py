@@ -6,7 +6,7 @@ import pytest
 import sirius_sdk
 import sirius_sdk.hub
 from sirius_sdk import Agent, TheirEndpoint, Pairwise
-import sirius_sdk.hub.coprotocols_bus
+import sirius_sdk.hub.coprotocols
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message
 from tests.conftest import get_pairwise, get_pairwise3
@@ -17,7 +17,7 @@ from .helpers import MSG_LOG, check_msg_log, TEST_MSG_TYPES
 
 
 async def routine1(
-        co: sirius_sdk.hub.coprotocols_bus.AbstractP2PCoProtocol,
+        co: sirius_sdk.hub.coprotocols.AbstractP2PCoProtocol,
         server_address: str = None, credentials: bytes = None, p2p: sirius_sdk.P2PConnection = None,
         **kwargs
 ):
@@ -44,7 +44,7 @@ async def routine1(
 
 
 async def routine2(
-        co: sirius_sdk.hub.coprotocols_bus.AbstractP2PCoProtocol,
+        co: sirius_sdk.hub.coprotocols.AbstractP2PCoProtocol,
         server_address: str = None, credentials: bytes = None, p2p: sirius_sdk.P2PConnection = None,
         **kwargs
 ):
@@ -84,8 +84,8 @@ async def test__their_endpoint_coprotocol(test_suite: ServerTestSuite):
     # FIRE!!!
     their1 = TheirEndpoint(agent2_endpoint, entity2['verkey'])
     their2 = TheirEndpoint(agent1_endpoint, entity1['verkey'])
-    co1 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2PAnon(entity1['verkey'], their1, ['test_protocol'])
-    co2 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2PAnon(entity2['verkey'], their2, ['test_protocol'])
+    co1 = sirius_sdk.hub.coprotocols.CoProtocolP2PAnon(entity1['verkey'], their1, ['test_protocol'])
+    co2 = sirius_sdk.hub.coprotocols.CoProtocolP2PAnon(entity2['verkey'], their2, ['test_protocol'])
     MSG_LOG.clear()
     await run_coroutines(
         routine1(co1, **agent1_params),
@@ -100,8 +100,8 @@ async def test__pairwise_coprotocol(config_a: dict, config_b: dict):
     a2b = await get_pairwise3(me=config_a, their=config_b)
     b2a = await get_pairwise3(me=config_b, their=config_a)
 
-    co1 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2P(a2b, ['test_protocol'])
-    co2 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2P(b2a, ['test_protocol'])
+    co1 = sirius_sdk.hub.coprotocols.CoProtocolP2P(a2b, ['test_protocol'])
+    co2 = sirius_sdk.hub.coprotocols.CoProtocolP2P(b2a, ['test_protocol'])
     MSG_LOG.clear()
     await run_coroutines(
         routine1(co1, **config_a),
@@ -115,8 +115,8 @@ async def test__threadbased_coprotocol(config_a: dict, config_b: dict):
     a2b = await get_pairwise3(me=config_a, their=config_b)
     b2a = await get_pairwise3(me=config_b, their=config_a)
     thread_id = uuid.uuid4().hex
-    co1 = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thread_id, a2b)
-    co2 = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thread_id, b2a)
+    co1 = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thread_id, a2b)
+    co2 = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thread_id, b2a)
     MSG_LOG.clear()
     await run_coroutines(
         routine1(co1, **config_a),
@@ -130,10 +130,10 @@ async def test__coprotocols_intersections(config_a: dict, config_b: dict):
     a2b = await get_pairwise3(me=config_a, their=config_b)
     b2a = await get_pairwise3(me=config_b, their=config_a)
     thread_id = uuid.uuid4().hex
-    co1_threaded = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thread_id, a2b)
-    co2_threaded = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thread_id, b2a)
-    co1_p2p = sirius_sdk.hub.coprotocols_bus.CoProtocolP2P(a2b, ['test_protocol'])
-    co2_p2p = sirius_sdk.hub.coprotocols_bus.CoProtocolP2P(b2a, ['test_protocol'])
+    co1_threaded = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thread_id, a2b)
+    co2_threaded = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thread_id, b2a)
+    co1_p2p = sirius_sdk.hub.coprotocols.CoProtocolP2P(a2b, ['test_protocol'])
+    co2_p2p = sirius_sdk.hub.coprotocols.CoProtocolP2P(b2a, ['test_protocol'])
     try:
         MSG_LOG.clear()
         await run_coroutines(
@@ -163,7 +163,7 @@ async def test__coprotocols_intersections(config_a: dict, config_b: dict):
 @pytest.mark.asyncio
 async def test_coprotocol_abort(config_a: dict, config_b: dict):
     a2b = await get_pairwise3(config_a, config_b)
-    co = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=a2b, time_to_live=100)
+    co = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=a2b, time_to_live=100)
     assert co.is_alive is False
     assert co.is_aborted is False
     exc = None
@@ -202,7 +202,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(config_a: dict, config_b
     a2b = await get_pairwise3(config_a, config_b)
     b2a = await get_pairwise3(config_b, config_a)
 
-    co = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=a2b)
+    co = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thid=uuid.uuid4().hex, to=a2b)
     new_thread_id = 'new-thread-id-' + uuid.uuid4().hex
     msg_log = []
 
@@ -219,7 +219,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(config_a: dict, config_b
                 pass
 
             try:
-                new_co_on_same_hub = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thid=new_thread_id, to=a2b)
+                new_co_on_same_hub = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thid=new_thread_id, to=a2b)
                 msg, _, _ = await new_co_on_same_hub.get_one()
                 print('!')
                 msg_log.append(msg)
@@ -236,7 +236,7 @@ async def test_coprotocol_abort_multiple_ops_single_hub(config_a: dict, config_b
         await asyncio.sleep(3)
         async with sirius_sdk.context(**kwargs):
             try:
-                new_co_on_same_hub = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(thid=new_thread_id, to=b2a)
+                new_co_on_same_hub = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(thid=new_thread_id, to=b2a)
                 await new_co_on_same_hub.send(
                     sirius_sdk.aries_rfc.Ping(comment='Test Ping')
                 )
@@ -264,7 +264,7 @@ async def test_coprotocol_threaded_theirs_send(config_a: dict, config_b: dict, c
         nonlocal thread_id
         async with sirius_sdk.context(**kwargs):
             msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
-            co = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedTheirs(thread_id, [a2b, a2c])
+            co = sirius_sdk.hub.coprotocols.CoProtocolThreadedTheirs(thread_id, [a2b, a2c])
             await co.send(msg)
 
     async def reader(**kwargs):
@@ -303,7 +303,7 @@ async def test_coprotocol_threaded_theirs_switch(config_a: dict, config_b: dict,
         nonlocal statuses
         async with sirius_sdk.context(**kwargs):
             msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
-            co = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedTheirs(thread_id, [a2b, a2c])
+            co = sirius_sdk.hub.coprotocols.CoProtocolThreadedTheirs(thread_id, [a2b, a2c])
             statuses = await co.switch(msg)
 
     async def responder(**kwargs):
@@ -344,7 +344,7 @@ async def test_coprotocol_threaded_theirs_switch_timeout(config_a: dict, config_
         nonlocal ttl
         async with sirius_sdk.context(**kwargs):
             msg = sirius_sdk.aries_rfc.Ping(comment='Test Ping')
-            co = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedTheirs(thread_id, [a2b, a2c], time_to_live=ttl)
+            co = sirius_sdk.hub.coprotocols.CoProtocolThreadedTheirs(thread_id, [a2b, a2c], time_to_live=ttl)
             statuses = await co.switch(msg)
 
     async def responder(**kwargs):
@@ -376,16 +376,16 @@ async def test_coprotocol_timeouts(config_a: dict, config_b: dict):
     timeout = 1
     p2p = await get_pairwise3(me=config_a, their=config_b)
 
-    co_under_test1 = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedP2P(
+    co_under_test1 = sirius_sdk.hub.coprotocols.CoProtocolThreadedP2P(
         thid=uuid.uuid4().hex, to=p2p, time_to_live=timeout
     )
-    co_under_test2 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2PAnon(
+    co_under_test2 = sirius_sdk.hub.coprotocols.CoProtocolP2PAnon(
         p2p.me.verkey, p2p.their, ['test_protocol'], time_to_live=timeout
     )
-    co_under_test3 = sirius_sdk.hub.coprotocols_bus.CoProtocolP2P(
+    co_under_test3 = sirius_sdk.hub.coprotocols.CoProtocolP2P(
         p2p, ['test_protocol'], time_to_live=timeout
     )
-    co_under_test4 = sirius_sdk.hub.coprotocols_bus.CoProtocolThreadedTheirs(
+    co_under_test4 = sirius_sdk.hub.coprotocols.CoProtocolThreadedTheirs(
         thid=uuid.uuid4().hex, theirs=[p2p]
     )
 

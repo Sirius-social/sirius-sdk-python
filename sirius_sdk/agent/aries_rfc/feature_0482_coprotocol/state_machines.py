@@ -8,7 +8,7 @@ from typing import Optional, Union, List, Dict, Any, Tuple
 
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
-from sirius_sdk.hub.coprotocols_bus import CoProtocolThreadedP2P
+from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
 

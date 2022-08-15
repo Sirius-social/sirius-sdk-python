@@ -142,7 +142,7 @@ async def test_caller_problem_report(A: Agent, B: Agent, test_suite: ServerTestS
 
 
 @pytest.mark.asyncio
-async def test_resipe_1(A: Agent, B: Agent, test_suite: ServerTestSuite):
+async def test_recipe_1(A: Agent, B: Agent, test_suite: ServerTestSuite):
     caller = A
     called = B
     caller_params = test_suite.get_agent_params('agent1')
