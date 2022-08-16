@@ -130,15 +130,17 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
         self._is_open = True
 
     async def close(self):
-        async with self.coprotocol() as co:
-            self._is_open = False
-            req = StreamOperation(
-                operation=StreamOperation.OperationCode.CLOSE
-            )
-            await co.send(req)
-            self._current_chunk = 0
-            self._chunks_num = 0
-            self._seekable = None
+        if self._is_open:
+            async with self.coprotocol() as co:
+                self._is_open = False
+                req = StreamOperation(
+                    operation=StreamOperation.OperationCode.CLOSE
+                )
+                await co.send(req)
+                self._current_chunk = 0
+                self._chunks_num = 0
+                self._seekable = None
+            await self.close_coprotocol()
 
     async def seek_to_chunk(self, no: int) -> int:
         resp = await self.rpc(
@@ -285,14 +287,17 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
         :param exit_on_close: (bool) exit loop on close
         :return:
         """
-        async with self.coprotocol(close_on_exit=True) as co:
-            while True:
-                request, sender_verkey, recipient_verkey = await co.get_one()
-                await self.handle(request, proxy_to)
-                if isinstance(request, StreamOperation):
-                    if request.operation == StreamOperation.OperationCode.CLOSE and exit_on_close:
-                        return
-        pass
+        try:
+            async with self.coprotocol(close_on_exit=True) as co:
+                while True:
+                    request, sender_verkey, recipient_verkey = await co.get_one()
+                    await self.handle(request, proxy_to)
+                    if isinstance(request, StreamOperation):
+                        if request.operation == StreamOperation.OperationCode.CLOSE and exit_on_close:
+                            return
+        finally:
+            if self.__coprotocol:
+                await self.close_coprotocol()
 
     async def handle(
             self, request: Union[StreamOperation, ConfidentialStorageMessageProblemReport],
@@ -427,15 +432,17 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
         self._is_open = True
 
     async def close(self):
-        async with self.coprotocol() as co:
-            self._is_open = False
-            req = StreamOperation(
-                operation=StreamOperation.OperationCode.CLOSE
-            )
-            await co.send(req)
-            self._current_chunk = 0
-            self._chunks_num = 0
-            self._seekable = None
+        if self._is_open:
+            async with self.coprotocol() as co:
+                self._is_open = False
+                req = StreamOperation(
+                    operation=StreamOperation.OperationCode.CLOSE
+                )
+                await co.send(req)
+                self._current_chunk = 0
+                self._chunks_num = 0
+                self._seekable = None
+            await self.close_coprotocol()
 
     async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
         if no is not None:
@@ -597,14 +604,17 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         :param exit_on_close: (bool) exit loop on close
         :return:
         """
-        async with self.coprotocol(close_on_exit=True) as co:
-            while True:
-                request, sender_verkey, recipient_verkey = await co.get_one()
-                await self.handle(request, proxy_to)
-                if isinstance(request, StreamOperation):
-                    if request.operation == StreamOperation.OperationCode.CLOSE and exit_on_close:
-                        return
-        pass
+        try:
+            async with self.coprotocol(close_on_exit=True) as co:
+                while True:
+                    request, sender_verkey, recipient_verkey = await co.get_one()
+                    await self.handle(request, proxy_to)
+                    if isinstance(request, StreamOperation):
+                        if request.operation == StreamOperation.OperationCode.CLOSE and exit_on_close:
+                            return
+        finally:
+            if self.__coprotocol:
+                await self.close_coprotocol()
 
     async def handle(
             self, request: Union[StreamOperation, ConfidentialStorageMessageProblemReport],

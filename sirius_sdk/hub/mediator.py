@@ -274,7 +274,7 @@ class MediatorBus(AbstractBus, TunnelMixin):
             resp, sender_vk, recip_vk = await self.unpack(jwe)
             if isinstance(resp, Message):
                 thread = ThreadMixin.get_thread(resp)
-                if thread and (thread.pthid == self.__client_id) or (thread.thid == request.id):
+                if thread and ((thread.pthid == self.__client_id) or (thread.thid == request.id)):
                     if isinstance(resp, BusEvent):
                         return AbstractBus.BytesEvent(thread_id=resp.thread_id, payload=resp.payload)
                     elif isinstance(resp, BusBindResponse):

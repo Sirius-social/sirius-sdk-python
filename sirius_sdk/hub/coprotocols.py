@@ -110,11 +110,12 @@ class AbstractCoProtocol(ABC):
             return None
 
     async def _setup_context(self, message: Message):
+        if isinstance(message, PleaseAckMixin):
+            message.please_ack = True
         ack_message_id = self._extract_ack_id(message)
-        if ack_message_id:
+        if ack_message_id and ack_message_id not in self._please_ack_ids:
             await self._bus.subscribe(ack_message_id)
-            if ack_message_id not in self._please_ack_ids:
-                self._please_ack_ids.append(ack_message_id)
+            self._please_ack_ids.append(ack_message_id)
 
     async def _cleanup_context(self, message: Message = None):
         if message:
@@ -122,6 +123,11 @@ class AbstractCoProtocol(ABC):
             if ack_message_id:
                 await self._bus.unsubscribe(ack_message_id)
                 self._please_ack_ids = [i for i in self._please_ack_ids if i != ack_message_id]
+            thread = ThreadMixin.get_thread(message)
+            if thread:
+                if thread.thid in self._please_ack_ids:
+                    await self._bus.unsubscribe(thread.thid)
+                    self._please_ack_ids = [i for i in self._please_ack_ids if i != thread.thid]
         else:
             await self._bus.unsubscribe_ext(self._please_ack_ids)
             self._please_ack_ids.clear()
@@ -203,6 +209,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
                 await self.clean()
                 raise
             # process event
+            await self._after(event.message)
             if event.thread_id in expected_binding_ids:
                 return event.message, event.sender_verkey, event.recipient_verkey
             else:
@@ -258,6 +265,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
                 message.please_ack = True
             if self.__ack_thread_id and not message.thread_id:  # Don't rewrite earlier set values
                 message.thread_id = self.__ack_thread_id
+                self.__ack_thread_id = None
 
     async def _after(self, message: Message):
         ack_id = self._extract_ack_id(message)
@@ -308,6 +316,7 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
             raise SiriusRPCError('Error with subscribe to protocol events')
 
     async def _before(self, message: Message, include_please_ack: bool = True):
+        await super()._before(message, include_please_ack)
         thread = ThreadMixin.get_thread(message)
         if thread is None:  # Don't rewrite externally set thread values
             thread = ThreadMixin.Thread(
@@ -318,6 +327,7 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
             ThreadMixin.set_thread(message, thread)
 
     async def _after(self, message: Message):
+        await super()._after(message)
         thread = ThreadMixin.get_thread(message)
         respond_sender_order = thread.sender_order if thread is not None else None
         if respond_sender_order is not None and self.__to is not None:

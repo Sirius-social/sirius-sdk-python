@@ -85,16 +85,19 @@ class RpcBus(AbstractBus):
             cut_stamp = None
 
         noop = PickUpNoop()
+        noop.please_ack = True
         if timeout is not None:
             noop.timing = PickUpNoop.Timing(delay_milli=timeout*1000)
         await self.__connector.write(noop)
 
         while True:
-            payload = await self.__connector.read(wait_timeout)
+            # Don't set timeout on websocket layer cause of message holder operate with timings on its side
+            payload = await self.__connector.read()
+
             ok, resp = restore_message_instance(json.loads(payload.decode()))
             if ok and isinstance(resp, Message):
                 thread = ThreadMixin.get_thread(resp)
-                if thread and (thread.pthid == self.__client_id):
+                if thread and ((thread.pthid == self.__client_id) or (thread.thid == noop.id)):
                     if isinstance(resp, BusEvent):
                         return AbstractBus.BytesEvent(thread_id=resp.thread_id, payload=resp.payload)
                     elif isinstance(resp, BusBindResponse):
