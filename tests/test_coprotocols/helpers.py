@@ -1,5 +1,5 @@
 TEST_MSG_TYPES = [
-    'https://didcomm.org//test_protocol/1.0/request-1',
+    'https://didcomm.org/test_protocol/1.0/request-1',
     'https://didcomm.org/test_protocol/1.0/response-1',
     'https://didcomm.org/test_protocol/1.0/request-2',
     'https://didcomm.org/test_protocol/1.0/response-2',
