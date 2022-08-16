@@ -216,7 +216,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
                 # co-protocols are competitors, so
                 # they operate in displace multitasking mode
                 logging.warning(
-                    f'Expected binding_id: "{expected_binding_ids}" actually "{event.binding_id}" was received'
+                    f'Expected binding_id: "{expected_binding_ids}" actually "{event.thread_id}" was received'
                 )
 
     async def switch(self, message: Message) -> (bool, Message):
