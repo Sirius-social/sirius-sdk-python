@@ -92,19 +92,21 @@ class RpcBus(AbstractBus):
         while True:
             payload = await self.__connector.read(wait_timeout)
             ok, resp = restore_message_instance(json.loads(payload.decode()))
-            if ok:
-                if isinstance(resp, BusEvent):
-                    return AbstractBus.BytesEvent(thread_id=resp.thread_id, payload=resp.payload)
-                elif isinstance(resp, BusBindResponse):
-                    if resp.aborted is True and resp.parent_thread_id == self.__client_id:
-                        raise OperationAbortedManually('Bus events awaiting was aborted by user')
-                elif isinstance(resp, BusProblemReport):
-                    raise SiriusRPCError(resp.explain)
-                elif isinstance(resp, PickUpProblemReport):
-                    if resp.problem_code == PickUpProblemReport.PROBLEM_CODE_TIMEOUT_OCCURRED:
-                        raise SiriusTimeoutIO(resp.explain)
-                    else:
-                        SiriusRPCError(resp.explain)
+            if ok and isinstance(resp, Message):
+                thread = ThreadMixin.get_thread(resp)
+                if thread and (thread.pthid == self.__client_id):
+                    if isinstance(resp, BusEvent):
+                        return AbstractBus.BytesEvent(thread_id=resp.thread_id, payload=resp.payload)
+                    elif isinstance(resp, BusBindResponse):
+                        if resp.aborted is True and resp.parent_thread_id == self.__client_id:
+                            raise OperationAbortedManually('Bus events awaiting was aborted by user')
+                    elif isinstance(resp, BusProblemReport):
+                        raise SiriusRPCError(resp.explain)
+                    elif isinstance(resp, PickUpProblemReport):
+                        if resp.problem_code == PickUpProblemReport.PROBLEM_CODE_TIMEOUT_OCCURRED:
+                            raise SiriusTimeoutIO(resp.explain)
+                        else:
+                            SiriusRPCError(resp.explain)
             if wait_timeout != INFINITE_TIMEOUT:
                 _ = (cut_stamp - datetime.datetime.now()).total_seconds()
                 wait_timeout = math.ceil(_)

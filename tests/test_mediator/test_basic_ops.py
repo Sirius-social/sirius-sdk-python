@@ -105,6 +105,26 @@ async def test_bus(mediator_invitation: dict):
 
 
 @pytest.mark.asyncio
+async def test_multiple_bus_instance_for_single_connection(mediator_invitation: dict):
+    thid = 'thread-' + uuid.uuid4().hex
+    content = b'Message-X'
+
+    async with sirius_sdk.context(crypto=LocalCryptoManager(), did=LocalDIDManager()):
+        my_vk = await sirius_sdk.Crypto.create_key()
+        session = create_mediator_instance(mediator_invitation, my_vk)
+        await session.connect()
+        try:
+            bus1 = await session.spawn_coprotocol()
+            bus2 = await session.spawn_coprotocol()
+            await bus1.subscribe(thid)
+            await bus1.publish(thid, content)
+            with pytest.raises(SiriusTimeoutIO):
+                await bus2.get_event(timeout=3)
+        finally:
+            await session.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_bus_abort(mediator_invitation: dict):
     async with sirius_sdk.context(crypto=LocalCryptoManager(), did=LocalDIDManager()):
         my_vk = await sirius_sdk.Crypto.create_key()

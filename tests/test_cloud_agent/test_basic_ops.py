@@ -539,6 +539,20 @@ async def test_bus_for_complex_protocol(test_suite: ServerTestSuite):
 
 
 @pytest.mark.asyncio
+async def test_multiple_bus_instance_for_single_connection(test_suite: ServerTestSuite):
+    params = test_suite.get_agent_params('agent1')
+    thid = 'test_multiple_bus_instance_for_single_connection-' + uuid.uuid4().hex
+    content = b'Message-X'
+    async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
+        bus1 = await sirius_sdk.spawn_coprotocol()
+        bus2 = await sirius_sdk.spawn_coprotocol()
+        await bus1.subscribe(thid)
+        await bus1.publish(thid, content)
+        with pytest.raises(SiriusTimeoutIO):
+            await bus2.get_event(timeout=3)
+
+
+@pytest.mark.asyncio
 async def test_spawn_coprotocol(test_suite: ServerTestSuite):
     params = test_suite.get_agent_params('agent1')
     async with sirius_sdk.context(params['server_address'], params['credentials'], params['p2p']):
