@@ -309,7 +309,7 @@ async def test_load_balancer_with_group_id(mediator_invitation: dict):
             fut1 = asyncio.ensure_future(listen_async(session1_group1, group1))
             fut2 = asyncio.ensure_future(listen_async(session2_group1, group1))
             fut3 = asyncio.ensure_future(listen_async(session3_group2, group2))
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
             message = Message({
                 '@id': 'trust-ping-message-' + uuid.uuid4().hex,
