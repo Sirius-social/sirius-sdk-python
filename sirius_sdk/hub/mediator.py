@@ -66,7 +66,7 @@ class MediatorConnector(BaseConnector):
             await self._ws.close()
             self._ws = None
 
-    async def read(self, timeout: int = None) -> bytes:
+    async def read(self, timeout: float = None) -> bytes:
         if timeout == INFINITE_TIMEOUT:
             _timeout = None
         else:
@@ -270,7 +270,12 @@ class MediatorBus(AbstractBus, TunnelMixin):
             request.please_ack = True
             payload = await self.pack(request)
             await self.connector.write(payload)
-            jwe = await self.connector.read()
+            if timeout is None:
+                read_timeout = None
+            else:
+                read_timeout = 1.1*timeout   # Increase if pickup protocol not raise response
+            jwe = await self.connector.read(read_timeout)
+
             resp, sender_vk, recip_vk = await self.unpack(jwe)
             if isinstance(resp, Message):
                 thread = ThreadMixin.get_thread(resp)
