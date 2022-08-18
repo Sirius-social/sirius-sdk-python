@@ -92,7 +92,11 @@ class RpcBus(AbstractBus):
 
         while True:
             # Don't set timeout on websocket layer cause of message holder operate with timings on its side
-            payload = await self.__connector.read()
+            if timeout is None:
+                read_timeout = None
+            else:
+                read_timeout = 1.1*timeout   # Increase if pickup protocol not raise response
+            payload = await self.__connector.read(read_timeout)
 
             ok, resp = restore_message_instance(json.loads(payload.decode()))
             if ok and isinstance(resp, Message):

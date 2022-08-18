@@ -119,7 +119,7 @@ class WebSocketConnector(BaseConnector):
         await self.close()
         await self.open()
 
-    async def read(self, timeout: int = None) -> bytes:
+    async def read(self, timeout: float = None) -> bytes:
         if timeout == INFINITE_TIMEOUT:
             _timeout = None
         else:
