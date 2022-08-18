@@ -79,7 +79,6 @@ class StreamOperation(BaseConfidentialStorageMessage):
         return self.get('params', None)
 
 
-
 class StreamOperationResult(BaseConfidentialStorageMessage):
 
     NAME = 'stream-operation-result'

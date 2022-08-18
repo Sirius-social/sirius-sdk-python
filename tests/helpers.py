@@ -12,9 +12,8 @@ import aiohttp
 import pytest
 import sirius_sdk
 
-from sirius_sdk import Agent, Pairwise
+from sirius_sdk import Agent, Pairwise, APICrypto
 from sirius_sdk.base import ReadOnlyChannel, WriteOnlyChannel
-from sirius_sdk.agent.wallet.abstract import AbstractCrypto
 from sirius_sdk.agent.wallet.abstract import AbstractDID
 from sirius_sdk.agent.wallet.abstract import AbstractPairwise
 from sirius_sdk.errors.exceptions import SiriusTimeoutIO
@@ -385,7 +384,7 @@ async def run_coroutines(*args, timeout: int = 15):
 async def ensure_cred_def_exists_in_dkms(
         network_name: str, did_issuer: str, schema_name: str, schema_ver: str, attrs: list, tag: str
 ) -> (sirius_sdk.Schema, sirius_sdk.CredentialDefinition):
-    dkms = await sirius_sdk.ledger(network_name)  # Test network is prepared for Demo purposes
+    dkms = await sirius_sdk.dkms(network_name)  # Test network is prepared for Demo purposes
     schema_id, anon_schema = await sirius_sdk.AnonCreds.issuer_create_schema(
         did_issuer, schema_name, schema_ver, attrs
     )
@@ -413,7 +412,7 @@ async def fix_timeout(caption: str):
     print(f'Timeout for {caption}: {delta.total_seconds()} secs, utc1: {stamp1} utc2: {stamp2}')
 
 
-class LocalCryptoManager(AbstractCrypto):
+class LocalCryptoManager(APICrypto):
 
     """Crypto module on device side, for example Indy-Wallet or HSM or smth else
 
@@ -436,7 +435,8 @@ class LocalCryptoManager(AbstractCrypto):
         raise NotImplemented
 
     async def get_key_metadata(self, verkey: str) -> Optional[dict]:
-        raise NotImplemented
+        self.__check_verkey(verkey)
+        return None
 
     async def crypto_sign(self, signer_vk: str, msg: bytes) -> bytes:
         vk, sk = self.__check_verkey(signer_vk)
@@ -474,7 +474,7 @@ class LocalCryptoManager(AbstractCrypto):
         )
         return packed
 
-    async def unpack_message(self, jwe: bytes):
+    async def unpack_message(self, jwe: bytes) -> dict:
         jwe = json.loads(jwe.decode())
         protected = jwe['protected']
         payload = json.loads(base64.b64decode(protected))
@@ -493,8 +493,11 @@ class LocalCryptoManager(AbstractCrypto):
             my_verkey=vk,
             my_sigkey=sk
         )
-        message = json.loads(message)
-        return message, sender_vk, recip_vk
+        return {
+            'message': message,
+            'recipient_verkey': recip_vk,
+            'sender_verkey': sender_vk
+        }
 
     def __check_verkey(self, verkey: str) -> (bytes, bytes):
         verkey_bytes = b58_to_bytes(verkey)
@@ -507,11 +510,15 @@ class LocalCryptoManager(AbstractCrypto):
 class LocalDIDManager(AbstractDID):
     """You may override this code block with Aries-Askar"""
 
-    def __init__(self):
+    def __init__(self, crypto: LocalCryptoManager = None):
         self._storage = dict()
+        self._crypto = crypto
 
     async def create_and_store_my_did(self, did: str = None, seed: str = None, cid: bool = None) -> (str, str):
-        raise NotImplemented
+        if self._crypto:
+            vk = await self._crypto.create_key(seed, cid)
+            did = did_from_verkey(b58_to_bytes(vk))
+            return bytes_to_b58(did), vk
 
     async def store_their_did(self, did: str, verkey: str = None) -> None:
         descriptor = self._storage.get(did, {})

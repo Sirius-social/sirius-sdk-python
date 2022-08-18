@@ -1,10 +1,10 @@
 from typing import Any, Optional
 
 from sirius_sdk.agent.connections import AgentRPC
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 
 
-class CryptoProxy(AbstractCrypto):
+class CryptoProxy(APICrypto):
 
     def __init__(self, rpc: AgentRPC):
         self.__rpc = rpc

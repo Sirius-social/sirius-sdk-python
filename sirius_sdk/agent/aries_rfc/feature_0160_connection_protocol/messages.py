@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message, check_for_attributes
 from sirius_sdk.agent.agent import Agent
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from sirius_sdk.agent.aries_rfc.did_doc import DIDDoc
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
@@ -24,11 +24,11 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
     PROTOCOL = 'connections'
 
     @staticmethod
-    async def sign_field(crypto: AbstractCrypto, field_value: Any, my_verkey: str) -> dict:
+    async def sign_field(crypto: APICrypto, field_value: Any, my_verkey: str) -> dict:
         return await sign(crypto, field_value, my_verkey)
 
     @staticmethod
-    async def verify_signed_field(crypto: AbstractCrypto, signed_field: dict) -> (Any, bool):
+    async def verify_signed_field(crypto: APICrypto, signed_field: dict) -> (Any, bool):
         return await verify_signed(crypto, signed_field)
 
     @staticmethod
@@ -273,14 +273,14 @@ class ConnResponse(ConnProtocolMessage, metaclass=RegisterMessage):
             ['connection~sig']
         )
 
-    async def sign_connection(self, crypto: AbstractCrypto, key: str):
+    async def sign_connection(self, crypto: APICrypto, key: str):
         self['connection~sig'] = \
             await self.sign_field(
                 crypto=crypto, field_value=self['connection'], my_verkey=key
             )
         del self['connection']
 
-    async def verify_connection(self, crypto: AbstractCrypto) -> bool:
+    async def verify_connection(self, crypto: APICrypto) -> bool:
         connection, success = await self.verify_signed_field(
             crypto=crypto, signed_field=self['connection~sig']
         )

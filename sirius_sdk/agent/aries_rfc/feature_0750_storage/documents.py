@@ -2,7 +2,7 @@ import json
 from typing import List, Any, Optional
 
 import sirius_sdk
-from sirius_sdk import AbstractCrypto
+from sirius_sdk import APICrypto
 
 from .streams import AbstractWriteOnlyStream, AbstractReadOnlyStream
 

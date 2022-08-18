@@ -4,9 +4,8 @@ from typing import List, Optional, Union
 
 from sirius_sdk.encryption import bytes_to_b58
 from sirius_sdk.errors.exceptions import *
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk import Pairwise, APICrypto
 from sirius_sdk.agent.microledgers.abstract import serialize_ordering
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from sirius_sdk.agent.microledgers.abstract import Transaction, AbstractMicroledger
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
@@ -70,7 +69,7 @@ class BaseInitLedgerMessage(SimpleConsensusMessage):
     def signatures(self) -> List[dict]:
         return self.get('signatures', [])
 
-    async def check_signatures(self, api: AbstractCrypto, participant: str = 'ALL') -> dict:
+    async def check_signatures(self, api: APICrypto, participant: str = 'ALL') -> dict:
         if self.ledger_hash is None:
             raise SiriusContextError('Ledger Hash description is empty')
         if participant == 'ALL':
@@ -108,7 +107,7 @@ class InitRequestLedgerMessage(BaseInitLedgerMessage):
     def thread_id(self) -> Optional[str]:
         return self.get(THREAD_DECORATOR, {}).get('thid', None)
 
-    async def add_signature(self, api: AbstractCrypto, me: Pairwise.Me):
+    async def add_signature(self, api: APICrypto, me: Pairwise.Me):
         if me.did not in self.participants:
             raise SiriusContextError('Signer must be a participant')
         if self.ledger_hash is not None:
@@ -309,12 +308,12 @@ class PreCommitTransactionsMessage(BaseTransactionsMessage):
     """
     NAME = 'stage-pre-commit'
 
-    async def sign_state(self, api: AbstractCrypto, me: Pairwise.Me):
+    async def sign_state(self, api: APICrypto, me: Pairwise.Me):
         signed = await sign(api, self.hash, me.verkey)
         self['hash~sig'] = signed
         del self['state']
 
-    async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[str]):
+    async def verify_state(self, api: APICrypto, expected_verkey: str) -> (bool, Optional[str]):
         hash_signed = self.get('hash~sig', None)
         if hash_signed:
             if hash_signed['signer'] == expected_verkey:
@@ -348,7 +347,7 @@ class CommitTransactionsMessage(BaseTransactionsMessage):
             if participant not in self.pre_commits.keys():
                 raise SiriusValidationError(f'Pre-Commit for participant "{participant}" does not exists')
 
-    async def verify_pre_commits(self, api: AbstractCrypto, expected_state: MicroLedgerState):
+    async def verify_pre_commits(self, api: APICrypto, expected_state: MicroLedgerState):
         states = {}
         for participant, signed in self.pre_commits.items():
             state_hash, is_success = await verify_signed(api, signed)
@@ -373,13 +372,13 @@ class PostCommitTransactionsMessage(BaseTransactionsMessage):
         else:
             return []
 
-    async def add_commit_sign(self, api: AbstractCrypto, commit: CommitTransactionsMessage, me: Pairwise.Me):
+    async def add_commit_sign(self, api: APICrypto, commit: CommitTransactionsMessage, me: Pairwise.Me):
         signed = await sign(api, commit, me.verkey)
         commits = self.commits
         commits.append(signed)
         self['commits'] = commits
 
-    async def verify_commits(self, api: AbstractCrypto, expected: CommitTransactionsMessage, verkeys: List[str]) -> bool:
+    async def verify_commits(self, api: APICrypto, expected: CommitTransactionsMessage, verkeys: List[str]) -> bool:
         actual_verkeys = [commit['signer'] for commit in self.commits]
         if not set(verkeys).issubset(set(actual_verkeys)):
             return False
@@ -485,13 +484,13 @@ class PreCommitParallelTransactionsMessage(BaseParallelTransactionsMessage):
     """
     NAME = 'stage-pre-commit-parallel'
 
-    async def sign_states(self, api: AbstractCrypto, me: Pairwise.Me):
+    async def sign_states(self, api: APICrypto, me: Pairwise.Me):
         signed = await sign(api, self.hash, me.verkey)
         self['hash~sig'] = signed
         if 'transactions' in self:
             del self['transactions']
 
-    async def verify_state(self, api: AbstractCrypto, expected_verkey: str) -> (bool, Optional[str]):
+    async def verify_state(self, api: APICrypto, expected_verkey: str) -> (bool, Optional[str]):
         hash_signed = self.get('hash~sig', None)
         if hash_signed:
             if hash_signed['signer'] == expected_verkey:
@@ -530,7 +529,7 @@ class CommitParallelTransactionsMessage(BaseParallelTransactionsMessage):
             if participant not in self.pre_commits.keys():
                 raise SiriusValidationError(f'Pre-Commit for participant "{participant}" does not exists')
 
-    async def verify_pre_commits(self, api: AbstractCrypto, expected_hash: str):
+    async def verify_pre_commits(self, api: APICrypto, expected_hash: str):
         states = {}
         for participant, signed in self.pre_commits.items():
             state_hash, is_success = await verify_signed(api, signed)
@@ -555,13 +554,13 @@ class PostCommitParallelTransactionsMessage(BaseTransactionsMessage):
         else:
             return []
 
-    async def add_commit_sign(self, api: AbstractCrypto, commit: CommitParallelTransactionsMessage, me: Pairwise.Me):
+    async def add_commit_sign(self, api: APICrypto, commit: CommitParallelTransactionsMessage, me: Pairwise.Me):
         signed = await sign(api, commit, me.verkey)
         commits = self.commits
         commits.append(signed)
         self['commits'] = commits
 
-    async def verify_commits(self, api: AbstractCrypto, expected: CommitParallelTransactionsMessage, verkeys: List[str]) -> bool:
+    async def verify_commits(self, api: APICrypto, expected: CommitParallelTransactionsMessage, verkeys: List[str]) -> bool:
         actual_verkeys = [commit['signer'] for commit in self.commits]
         if not set(verkeys).issubset(set(actual_verkeys)):
             return False

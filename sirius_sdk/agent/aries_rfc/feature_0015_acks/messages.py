@@ -2,10 +2,8 @@ from enum import Enum
 from typing import Optional, Union
 
 from sirius_sdk.messaging import check_for_attributes
-from sirius_sdk.errors.exceptions import *
-from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
-
-from .mixins import AckMixin
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage
+from sirius_sdk.agent.aries_rfc.decorators import *
 
 
 class Status(Enum):
@@ -19,7 +17,7 @@ class Status(Enum):
     FAIL = 'FAIL'
 
 
-class Ack(AriesProtocolMessage, AckMixin, metaclass=RegisterMessage):
+class Ack(AriesProtocolMessage, metaclass=RegisterMessage):
 
     PROTOCOL = 'notification'
     NAME = 'ack'

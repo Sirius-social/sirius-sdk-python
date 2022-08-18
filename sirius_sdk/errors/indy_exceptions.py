@@ -100,16 +100,16 @@ class ErrorCode(IntEnum):
     WalletQueryError = 214
 
     # Ledger errors
-    # Trying to open pool ledger that wasn't created before
+    # Trying to open pool dkms that wasn't created before
     PoolLedgerNotCreatedError = 300
 
-    # Caller passed invalid pool ledger handle
+    # Caller passed invalid pool dkms handle
     PoolLedgerInvalidPoolHandle = 301
 
-    # Pool ledger terminated
+    # Pool dkms terminated
     PoolLedgerTerminated = 302
 
-    # No consensus during ledger operation
+    # No consensus during dkms operation
     LedgerNoConsensusError = 303
 
     # Attempt to parse invalid transaction response
@@ -118,7 +118,7 @@ class ErrorCode(IntEnum):
     # Attempt to send transaction without the necessary privileges
     LedgerSecurityError = 305
 
-    # Attempt to create pool ledger config with name used for another existing pool
+    # Attempt to create pool dkms config with name used for another existing pool
     PoolLedgerConfigAlreadyExistsError = 306
 
     # Timeout for action
@@ -128,7 +128,7 @@ class ErrorCode(IntEnum):
     # version. Call pool.indy_set_protocol_version to set correct Protocol version.
     PoolIncompatibleProtocolVersion = 308
 
-    # Item not found on ledger.
+    # Item not found on dkms.
     LedgerNotFound = 309
 
     # Revocation registry is full and creation of new registry is necessary
@@ -162,7 +162,7 @@ class ErrorCode(IntEnum):
     # Insufficient funds on inputs
     PaymentInsufficientFundsError = 702
 
-    # No such source on a ledger
+    # No such source on a dkms
     PaymentSourceDoesNotExistError = 703
 
     # Operation is not supported for payment method
@@ -319,19 +319,19 @@ class WalletQueryError(IndyError):
 
 # Ledger errors
 class PoolLedgerNotCreatedError(IndyError):
-    """ Trying to open pool ledger that wasn't created before """
+    """ Trying to open pool dkms that wasn't created before """
 
 
 class PoolLedgerInvalidPoolHandle(IndyError):
-    """ Caller passed invalid pool ledger handle """
+    """ Caller passed invalid pool dkms handle """
 
 
 class PoolLedgerTerminated(IndyError):
-    """ Pool ledger terminated """
+    """ Pool dkms terminated """
 
 
 class LedgerNoConsensusError(IndyError):
-    """ No consensus during ledger operation """
+    """ No consensus during dkms operation """
 
 
 class LedgerInvalidTransaction(IndyError):
@@ -343,7 +343,7 @@ class LedgerSecurityError(IndyError):
 
 
 class PoolLedgerConfigAlreadyExistsError(IndyError):
-    """ Attempt to create pool ledger config with name used for another existing pool """
+    """ Attempt to create pool dkms config with name used for another existing pool """
 
 
 class PoolLedgerTimeout(IndyError):
@@ -357,7 +357,7 @@ class PoolIncompatibleProtocolVersion(IndyError):
 
 
 class LedgerNotFound(IndyError):
-    """ Item not found on ledger. """
+    """ Item not found on dkms. """
 
 
 class AnoncredsRevocationRegistryFullError(IndyError):
@@ -406,7 +406,7 @@ class PaymentInsufficientFundsError(IndyError):
 
 
 class PaymentSourceDoesNotExistError(IndyError):
-    """ No such source on a ledger """
+    """ No such source on a dkms """
 
 
 class PaymentOperationNotSupportedError(IndyError):

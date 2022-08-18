@@ -36,7 +36,7 @@ def log(message: str):
 
 class BFTPluggableConsensus(AbstractStateMachine):
 
-    def __init__(self, microledger: List[sirius_sdk.Pairwise], ledger: AbstractLedger, *args, **kwargs):
+    def __init__(self, microledger: List[sirius_sdk.Pairwise], dkms: AbstractLedger, *args, **kwargs):
         self.ledger: AbstractLedger = ledger
         self.microledger = microledger
         super().__init__(*args, **kwargs)
@@ -111,12 +111,12 @@ class BFTPluggableConsensus(AbstractStateMachine):
             thid=txn_propose['~thread']['thid'],
             to=leader
         )
-        # Stage-1: Check local ledger is in consistent state with leader
+        # Stage-1: Check local dkms is in consistent state with leader
         if self.ledger.uncommitted_root_hash != txn_propose['uncommitted_root_hash']:
             await co.send(message=Message({
                 '@type': TYPE_BFT_CONSENSUS_PROBLEM,
                 'problem-code': 'some-code',
-                'explain': 'non consistent ledger states'
+                'explain': 'non consistent dkms states'
             }))
             self.ledger.reset_uncommitted()
             return False
@@ -136,7 +136,7 @@ class BFTPluggableConsensus(AbstractStateMachine):
                     await co.send(message=Message({
                         '@type': TYPE_BFT_CONSENSUS_PROBLEM,
                         'problem-code': 'some-code',
-                        'explain': 'non consistent ledger states'
+                        'explain': 'non consistent dkms states'
                     }))
                     self.ledger.reset_uncommitted()
                     return False
@@ -154,7 +154,7 @@ class BFTPluggableConsensus(AbstractStateMachine):
 
 async def acceptor(
         topic: str, context: dict,
-        microledger: List[sirius_sdk.Pairwise], ledger: AbstractLedger
+        microledger: List[sirius_sdk.Pairwise], dkms: AbstractLedger
 ):
     async with sirius_sdk.context(**context):
         listener = await sirius_sdk.subscribe()
@@ -187,7 +187,7 @@ async def acceptor(
 
 async def commit(
         topic: str, context: dict, txn: dict,
-        microledger: List[sirius_sdk.Pairwise], ledger: AbstractLedger
+        microledger: List[sirius_sdk.Pairwise], dkms: AbstractLedger
 ):
     async with sirius_sdk.context(**context):
         log(f'{topic}: transaction propose')

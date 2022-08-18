@@ -9,7 +9,7 @@ from typing import Optional
 
 from pytime import pytime
 
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 
 
 def utc_to_str(dt: datetime):
@@ -33,7 +33,7 @@ def str_to_utc(s: str, raise_exceptions: bool = True) -> Optional[datetime]:
             return None
 
 
-async def sign(crypto: AbstractCrypto, value: Any, verkey: str, exclude_sig_data: bool = False) -> dict:
+async def sign(crypto: APICrypto, value: Any, verkey: str, exclude_sig_data: bool = False) -> dict:
     timestamp_bytes = struct.pack(">Q", int(time.time()))
 
     sig_data_bytes = timestamp_bytes + json.dumps(value).encode('ascii')
@@ -55,7 +55,7 @@ async def sign(crypto: AbstractCrypto, value: Any, verkey: str, exclude_sig_data
     return data
 
 
-async def verify_signed(crypto: AbstractCrypto, signed: dict) -> (Any, bool):
+async def verify_signed(crypto: APICrypto, signed: dict) -> (Any, bool):
     signature_bytes = base64.urlsafe_b64decode(signed['signature'].encode('ascii'))
     sig_data_bytes = base64.urlsafe_b64decode(signed['sig_data'].encode('ascii'))
     sig_verified = await crypto.crypto_verify(

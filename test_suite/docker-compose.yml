@@ -98,7 +98,7 @@ services:
 #      - kafka
 
   mediator:
-    image: "socialsirius/didcomm"
+    image: "socialsirius/didcomm:latest"
     environment:
       - DATABASE_USER=postgres
       - DATABASE_PASSWORD=postgres
@@ -108,6 +108,7 @@ services:
       - REDIS=redis://redis
       - WEBROOT=http://localhost:8000
       - SEED=0000000000000000000000000000TEST
+      - LOGLEVEL=DEBUG
     networks:
       test_network:
         ipv4_address: 10.0.0.91

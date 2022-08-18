@@ -1,0 +1,4 @@
+THREAD_DECORATOR = '~thread'
+PLEASE_ACK_DECORATOR = '~please_ack'
+TRANSPORT_DECORATOR = '~transport'
+TIMING_DECORATOR = '~timing'
