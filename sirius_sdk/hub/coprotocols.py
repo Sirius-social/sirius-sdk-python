@@ -18,6 +18,13 @@ from sirius_sdk.agent.aries_rfc.decorators import PLEASE_ACK_DECORATOR as ARIES_
 from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin, PleaseAckMixin
 
 
+def _qualify_did(value: str) -> str:
+    if ':' not in value:
+        return f'did:peer:{value}'
+    else:
+        return value
+
+
 class AbstractCoProtocol(ABC):
     """Abstraction application-level protocols in the context of interactions among agent-like things.
 
@@ -264,7 +271,9 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
             if include_please_ack and message.please_ack is False:
                 message.please_ack = True
             if self.__ack_thread_id and not message.thread_id:  # Don't rewrite earlier set values
-                message.thread_id = self.__ack_thread_id
+                thread = ThreadMixin.get_thread(message) or ThreadMixin.Thread()
+                thread.thid = self.__ack_thread_id
+                ThreadMixin.set_thread(message, thread)
                 self.__ack_thread_id = None
 
     async def _after(self, message: Message):
@@ -302,6 +311,9 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         self.__to = to
         self.__sender_order = 0
         self.__received_orders = {}
+        self.__last_received_msg_id = {}
+        recipient = _qualify_did(to.their.did)
+        self.__received_orders[recipient] = 0
         self._setup(their_verkey=to.their.verkey, endpoint=to.their.address, my_verkey=to.me.verkey)
 
     @property
@@ -321,21 +333,25 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         if thread is None:  # Don't rewrite externally set thread values
             thread = ThreadMixin.Thread(
                 thid=self.__thid, pthid=self.__pthid,
-                sender_order=self.__sender_order, received_orders=self.__received_orders
+                sender_order=self.__sender_order, received_orders=dict(**self.__received_orders)
             )
             self.__sender_order += 1
             ThreadMixin.set_thread(message, thread)
 
     async def _after(self, message: Message):
         await super()._after(message)
-        thread = ThreadMixin.get_thread(message)
-        respond_sender_order = thread.sender_order if thread is not None else None
-        if respond_sender_order is not None and self.__to is not None:
-            recipient = self.__to.their.did
+        if self.__to is not None:
+            recipient = _qualify_did(self.__to.their.did)
             err = DIDField().validate(recipient)
             if err is None:
-                order = self.__received_orders.get(recipient, 0)
-                self.__received_orders[recipient] = max(order, respond_sender_order)
+                last_msg_id = self.__last_received_msg_id.get(recipient, None)
+                if last_msg_id != message.id:
+                    if recipient not in self.__received_orders:
+                        order = 1
+                    else:
+                        order = self.__received_orders[recipient] + 1
+                    self.__received_orders[recipient] = order
+                    self.__last_received_msg_id[recipient] = message.id
 
 
 class CoProtocolThreadedTheirs(AbstractCoProtocol):
@@ -348,6 +364,12 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         self.__pthid = pthid
         self.__theirs = theirs
         self.__dids = [their.their.did for their in theirs]
+        self.__received_orders = {}
+        for to in theirs:
+            recipient = _qualify_did(to.their.did)
+            self.__received_orders[recipient] = 0
+        self.__last_received_msg_id = {}
+        self.__sender_order = 0
 
     @property
     def theirs(self) -> List[Pairwise]:
@@ -437,22 +459,47 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         # then work with success participants only
         success_theirs = {p2p: (False, None) for p2p, stat in statuses.items() if stat[0] is True}
         accum = 0
-        while accum < len(success_theirs):
-            p2p, message = await self.get_one()
-            await self._cleanup_context(message)
-            if p2p is None:
-                break
-            if p2p and p2p.their.did in self.__dids:
-                success_theirs[p2p] = (True, message)
-                accum += 1
-        results.update(success_theirs)
-        return results
+        rcv_messages = []
+        try:
+            while accum < len(success_theirs):
+                p2p, message = await self.get_one()
+                if p2p is None:
+                    break
+                await self._after(message, p2p)
+                if p2p and p2p.their.did in self.__dids:
+                    success_theirs[p2p] = (True, message)
+                    accum += 1
+                rcv_messages.append(message)
+            results.update(success_theirs)
+            return results
+        finally:
+            await self._cleanup_contexts(rcv_messages)
 
     async def _before(self, message: Message):
         thread = ThreadMixin.get_thread(message)
         if thread is None:  # Don't rewrite externally set thread values
-            thread = ThreadMixin.Thread(thid=self.__thid, pthid=self.__pthid)
+            thread = ThreadMixin.Thread(
+                thid=self.__thid, pthid=self.__pthid,
+                sender_order=self.__sender_order, received_orders=dict(**self.__received_orders)
+            )
             ThreadMixin.set_thread(message, thread)
+
+    async def _after(self, message: Message, p2p: Pairwise):
+        recipient = _qualify_did(p2p.their.did)
+        err = DIDField().validate(recipient)
+        if err is None:
+            last_msg_id = self.__last_received_msg_id.get(recipient, None)
+            if last_msg_id != message.id:
+                if recipient not in self.__received_orders:
+                    order = 1
+                else:
+                    order = self.__received_orders[recipient] + 1
+                self.__received_orders[recipient] = order
+                self.__last_received_msg_id[recipient] = message.id
+
+    async def _cleanup_contexts(self, messages: List[Message]):
+        for msg in messages:
+            await self._cleanup_context(msg)
 
     def __load_p2p_from_verkey(self, verkey: str) -> Optional[Pairwise]:
         for p2p in self.__theirs:

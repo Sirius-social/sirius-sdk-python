@@ -13,7 +13,7 @@ from tests.conftest import get_pairwise, get_pairwise3
 from tests.helpers import run_coroutines
 from tests.helpers import ServerTestSuite
 
-from .helpers import MSG_LOG, check_msg_log, TEST_MSG_TYPES
+from .helpers import MSG_LOG, check_msg_log, TEST_MSG_TYPES, check_thread_orders
 
 
 async def routine1(
@@ -32,7 +32,7 @@ async def routine1(
         ok, resp1 = await co.switch(message=first_req)
         print('#2')
         assert ok is True
-        MSG_LOG.append(resp1)
+        MSG_LOG.append(Message(**resp1))
         ok, resp2 = await co.switch(
             message=Message({
                 '@type': TEST_MSG_TYPES[2],
@@ -60,7 +60,7 @@ async def routine2(
         )
         print('#2')
         assert ok is True
-        MSG_LOG.append(resp1)
+        MSG_LOG.append(Message(**resp1))
         await co.send(
             message=Message({
                 '@type': TEST_MSG_TYPES[3],
@@ -123,6 +123,7 @@ async def test__threadbased_coprotocol(config_a: dict, config_b: dict):
         routine2(co2, **config_b),
     )
     check_msg_log()
+    check_thread_orders()
 
 
 @pytest.mark.asyncio

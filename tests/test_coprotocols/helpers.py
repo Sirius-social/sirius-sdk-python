@@ -15,3 +15,16 @@ def check_msg_log():
     assert MSG_LOG[1]['content'] == 'Response1'
     assert MSG_LOG[2]['content'] == 'Request2'
     assert MSG_LOG[3]['content'] == 'End'
+
+
+def check_thread_orders():
+    orders_under_checks = {}
+    for i, item in enumerate(MSG_LOG):
+        decorator = item.get('~thread', {}).get('received_orders', {})
+        for recipient, order in decorator.items():
+            if recipient in orders_under_checks:
+                last_order = orders_under_checks[recipient]
+                new_order = order
+                assert new_order == last_order + 1
+            else:
+                orders_under_checks[recipient] = order

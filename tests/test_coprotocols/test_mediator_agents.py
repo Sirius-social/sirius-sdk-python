@@ -71,6 +71,7 @@ async def routine2(
             raise
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test__their_endpoint_coprotocol(mediator_uri: str, mediator_verkey: str):
 
@@ -104,6 +105,7 @@ async def test__their_endpoint_coprotocol(mediator_uri: str, mediator_verkey: st
     check_msg_log()
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test__threadbased_coprotocol(mediator_uri: str, mediator_verkey: str):
     crypto1 = LocalCryptoManager()
