@@ -1,5 +1,5 @@
 import threading
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 from sirius_sdk.abstract.storage import AbstractImmutableCollection, AbstractKeyValueStorage
 from sirius_sdk.hub.context import get as context_get, set as context_set
@@ -122,6 +122,19 @@ class InMemoryKeyValueStorage(AbstractKeyValueStorage):
                 selected_db = self.__database_singleton[cur_db_name]
                 if key in selected_db:
                     del selected_db[key]
+            finally:
+                self.__release()
+
+    async def items(self) -> Dict:
+        cur_db_name = self.__get_current_db()
+        if cur_db_name is None:
+            raise RuntimeError('Select working database at first!')
+        else:
+            self.__acquire()
+            try:
+                selected_db = self.__database_singleton[cur_db_name]
+                copied = dict(**selected_db)
+                return copied
             finally:
                 self.__release()
 

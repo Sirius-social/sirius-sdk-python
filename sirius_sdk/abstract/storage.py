@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 
 class AbstractImmutableCollection(ABC):
@@ -33,4 +33,8 @@ class AbstractKeyValueStorage(ABC):
 
     @abstractmethod
     async def delete(self, key: str):
+        raise NotImplemented
+
+    @abstractmethod
+    async def items(self) -> Dict:
         raise NotImplemented
