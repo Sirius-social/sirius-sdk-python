@@ -4,8 +4,9 @@ from typing import List, Union, Optional
 from dataclasses import dataclass
 
 import sirius_sdk
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
 from .documents import EncryptedDocument
+from .errors import ConfidentialStoragePermissionDenied
 
 
 class StructuredDocument:
@@ -51,10 +52,15 @@ class ConfidentialStorageAuthProvider:
 
     def __init__(self):
         self.__entity = None
+        self.__authorized = False
 
     @property
     def entity(self) -> Optional[sirius_sdk.Pairwise]:
         return self.__entity
+
+    @property
+    def authorized(self) -> bool:
+        return self.__authorized
 
     async def authorize(self, entity: sirius_sdk.Pairwise) -> bool:
         """Authorize participant
@@ -65,7 +71,8 @@ class ConfidentialStorageAuthProvider:
         :return: success
         """
         self.__entity = entity
-        return True
+        self.__authorized = True
+        return self.__authorized
 
     def has_permissions(self) -> List[PermissionLevel]:
         """
@@ -124,29 +131,29 @@ class VaultConfig:
             else:
                 return False
 
-    # A unique counter for the data vault in order to ensure that clients are
-    # properly synchronized to the data vault. Example: 0
-    sequence: int
     # The entity or cryptographic key that is in control of the data vault.
     # The value is required and MUST be a URI. Example: "did:example:123456789"
     controller: str
+    # A unique counter for the data vault in order to ensure that clients are
+    # properly synchronized to the data vault. Example: 0
+    sequence: int = 0
     # The root entities or cryptographic key(s) that are authorized to invoke an authorization capability
     # to modify the data vault's configuration or read or write to it.
     # The value is optional, but if present, MUST be a URI or an array of URIs.
     # When this value is not present, the value of controller property is used for the same purpose.
-    invoker: Optional[Union[str, List[str]]]
+    invoker: Optional[Union[str, List[str]]] = None
     # The root entities or cryptographic key(s) that are authorized to delegate authorization capabilities
     # to modify the data vault's configuration or read or write to it.
     # The value is optional, but if present, MUST be a URI or an array of URIs.
     # When this value is not present, the value of controller property is used for the same purpose.
-    delegator: Optional[Union[str, List[str]]]
+    delegator: Optional[Union[str, List[str]]] = None
     # Used to express an application-specific reference identifier.
     # The value is optional and, if present, MUST be a string.
-    reference_id: Optional[str]
+    reference_id: Optional[str] = None
     # keyAgreementKey
-    key_agreement: Optional[KeyAgreement]
+    key_agreement: Optional[KeyAgreement] = None
     # HMAC
-    hmac: Optional[HMAC]
+    hmac: Optional[HMAC] = None
 
     def as_json(self) -> dict:
         js = {
@@ -156,6 +163,8 @@ class VaultConfig:
         if self.invoker:
             js['invoker'] = self.invoker
         if self.delegator:
+            js['delegator'] = self.delegator
+        if self.reference_id:
             js['referenceId'] = self.reference_id
         if self.key_agreement and self.key_agreement.is_filled:
             js['keyAgreementKey'] = {
@@ -198,40 +207,28 @@ class VaultConfig:
             self.__setattr__(fld, value)
 
 
-class EncryptedDataVault:
-    """Layer B: Encrypted Vault Storage
-
-    see details: https://identity.foundation/confidential-storage/#ecosystem-overview
-    """
-
-    def __init__(self, auth: ConfidentialStorageAuthProvider, cfg: VaultConfig):
-        self.__auth = auth
-        self.__cfg = cfg
-
-    @property
-    def auth(self) -> ConfidentialStorageAuthProvider:
-        return self.__auth
-
-    @property
-    def cfg(self) -> VaultConfig:
-        return self.__cfg
-
-    class Indexes:
-        async def apply(self, **filters) -> List[StructuredDocument]:
-            pass
-
-
 class ConfidentialStorageRawByteStorage(ABC):
     """Layer A: raw bytes storage (Cloud, DB, File-system, Mobile, etc)
 
     see details: https://identity.foundation/confidential-storage/#ecosystem-overview
     """
 
-    def __init__(self, encryption: AbstractStreamEncryption = None):
+    def __init__(
+            self, permissions: List[ConfidentialStorageAuthProvider.PermissionLevel] = None,
+            encryption: BaseStreamEncryption = None
+    ):
         self.__encryption = encryption
+        if permissions is None:
+            self.__permissions = [
+                ConfidentialStorageAuthProvider.PermissionLevel.CAN_READ,
+                ConfidentialStorageAuthProvider.PermissionLevel.CAN_CREATE,
+                ConfidentialStorageAuthProvider.PermissionLevel.CAN_WRITE
+            ]
+        else:
+            self.__permissions = permissions
 
     @property
-    def encryption(self) -> Optional[AbstractStreamEncryption]:
+    def encryption(self) -> Optional[BaseStreamEncryption]:
         return self.__encryption
 
     @abstractmethod
@@ -248,4 +245,94 @@ class ConfidentialStorageRawByteStorage(ABC):
 
     @abstractmethod
     async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
+        raise NotImplementedError
+
+    def check_permissions(self, can_read: bool = False, can_write: bool = False, can_create: bool = False):
+        expected = []
+        if can_read:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_READ)
+        if can_write:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_WRITE)
+        if can_create:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_CREATE)
+        if not set(expected).issubset(set(self.__permissions)):
+            expected_str = ','.join([p.value for p in expected])
+            raise ConfidentialStoragePermissionDenied(f'Expected permissions: [{expected_str}]')
+
+
+class EncryptedDataVault:
+    """Layer B: Encrypted Vault Storage
+
+    see details: https://identity.foundation/confidential-storage/#ecosystem-overview
+    """
+
+    def __init__(self, auth: ConfidentialStorageAuthProvider, cfg: VaultConfig = None):
+        if not auth.authorized:
+            raise ConfidentialStoragePermissionDenied(f'Not authorized access')
+        self.__auth = auth
+        if cfg is None:
+            their_did = auth.entity.their.did
+            my_did = auth.entity.me.did
+            my_vk = auth.entity.me.verkey
+            if ':' not in their_did:
+                their_did = f'did:peer:{their_did}'
+            if ':' not in my_did:
+                my_did = f'did:peer:{my_did}'
+            if ':' not in my_vk:
+                my_vk = f'did:key:{my_vk}'
+            cfg = VaultConfig(
+                sequence=0,
+                controller=my_did,
+                delegator=[their_did],
+                key_agreement=VaultConfig.KeyAgreement(
+                    id=my_vk,
+                    type='X25519KeyAgreementKey2019'
+                )
+            )
+        self.__cfg = cfg
+
+    @property
+    def auth(self) -> ConfidentialStorageAuthProvider:
+        return self.__auth
+
+    @property
+    def cfg(self) -> VaultConfig:
+        return self.__cfg
+
+    class Indexes:
+
+        @abstractmethod
+        async def filter(self, **attributes) -> List[StructuredDocument]:
+            raise NotImplementedError
+
+    @abstractmethod
+    async def indexes(self) -> Indexes:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> AbstractWriteOnlyStream:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_document(self, uri: str, meta: dict = None, **attributes):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update(self, uri: str, meta: dict = None, **attributes):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def load(self, uri: str) -> EncryptedDocument:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def save(self, uri: str, doc: EncryptedDocument):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def readable(self, uri: str) -> AbstractReadOnlyStream:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def writable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError

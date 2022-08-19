@@ -1,15 +1,16 @@
 import io
 import math
 import os
+import os.path
 import struct
-from typing import Optional
+from typing import Optional, List, Coroutine
 from urllib.parse import urlparse
 
 import aiofiles
 
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import AbstractReadOnlyStream, StreamDecryption, \
     StreamInitializationError, ConfidentialStorageEncType, StreamEncryptionError, StreamSeekableError, StreamEOF, \
-    StreamFormatError, AbstractWriteOnlyStream, StreamEncryption
+    StreamFormatError, AbstractWriteOnlyStream, StreamEncryption, BaseStreamEncryption
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.components import ConfidentialStorageRawByteStorage, ConfidentialStorageAuthProvider
 from sirius_sdk.errors.exceptions import SiriusInitializationError
 from sirius_sdk.hub import _current_hub
@@ -25,6 +26,7 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
         self.__size = 0
         self.__chunk_size = 0
         self.__chunk_offsets = []
+        self.__on_closed: Optional[Coroutine] = None
         if enc:
             if enc.type != ConfidentialStorageEncType.UNKNOWN:
                 if enc.cek is None:
@@ -39,6 +41,14 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
                         raise StreamEncryptionError(
                             'You should initialize SDK or Call setup() to manually pass keys for decoder'
                         )
+
+    @property
+    def on_closed(self) -> Optional[Coroutine]:
+        return self.__on_closed
+
+    @on_closed.setter
+    def on_closed(self, cb: Coroutine):
+        self.__on_closed = cb
 
     async def open(self):
         if self.__fd:
@@ -62,6 +72,8 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
             self._seekable = None
             self._is_open = False
             self.__chunk_offsets.clear()
+            if self.__on_closed:
+                await self.__on_closed
 
     async def seek_to_chunk(self, no: int) -> int:
         self.__assert_is_open()
@@ -143,6 +155,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         self.__file_size = 0
         self.__file_pos = 0
         self.__chunk_offsets = []
+        self.__on_closed: Optional[Coroutine] = None
         if enc:
             if enc.type != ConfidentialStorageEncType.UNKNOWN:
                 if enc.type != ConfidentialStorageEncType.X25519KeyAgreementKey2019:
@@ -150,6 +163,14 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
                 if not enc.recipients:
                     raise StreamEncryptionError(f'Recipients data missed, call Setup first!')
         self.__fd = None
+
+    @property
+    def on_closed(self) -> Optional[Coroutine]:
+        return self.__on_closed
+
+    @on_closed.setter
+    def on_closed(self, cb: Coroutine):
+        self.__on_closed = cb
 
     async def create(self, truncate: bool = False):
         async with aiofiles.open(self.path, 'w+b') as fd:
@@ -183,6 +204,9 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
             self.__file_pos = 0
             self._is_open = False
             self.__chunk_offsets.clear()
+            if self.__on_closed:
+                await self.__on_closed
+                self.__on_closed = None
 
     async def seek_to_chunk(self, no: int) -> int:
         self.__assert_is_open()
@@ -283,7 +307,18 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
 
 class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
 
+    def __init__(
+            self, permissions: List[ConfidentialStorageAuthProvider.PermissionLevel] = None,
+            encryption: BaseStreamEncryption = None
+    ):
+        super(FileSystemRawByteStorage, self).__init__(permissions, encryption)
+        self.__mount_dir: Optional[str] = None
+
+    async def mount(self, path: str):
+        self.__mount_dir = path
+
     async def create(self, uri: str):
+        super().check_permissions(can_create=True)
         path = self.__uri_to_path(uri)
         if os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} already exists!')
@@ -292,24 +327,28 @@ class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
             await stream.create()
 
     async def remove(self, uri: str):
+        super().check_permissions(can_create=True)
         path = self.__uri_to_path(uri)
         if os.path.isfile(path):
             os.remove(path)
 
     async def readable(self, uri: str, chunks_num: int) -> AbstractReadOnlyStream:
+        super().check_permissions(can_read=True)
         path = self.__uri_to_path(uri)
         if not os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} doe not exists!')
-        return FileSystemReadOnlyStream(path=path, chunks_num=chunks_num)
+        return FileSystemReadOnlyStream(path=path, chunks_num=chunks_num, enc=self.encryption)
 
     async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
+        super().check_permissions(can_write=True)
         path = self.__uri_to_path(uri)
         if not os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} doe not exists!')
-        return FileSystemWriteOnlyStream(path=path)
+        return FileSystemWriteOnlyStream(path=path, enc=self.encryption)
 
-    @staticmethod
-    def __uri_to_path(uri: str) -> str:
+    def __uri_to_path(self, uri: str) -> str:
         p = urlparse(uri)
-        path = os.path.abspath(os.path.join(p.netloc, p.path))
+        path = os.path.join(p.netloc, p.path)
+        if self.__mount_dir is not None:
+            path = os.path.join(self.__mount_dir, path)
         return path

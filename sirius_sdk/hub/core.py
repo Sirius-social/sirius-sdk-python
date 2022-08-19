@@ -21,7 +21,8 @@ from sirius_sdk.agent.agent import Agent, SpawnStrategy
 
 from .defaults.default_apis import APIDefault
 from .defaults.default_crypto import DefaultCryptoService as DefaultCryptoService
-from .defaults.default_storage import InMemoryImmutableCollection, InMemoryKeyValueStorage
+from .defaults.default_storage import InMemoryKeyValueStorage
+from .defaults.default_non_secrets import DefaultNonSecretsStorage
 from .context import get as context_get, set as context_set, clear as context_clear
 from .config import Config
 from .mediator import Mediator
@@ -47,7 +48,7 @@ class Hub:
             logging.warning(
                 'Storage will be set to InMemory-Storage as default, it will outcome issues in production environments'
             )
-            self.__storage = InMemoryImmutableCollection()
+            self.__storage = InMemoryKeyValueStorage()
 
         # Check if configured as cloud-agent
         if config.cloud_opts.is_filled:
@@ -62,6 +63,7 @@ class Hub:
         self.__crypto: Optional[APICrypto] = config.overrides.crypto
         self.__default_api: APIDefault = APIDefault()
         self.__default_crypto: APICrypto = DefaultCryptoService(storage=self.__storage)
+        self.__default_non_secrets = DefaultNonSecretsStorage(storage=self.__storage)
 
     def __del__(self):
         if self.__loop and self.__loop.is_running():
@@ -163,7 +165,7 @@ class Hub:
             async with self.get_agent_connection_lazy() as agent:
                 return self.__config.overrides.non_secrets or agent.wallet.non_secrets
         else:
-            return self.__config.overrides.non_secrets
+            return self.__config.overrides.non_secrets or self.__default_non_secrets
 
     async def get_coprotocols(self) -> Optional[APICoProtocols]:
         api: Optional[APICoProtocols] = None

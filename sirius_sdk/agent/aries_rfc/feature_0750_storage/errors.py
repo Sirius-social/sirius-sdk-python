@@ -34,3 +34,11 @@ class ConfidentialStorageTimeoutOccurred(BaseConfidentialStorageError):
 
 class ConfidentialStoragePermissionDenied(BaseConfidentialStorageError):
     pass
+
+
+class DataVaultCreateResourceError(BaseConfidentialStorageError):
+    pass
+
+
+class DataVaultCreateResourceMissing(BaseConfidentialStorageError):
+    pass

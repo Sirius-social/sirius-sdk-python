@@ -54,6 +54,10 @@ class EncryptedDocument(Document):
     def encrypted(self) -> bool:
         return self.__encrypted
 
+    @encrypted.setter
+    def encrypted(self, value: bool):
+        self.__encrypted = value
+
     @property
     def sender_vk(self) -> Optional[str]:
         return self.__sender_vk

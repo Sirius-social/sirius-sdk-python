@@ -1,17 +1,21 @@
 import asyncio
 import math
 import os
+import shutil
 import string
 import random
 import tempfile
 import uuid
 from typing import Optional
 
+import aiofiles
 import pytest
 
 import sirius_sdk
 from sirius_sdk.encryption import create_keypair, bytes_to_b58
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
+from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import ConfidentialStoragePermissionDenied
+from sirius_sdk.recipes.confidential_storage import SimpleDataVault
 
 from tests.helpers import calc_file_hash, calc_bytes_hash, calc_file_size, run_coroutines
 from tests.conftest import get_pairwise3
@@ -1057,3 +1061,104 @@ async def test_encrypted_documents_save_load(config_a: dict):
             await ro.close()
     finally:
         os.remove(file_under_test)
+
+
+@pytest.mark.asyncio
+async def test_recipe_simple_vault_init(config_a: dict, config_b: dict):
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    p2p = await get_pairwise3(me=config_a, their=config_b)
+    os.mkdir(dir_under_test)
+    try:
+        # Storage Hub side
+        auth = ConfidentialStorageAuthProvider()
+        # Check auth checks
+        with pytest.raises(ConfidentialStoragePermissionDenied):
+            SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+        await auth.authorize(p2p)
+        assert auth.authorized is True
+        # Check init
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+        assert vault.cfg is not None
+        assert vault.cfg.as_json() != {}
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_recipe_simple_stream_operations(config_a: dict, config_b: dict):
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    p2p = await get_pairwise3(me=config_a, their=config_b)
+    os.mkdir(dir_under_test)
+    uri_under_test = f'stream_{uuid.uuid4().hex}.bin'
+    test_data = b'x' * 1024 * 5
+    try:
+        # Storage Hub side
+        async with sirius_sdk.context(**config_a):
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2p)
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            print('#1')
+            await vault.create_stream(uri_under_test)
+            print('#2')
+            stream_to_write = await vault.writable(uri_under_test)
+            await stream_to_write.open()
+            try:
+                await stream_to_write.write(test_data)
+            finally:
+                await stream_to_write.close()
+            print('#3')
+            stream_to_read = await vault.readable(uri_under_test)
+            assert stream_to_read.chunks_num > 0
+            await stream_to_read.open()
+            try:
+                read_data = await stream_to_read.read()
+            finally:
+                await stream_to_read.close()
+            print('#4')
+            assert read_data == test_data
+            file_uri = stream_to_read.path
+            print('#5')
+        # Check data is encrypted
+        with open(file_uri, 'rb') as f:
+            raw_content = f.read()
+        assert raw_content != test_data
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_recipe_simple_docs_operations(config_a: dict, config_b: dict):
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    p2p = await get_pairwise3(me=config_a, their=config_b)
+    os.mkdir(dir_under_test)
+    uri_under_test = f'stream_{uuid.uuid4().hex}.bin'
+    test_data = b'Some user content'
+    try:
+        # Storage Hub side
+        async with sirius_sdk.context(**config_a):
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2p)
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            print('#1')
+            await vault.create_document(uri_under_test)
+            print('#2')
+            # Store non-encrypted doc
+            doc = EncryptedDocument()
+            doc.content = test_data
+            await vault.save(uri_under_test, doc)
+            print('#3')
+            loaded_doc = await vault.load(uri_under_test)
+            assert loaded_doc.content == test_data
+            assert loaded_doc.encrypted is False
+            # Encrypted doc
+            async with sirius_sdk.context(**config_b):
+                recipient_vk = await sirius_sdk.Crypto.create_key()
+            enc_doc = EncryptedDocument(target_verkeys=[recipient_vk])
+            print('#4')
+            await enc_doc.encrypt()
+            await vault.save(uri_under_test, enc_doc)
+            print('#5')
+            loaded_enc_doc = await vault.load(uri_under_test)
+            assert loaded_enc_doc.encrypted is True
+    finally:
+        shutil.rmtree(dir_under_test)

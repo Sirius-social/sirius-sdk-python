@@ -29,6 +29,19 @@ async def test_inmemory_kv_storage():
 
 
 @pytest.mark.asyncio
+async def test_inmemory_kv_storage_iteration():
+    kv = InMemoryKeyValueStorage()
+    await kv.select_db('db1')
+    data_under_test = {'key1': 'value1', 'key2': 12345}
+
+    for k, v in data_under_test.items():
+        await kv.set(k, v)
+
+    loaded_data = await kv.items()
+    assert loaded_data == data_under_test
+
+
+@pytest.mark.asyncio
 async def test_inmemory_immutable_collection():
     collection = InMemoryImmutableCollection()
 
