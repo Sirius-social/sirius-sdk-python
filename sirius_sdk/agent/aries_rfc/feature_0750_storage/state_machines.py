@@ -10,7 +10,7 @@ from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
 
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
 from . import ConfidentialStorageEncType
 from .errors import *
 
@@ -75,7 +75,7 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
 
     def __init__(
             self, called: Pairwise, uri: str, read_timeout: int, retry_count: int = 1,
-            thid: str = None, enc: AbstractStreamEncryption = None, logger=None, *args, **kwargs
+            thid: str = None, enc: BaseStreamEncryption = None, logger=None, *args, **kwargs
     ):
         """Stream abstraction for read-only operations provided with [Vault] entity
 
@@ -313,7 +313,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                     if encrypted:
                         # Local stream must persist chunks structure
                         if proxy_to.enc is None:
-                            proxy_to.enc = AbstractStreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
+                            proxy_to.enc = BaseStreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
                     await proxy_to.open()
                     params = {
                         'state': {
@@ -379,7 +379,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
     """
 
     def __init__(
-            self, called: Pairwise, uri: str, thid: str = None, enc: AbstractStreamEncryption = None,
+            self, called: Pairwise, uri: str, thid: str = None, enc: BaseStreamEncryption = None,
             retry_count: int = 3, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         """Stream abstraction for write-only operations provided with [Vault] entity
@@ -635,7 +635,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                     if encrypted:
                         # Local stream must persist chunks structure
                         if proxy_to.enc is None:
-                            proxy_to.enc = AbstractStreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
+                            proxy_to.enc = BaseStreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
                     await proxy_to.open()
                     params = {
                         'state': {

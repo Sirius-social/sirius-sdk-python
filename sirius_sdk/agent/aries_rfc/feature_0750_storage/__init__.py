@@ -1,12 +1,12 @@
 from .documents import Document, EncryptedDocument
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, AbstractStreamEncryption, StreamEncryption, \
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, StreamEncryption, \
   StreamDecryption
 
 from .encoding import ConfidentialStorageEncType
 from .errors import BaseConfidentialStorageError, StreamEOF, StreamEncryptionError, StreamInitializationError, StreamSeekableError, \
     StreamFormatError, ConfidentialStorageTimeoutOccurred
 from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage, \
-    VaultConfig
+    VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
@@ -14,12 +14,12 @@ from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamPr
 
 
 __all__ = [
-    "AbstractStreamEncryption", "StreamEncryption", "StreamDecryption", "AbstractReadOnlyStream",
+    "BaseStreamEncryption", "StreamEncryption", "StreamDecryption", "AbstractReadOnlyStream",
     "AbstractWriteOnlyStream", "CalledReadOnlyStreamProtocol", "CallerReadOnlyStreamProtocol",
     "CallerWriteOnlyStreamProtocol", "CalledWriteOnlyStreamProtocol", "Document", "EncryptedDocument",
     "BaseConfidentialStorageError", "StreamEOF", "StreamEncryptionError", "StreamInitializationError",
     "StreamSeekableError", "StreamFormatError", "ConfidentialStorageTimeoutOccurred", "ConfidentialStorageEncType",
     "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream",
     "ConfidentialStorageAuthProvider", "EncryptedDataVault", "FileSystemRawByteStorage",
-    "Document", "EncryptedDocument", "VaultConfig"
+    "Document", "EncryptedDocument", "VaultConfig", "ConfidentialStorageRawByteStorage", "StructuredDocument"
 ]

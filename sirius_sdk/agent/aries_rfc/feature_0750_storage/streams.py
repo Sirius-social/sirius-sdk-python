@@ -16,7 +16,7 @@ from .encoding import ConfidentialStorageEncType
 from .errors import StreamEncryptionError, StreamInitializationError
 
 
-class AbstractStreamEncryption(ABC):
+class BaseStreamEncryption:
 
     def __init__(self, nonce: str = None, type_: ConfidentialStorageEncType = ConfidentialStorageEncType.X25519KeyAgreementKey2019):
         """"Encryption settings for Streams
@@ -52,7 +52,7 @@ class AbstractStreamEncryption(ABC):
         return self._cek
 
 
-class StreamEncryption(AbstractStreamEncryption):
+class StreamEncryption(BaseStreamEncryption):
 
     def setup(self, target_verkeys: List[str]) -> "StreamEncryption":
         """Prepare for Encryption
@@ -70,9 +70,12 @@ class StreamEncryption(AbstractStreamEncryption):
         return self
 
 
-class StreamDecryption(AbstractStreamEncryption):
+class StreamDecryption(BaseStreamEncryption):
 
-    def __init__(self, recipients: Dict = None, nonce: str = None, type_: ConfidentialStorageEncType = ConfidentialStorageEncType.X25519KeyAgreementKey2019):
+    def __init__(
+            self, recipients: Dict = None, nonce: str = None,
+            type_: ConfidentialStorageEncType = ConfidentialStorageEncType.X25519KeyAgreementKey2019
+    ):
         super().__init__(nonce, type_)
         self._recipients = recipients
 
@@ -93,7 +96,7 @@ class StreamDecryption(AbstractStreamEncryption):
 
 class AbstractStream(ABC):
 
-    def __init__(self, path: str, enc: Optional[AbstractStreamEncryption] = None):
+    def __init__(self, path: str, enc: Optional[BaseStreamEncryption] = None):
         """Interface for Low-level layers of Vault Storage
 
         :param path: path to resource
@@ -115,11 +118,11 @@ class AbstractStream(ABC):
         return self.__path
 
     @property
-    def enc(self) -> Optional[AbstractStreamEncryption]:
+    def enc(self) -> Optional[BaseStreamEncryption]:
         return self.__enc
 
     @enc.setter
-    def enc(self, value: AbstractStreamEncryption):
+    def enc(self, value: BaseStreamEncryption):
         self.__enc = value
 
     @property
@@ -234,7 +237,7 @@ class AbstractReadOnlyStream(AbstractStream):
       - etc
     """
 
-    def __init__(self, path: str, chunks_num: int, enc: Optional[AbstractStreamEncryption] = None):
+    def __init__(self, path: str, chunks_num: int, enc: Optional[BaseStreamEncryption] = None):
         """
         :param path: path to stream on local infrastructure (device, cloud provider ...)
         :param chunks_num: count of chunks that stream was splitted to
@@ -296,7 +299,7 @@ class AbstractWriteOnlyStream(AbstractStream):
       - etc
     """
 
-    def __init__(self, path: str, chunk_size: int = 1024, enc: Optional[AbstractStreamEncryption] = None):
+    def __init__(self, path: str, chunk_size: int = 1024, enc: Optional[BaseStreamEncryption] = None):
         """
         :param chunk_size: size (in bytes) of chunks that stream was splitted to
           !!! actual chunks-sizes may be different (when stream is encoded for example) !!!

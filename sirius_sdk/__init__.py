@@ -13,7 +13,7 @@ from sirius_sdk.errors import indy_exceptions, exceptions
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.abstract.batching import RoutingBatch
-from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
+from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets, RetrieveRecordOptions as NonSecretsRetrieveRecordOptions
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
@@ -26,5 +26,5 @@ __all__ = [
     "aries_rfc", "CoProtocolThreadedTheirs", "AnonCreds", "Cache", "open_communication", "NonSecrets", "APICrypto",
     "Schema", "CredentialDefinition", "AnonCredSchema", "indy_exceptions", "exceptions", "Ledger", "acquire", "release",
     "Config", "didcomm", "recipes", "AbstractPairwiseList", "AbstractNonSecrets", "RoutingBatch",
-    "AbstractCache", "AbstractDID", "AbstractMicroledgerList", "DKMS", "spawn_coprotocol"
+    "AbstractCache", "AbstractDID", "AbstractMicroledgerList", "DKMS", "spawn_coprotocol", "NonSecretsRetrieveRecordOptions"
 ]
