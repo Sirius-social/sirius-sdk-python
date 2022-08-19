@@ -2,6 +2,7 @@ import threading
 from typing import Any, List, Optional
 
 from sirius_sdk.abstract.storage import AbstractImmutableCollection, AbstractKeyValueStorage
+from sirius_sdk.hub.context import get as context_get, set as context_set
 
 
 class InMemoryImmutableCollection(AbstractImmutableCollection):
@@ -75,7 +76,7 @@ class InMemoryImmutableCollection(AbstractImmutableCollection):
 class InMemoryKeyValueStorage(AbstractKeyValueStorage):
 
     __lock_singleton = threading.Lock()
-    __selected_db_thread_safe = threading.local()
+    __selected_db_context_key = 'inmemory.storage.db'
     __database_singleton = {}
 
     async def select_db(self, db_name: str):
@@ -134,12 +135,12 @@ class InMemoryKeyValueStorage(AbstractKeyValueStorage):
 
     @classmethod
     def __set_current_db(cls, db_name: str):
-        cls.__selected_db_thread_safe.value = db_name
+        context_set(cls.__selected_db_context_key, db_name)
 
     @classmethod
     def __get_current_db(cls) -> Optional[str]:
         try:
-            db = cls.__selected_db_thread_safe.value
+            db = context_get(cls.__selected_db_context_key)
         except AttributeError:
             return None
         else:
