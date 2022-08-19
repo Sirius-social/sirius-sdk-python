@@ -1154,11 +1154,16 @@ async def test_recipe_simple_docs_operations(config_a: dict, config_b: dict):
             async with sirius_sdk.context(**config_b):
                 recipient_vk = await sirius_sdk.Crypto.create_key()
             enc_doc = EncryptedDocument(target_verkeys=[recipient_vk])
+            enc_doc.content = test_data
             print('#4')
             await enc_doc.encrypt()
             await vault.save(uri_under_test, enc_doc)
             print('#5')
             loaded_enc_doc = await vault.load(uri_under_test)
             assert loaded_enc_doc.encrypted is True
+            assert loaded_enc_doc.content != test_data
+            async with sirius_sdk.context(**config_b):
+                await loaded_enc_doc.decrypt()
+                assert loaded_enc_doc.content == test_data
     finally:
         shutil.rmtree(dir_under_test)
