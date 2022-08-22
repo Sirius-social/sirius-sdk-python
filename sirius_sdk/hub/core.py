@@ -233,7 +233,7 @@ class Hub:
                 p2p=self.__config.cloud_opts.p2p,
                 timeout=self.__config.cloud_opts.io_timeout,
                 loop=self.__loop,
-                storage=self.__storage,
+                storage=None,
                 spawn_strategy=SpawnStrategy.CONCURRENT,
                 external_crypto=external_crypto
             )
