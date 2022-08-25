@@ -8,7 +8,7 @@ from sirius_sdk.abstract.p2p import Endpoint, TheirEndpoint, Pairwise
 from sirius_sdk.agent import aries_rfc
 from sirius_sdk import recipes
 from sirius_sdk.agent import didcomm
-from sirius_sdk.agent.dkms import Schema, CredentialDefinition, AnonCredSchema, Ledger, DKMS
+from sirius_sdk.agent.dkms import Schema, CredentialDefinition, AnonCredSchema, Ledger, DKMS, NYMRole
 from sirius_sdk.errors import indy_exceptions, exceptions
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
 from sirius_sdk.abstract.api import APICrypto
@@ -25,6 +25,6 @@ __all__ = [
     "CoProtocolThreadedP2P", "CoProtocolP2PAnon", "CoProtocolP2P", "AbstractP2PCoProtocol", "Pairwise",
     "aries_rfc", "CoProtocolThreadedTheirs", "AnonCreds", "Cache", "open_communication", "NonSecrets", "APICrypto",
     "Schema", "CredentialDefinition", "AnonCredSchema", "indy_exceptions", "exceptions", "Ledger", "acquire", "release",
-    "Config", "didcomm", "recipes", "AbstractPairwiseList", "AbstractNonSecrets", "RoutingBatch",
+    "Config", "didcomm", "recipes", "AbstractPairwiseList", "AbstractNonSecrets", "RoutingBatch", "NYMRole",
     "AbstractCache", "AbstractDID", "AbstractMicroledgerList", "DKMS", "spawn_coprotocol", "NonSecretsRetrieveRecordOptions"
 ]
