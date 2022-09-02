@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import aiofiles
 
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import AbstractReadOnlyStream, StreamDecryption, \
-    StreamInitializationError, ConfidentialStorageEncType, StreamEncryptionError, StreamSeekableError, StreamEOF, \
+    StreamInitializationError, ConfidentialStorageEncType, EncryptionError, StreamSeekableError, StreamEOF, \
     StreamFormatError, AbstractWriteOnlyStream, StreamEncryption, BaseStreamEncryption
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.components import ConfidentialStorageRawByteStorage, ConfidentialStorageAuthProvider
 from sirius_sdk.errors.exceptions import SiriusInitializationError
@@ -19,8 +19,8 @@ from sirius_sdk.hub import _current_hub
 class FileSystemReadOnlyStream(AbstractReadOnlyStream):
 
     def __init__(self, path: str, chunks_num: int, enc: Optional[StreamDecryption] = None):
-        if chunks_num <= 0:
-            raise StreamInitializationError('Chunks Num must be greater than 0')
+        if chunks_num < 0:
+            raise StreamInitializationError('Chunks Num must be greater or equal to 0')
         super().__init__(path, chunks_num, enc)
         self.__fd = None
         self.__size = 0
@@ -34,11 +34,11 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
                         hub = _current_hub()
                         crypto_manager_exists = hub.get_crypto() is not None
                         if crypto_manager_exists is False:
-                            raise StreamEncryptionError(
+                            raise EncryptionError(
                                 'Crypto manager is not configured'
                             )
                     except SiriusInitializationError:
-                        raise StreamEncryptionError(
+                        raise EncryptionError(
                             'You should initialize SDK or Call setup() to manually pass keys for decoder'
                         )
 
@@ -159,9 +159,9 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         if enc:
             if enc.type != ConfidentialStorageEncType.UNKNOWN:
                 if enc.type != ConfidentialStorageEncType.X25519KeyAgreementKey2019:
-                    raise StreamEncryptionError(f'Unsupported key agreement "{enc.type}"')
+                    raise EncryptionError(f'Unsupported key agreement "{enc.type}"')
                 if not enc.recipients:
-                    raise StreamEncryptionError(f'Recipients data missed, call Setup first!')
+                    raise EncryptionError(f'Recipients data missed, call Setup first!')
         self.__fd = None
 
     @property
@@ -307,18 +307,14 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
 
 class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
 
-    def __init__(
-            self, permissions: List[ConfidentialStorageAuthProvider.PermissionLevel] = None,
-            encryption: BaseStreamEncryption = None
-    ):
-        super(FileSystemRawByteStorage, self).__init__(permissions, encryption)
+    def __init__(self, encryption: BaseStreamEncryption = None):
+        super(FileSystemRawByteStorage, self).__init__(encryption)
         self.__mount_dir: Optional[str] = None
 
     async def mount(self, path: str):
         self.__mount_dir = path
 
     async def create(self, uri: str):
-        super().check_permissions(can_create=True)
         path = self.__uri_to_path(uri)
         if os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} already exists!')
@@ -327,20 +323,17 @@ class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
             await stream.create()
 
     async def remove(self, uri: str):
-        super().check_permissions(can_create=True)
         path = self.__uri_to_path(uri)
         if os.path.isfile(path):
             os.remove(path)
 
     async def readable(self, uri: str, chunks_num: int) -> AbstractReadOnlyStream:
-        super().check_permissions(can_read=True)
         path = self.__uri_to_path(uri)
         if not os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} doe not exists!')
         return FileSystemReadOnlyStream(path=path, chunks_num=chunks_num, enc=self.encryption)
 
     async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
-        super().check_permissions(can_write=True)
         path = self.__uri_to_path(uri)
         if not os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} doe not exists!')

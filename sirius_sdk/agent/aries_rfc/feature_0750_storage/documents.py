@@ -4,6 +4,7 @@ from typing import List, Any, Optional
 import sirius_sdk
 from sirius_sdk import APICrypto
 
+from .encoding import parse_protected
 from .streams import AbstractWriteOnlyStream, AbstractReadOnlyStream
 
 
@@ -62,8 +63,14 @@ class EncryptedDocument(Document):
     def sender_vk(self) -> Optional[str]:
         return self.__sender_vk
 
+    @property
+    def target_verkeys(self) -> List[str]:
+        return self.__target_verkeys
+
     async def encrypt(self, my_vk: str = None):
         if not self.__encrypted:
+            if not self.__target_verkeys:
+                raise RuntimeError(f'Target keys are missing')
             if isinstance(self.content, bytes):
                 content = self.content.decode()
             else:
@@ -77,9 +84,14 @@ class EncryptedDocument(Document):
 
     async def decrypt(self):
         if self.__encrypted:
+            protected = parse_protected(self.content)
             unpacked = await sirius_sdk.Crypto.unpack_message(self.content)
-            self.content = unpacked['message'].encode()
+            self.content = unpacked['message']
+            if isinstance(self.content, str):
+                self.content = self.content.encode()
             self.__sender_vk = unpacked.get('sender_verkey')
+            self.__target_verkeys = [recip['header']['kid'] for recip in protected['recipients'] if
+                                     recip.get('header', {}).get('kid', None) is not None]
             self.__encrypted = False
 
     def _after_content_changed(self):

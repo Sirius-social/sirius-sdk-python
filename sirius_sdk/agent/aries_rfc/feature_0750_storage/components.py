@@ -1,12 +1,43 @@
 from enum import Enum
-from abc import ABC, abstractmethod
-from typing import List, Union, Optional
 from dataclasses import dataclass
+from functools import wraps
+from abc import ABC, abstractmethod
+from typing import List, Union, Optional, Set
 
 import sirius_sdk
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
 from .documents import EncryptedDocument
 from .errors import ConfidentialStoragePermissionDenied
+
+
+@dataclass
+class HMAC:
+    # An identifier for the HMAC key. The value is required a MUST be or map to a URI.
+    id: str
+    # The type of HMAC key. The value is required and MUST be or map to a URI.
+    type: str
+
+    @property
+    def is_filled(self) -> bool:
+        if self.id or self.type:
+            return True
+        else:
+            return False
+
+
+class DataVaultStreamWrapper:
+
+    def __init__(self, readable: AbstractReadOnlyStream = None, writable: AbstractWriteOnlyStream = None):
+        self.__readable = readable
+        self.__writable = writable
+
+    @property
+    def readable(self) -> AbstractReadOnlyStream:
+        return self.__readable
+
+    @property
+    def writable(self) -> AbstractWriteOnlyStream:
+        return self.__writable
 
 
 class StructuredDocument:
@@ -15,25 +46,43 @@ class StructuredDocument:
 
     see details:  https://identity.foundation/confidential-storage/#structureddocument
     """
+    @dataclass
+    class Index:
+        sequence: int = None
+        hmac: HMAC = None
+        attributes: List[str] = None
 
-    def __init__(self, id_: str, meta: dict, content: Union[AbstractReadOnlyStream, EncryptedDocument]):
+    def __init__(
+            self, id_: str, meta: dict,
+            content: Union[AbstractReadOnlyStream, EncryptedDocument] = None, urn: str = None, indexed: List[Index] = None
+    ):
         self.__id = id_
         self.__meta = dict(**meta)
+        self.__urn = urn
         if isinstance(content, AbstractReadOnlyStream):
             self.__meta['chunks'] = content.chunks_num
         self.__content = content
+        self.__indexed: List[StructuredDocument.Index] = indexed or []
 
     @property
     def id(self) -> str:
         return self.__id
 
     @property
+    def urn(self) -> str:
+        return self.__urn or 'urn:id:' + self.__id
+
+    @property
     def meta(self) -> dict:
         return self.__meta
 
     @property
-    def content(self) -> Union[AbstractReadOnlyStream, EncryptedDocument]:
+    def content(self) -> Optional[Union[AbstractReadOnlyStream, EncryptedDocument]]:
         return self.__content
+
+    @property
+    def indexed(self) -> List['Index']:
+        return self.__indexed
 
 
 class ConfidentialStorageAuthProvider:
@@ -49,6 +98,8 @@ class ConfidentialStorageAuthProvider:
         CAN_WRITE = 'CAN_WRITE'
         # Entity can create new documents/streams
         CAN_CREATE = 'CAN_CREATE'
+        # Entity can update resource metadata
+        CAN_UPDATE = 'CAN_UPDATE'
 
     def __init__(self):
         self.__entity = None
@@ -74,24 +125,50 @@ class ConfidentialStorageAuthProvider:
         self.__authorized = True
         return self.__authorized
 
-    def has_permissions(self) -> List[PermissionLevel]:
+    def has_permissions(self) -> Set[PermissionLevel]:
         """
         :return: list of DataVault permissions for client
         """
-        return [
+        return {
             self.PermissionLevel.CAN_READ,
             self.PermissionLevel.CAN_WRITE,
-            self.PermissionLevel.CAN_CREATE
-        ]
+            self.PermissionLevel.CAN_CREATE,
+            self.PermissionLevel.CAN_UPDATE
+        }
 
+    @property
     def can_read(self) -> bool:
         return self.PermissionLevel.CAN_READ in self.has_permissions()
 
+    @property
     def can_write(self) -> bool:
         return self.PermissionLevel.CAN_WRITE in self.has_permissions()
 
+    @property
     def can_create(self) -> bool:
         return self.PermissionLevel.CAN_CREATE in self.has_permissions()
+
+    @property
+    def can_update(self) -> bool:
+        return self.PermissionLevel.CAN_UPDATE in self.has_permissions()
+
+    def validate(
+            self, can_read: bool = False, can_write: bool = False,
+            can_create: bool = False, can_update: bool = False, expected: Set[PermissionLevel] = None
+    ):
+        expected = list(expected) if expected else []
+        permissions = self.has_permissions()
+        if can_read:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_READ)
+        if can_write:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_WRITE)
+        if can_create:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_CREATE)
+        if can_update:
+            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_UPDATE)
+        if not set(expected).issubset(permissions):
+            expected_str = ','.join([p.value for p in expected])
+            raise ConfidentialStoragePermissionDenied(f'Expected permissions: [{expected_str}]')
 
 
 @dataclass
@@ -108,20 +185,6 @@ class VaultConfig:
         # to generate a key encryption key for the receiver.
         id: str
         # The type of key agreement key. The value is required and MUST be or map to a URI.
-        type: str
-
-        @property
-        def is_filled(self) -> bool:
-            if self.id or self.type:
-                return True
-            else:
-                return False
-
-    @dataclass
-    class HMAC:
-        # An identifier for the HMAC key. The value is required a MUST be or map to a URI.
-        id: str
-        # The type of HMAC key. The value is required and MUST be or map to a URI.
         type: str
 
         @property
@@ -197,7 +260,7 @@ class VaultConfig:
         hmac_id = hmac.get('id', None)
         hmac_type = hmac_id.get('type', None)
         if hmac_id or hmac_type:
-            self.hmac = VaultConfig.HMAC(
+            self.hmac = HMAC(
                 hmac_id, hmac_type
             )
         else:
@@ -213,19 +276,8 @@ class ConfidentialStorageRawByteStorage(ABC):
     see details: https://identity.foundation/confidential-storage/#ecosystem-overview
     """
 
-    def __init__(
-            self, permissions: List[ConfidentialStorageAuthProvider.PermissionLevel] = None,
-            encryption: BaseStreamEncryption = None
-    ):
+    def __init__(self, encryption: BaseStreamEncryption = None):
         self.__encryption = encryption
-        if permissions is None:
-            self.__permissions = [
-                ConfidentialStorageAuthProvider.PermissionLevel.CAN_READ,
-                ConfidentialStorageAuthProvider.PermissionLevel.CAN_CREATE,
-                ConfidentialStorageAuthProvider.PermissionLevel.CAN_WRITE
-            ]
-        else:
-            self.__permissions = permissions
 
     @property
     def encryption(self) -> Optional[BaseStreamEncryption]:
@@ -246,18 +298,6 @@ class ConfidentialStorageRawByteStorage(ABC):
     @abstractmethod
     async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError
-
-    def check_permissions(self, can_read: bool = False, can_write: bool = False, can_create: bool = False):
-        expected = []
-        if can_read:
-            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_READ)
-        if can_write:
-            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_WRITE)
-        if can_create:
-            expected.append(ConfidentialStorageAuthProvider.PermissionLevel.CAN_CREATE)
-        if not set(expected).issubset(set(self.__permissions)):
-            expected_str = ','.join([p.value for p in expected])
-            raise ConfidentialStoragePermissionDenied(f'Expected permissions: [{expected_str}]')
 
 
 class EncryptedDataVault:
@@ -310,11 +350,11 @@ class EncryptedDataVault:
         raise NotImplementedError
 
     @abstractmethod
-    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> AbstractWriteOnlyStream:
+    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
         raise NotImplementedError
 
     @abstractmethod
-    async def create_document(self, uri: str, meta: dict = None, **attributes):
+    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
         raise NotImplementedError
 
     @abstractmethod
@@ -322,11 +362,11 @@ class EncryptedDataVault:
         raise NotImplementedError
 
     @abstractmethod
-    async def load(self, uri: str) -> EncryptedDocument:
+    async def load(self, uri: str) -> StructuredDocument:
         raise NotImplementedError
 
     @abstractmethod
-    async def save(self, uri: str, doc: EncryptedDocument):
+    async def save_document(self, uri: str, doc: EncryptedDocument):
         raise NotImplementedError
 
     @abstractmethod

@@ -3,7 +3,7 @@ import json
 import struct
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 
 import nacl.utils
 import nacl.bindings
@@ -12,8 +12,8 @@ import sirius_sdk
 from sirius_sdk.encryption import b58_to_bytes, bytes_to_b58, bytes_to_b64
 from sirius_sdk.encryption.ed25519 import prepare_pack_recipient_keys, locate_pack_recipient_key
 
-from .encoding import ConfidentialStorageEncType
-from .errors import StreamEncryptionError, StreamInitializationError
+from .encoding import ConfidentialStorageEncType, JWE, EncRecipient, EncHeader
+from .errors import EncryptionError, StreamInitializationError
 
 
 class BaseStreamEncryption:
@@ -51,6 +51,39 @@ class BaseStreamEncryption:
     def cek(self) -> Optional[bytes]:
         return self._cek
 
+    @property
+    def jwe(self) -> Optional[JWE]:
+        if self.recipients:
+            jwe = JWE(
+                iv=self.__nonce,
+                recipients=[
+                    EncRecipient(
+                        encrypted_key=recip['encrypted_key'],
+                        header=EncHeader(
+                            kid=recip['header']['kid'],
+                            sender=recip['header'].get('sender', None),
+                            iv=recip['header'].get('iv', None)
+                        )
+                    )
+                    for recip in self.recipients
+                ]
+            )
+            return jwe
+        else:
+            return None
+
+    @jwe.setter
+    def jwe(self, value: Union[JWE, dict]):
+        if isinstance(value, JWE):
+            js = value.as_json()
+            self._recipients = js['recipients']
+            self.__nonce = js.get('iv', None)
+        elif isinstance(value, dict):
+            self._recipients = value['recipients']
+            self.__nonce = value.get('iv', None)
+        else:
+            raise RuntimeError('Unexpected value type')
+
 
 class StreamEncryption(BaseStreamEncryption):
 
@@ -60,12 +93,12 @@ class StreamEncryption(BaseStreamEncryption):
         :param target_verkeys: list of base58 encoded target verkeys
         """
         if self.type != ConfidentialStorageEncType.X25519KeyAgreementKey2019:
-            raise StreamEncryptionError(f'Unsupported key agreement "{self.type}"')
-        recip_json, cek = prepare_pack_recipient_keys(
+            raise EncryptionError(f'Unsupported key agreement "{self.type}"')
+        jwe_json, cek = prepare_pack_recipient_keys(
             to_verkeys=[b58_to_bytes(key) for key in target_verkeys]
         )
-        recip = json.loads(recip_json)
-        self._recipients = recip['recipients']
+        jwe = json.loads(jwe_json)
+        self._recipients = jwe['recipients']
         self._cek = cek
         return self
 
@@ -86,7 +119,7 @@ class StreamDecryption(BaseStreamEncryption):
         :param sk: (base58 string) decryption sigkey
         """
         if self.recipients is None:
-            raise StreamEncryptionError('Recipients metadata in JWE format expected')
+            raise EncryptionError('Recipients metadata in JWE format expected')
         cek, sender_vk, recip_vk_b58 = locate_pack_recipient_key(
             recipients=self.recipients, my_verkey=b58_to_bytes(vk), my_sigkey=b58_to_bytes(sk)
         )
@@ -165,7 +198,7 @@ class AbstractStream(ABC):
                 payload = prefix + encoded
                 return payload
             else:
-                raise StreamEncryptionError('Unknown Encryption Type')
+                raise EncryptionError('Unknown Encryption Type')
         else:
             return chunk
 
@@ -203,7 +236,7 @@ class AbstractStream(ABC):
                     decrypted = unpacked['message'].encode()
                 return decrypted
             else:
-                raise StreamEncryptionError('Unknown Encryption Type')
+                raise EncryptionError('Unknown Encryption Type')
         else:
             return chunk
 
@@ -219,7 +252,7 @@ class AbstractStream(ABC):
             )
             return recips
         else:
-            raise StreamEncryptionError('Unknown encryption format')
+            raise EncryptionError('Unknown encryption format')
 
     def _build_aad(self, recipients: dict) -> bytes:
         recips = self._build_recips(recipients)

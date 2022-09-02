@@ -12,7 +12,7 @@ class StreamEOF(BaseConfidentialStorageError):
     pass
 
 
-class StreamEncryptionError(BaseConfidentialStorageError):
+class EncryptionError(BaseConfidentialStorageError):
     pass
 
 
@@ -21,6 +21,10 @@ class StreamInitializationError(BaseConfidentialStorageError):
 
 
 class StreamSeekableError(BaseConfidentialStorageError):
+    pass
+
+
+class DocumentFormatError(BaseConfidentialStorageError):
     pass
 
 
