@@ -9,9 +9,10 @@ from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
 
+from .components import EncryptedDataVault
 from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
-from . import ConfidentialStorageEncType
+from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument
 from .errors import *
 
 PROBLEM_CODE_EOF = 'eof'
@@ -31,7 +32,7 @@ def problem_report_from_exception(e: BaseConfidentialStorageError) -> Confidenti
         problem_code, explain = PROBLEM_CODE_FORMAT, e.message
     elif isinstance(e, StreamInitializationError):
         problem_code, explain = PROBLEM_CODE_INIT, e.message
-    elif isinstance(e, StreamEncryptionError):
+    elif isinstance(e, EncryptionError):
         problem_code, explain = PROBLEM_CODE_ENCRYPTION, e.message
     elif isinstance(e, StreamSeekableError):
         problem_code, explain = PROBLEM_CODE_SEEKABLE, e.message
@@ -51,7 +52,7 @@ def exception_from_problem_report(report: ConfidentialStorageMessageProblemRepor
     if report.problem_code == PROBLEM_CODE_EOF:
         return StreamEOF(report.explain)
     elif report.problem_code == PROBLEM_CODE_ENCRYPTION:
-        return StreamEncryptionError(report.explain)
+        return EncryptionError(report.explain)
     elif report.problem_code == PROBLEM_CODE_INIT:
         return StreamInitializationError(report.explain)
     elif report.problem_code == PROBLEM_CODE_SEEKABLE:
@@ -516,7 +517,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
                         if resp.problem_code == PROBLEM_CODE_EOF:
                             raise StreamEOF(resp.explain)
                         elif resp.problem_code == PROBLEM_CODE_ENCRYPTION:
-                            raise StreamEncryptionError(resp.explain)
+                            raise EncryptionError(resp.explain)
                         elif resp.problem_code == PROBLEM_CODE_INIT:
                             raise StreamInitializationError(resp.explain)
                         elif resp.problem_code == PROBLEM_CODE_SEEKABLE:
@@ -704,8 +705,48 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                 await self.close_coprotocol()
 
 
-class CallerEncryptedDataVault(AbstractStateMachine):
-    pass
+class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
+
+    def __init__(
+            self, called: Pairwise, uri: str, thid: str = None,
+            retry_count: int = 3, time_to_live: int = 60, logger=None, *args, **kwargs
+    ):
+        """Stream abstraction for write-only operations provided with [Vault] entity
+
+        :param called (required): Called entity who must process requests
+        :param uri (required): address of stream resource
+        :param thid (optional): co-protocol thread-id
+        :param retry_count (optional): if chunk-write-operation was terminated with timeout
+                                       then protocol will re-try operation from the same seek
+        :param logger (optional): state-machine logger
+        """
+        AbstractStateMachine.__init__(self, time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        EncryptedDataVault.__init__(self, path=uri, enc=enc)
+        self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
+
+    async def indexes(self) -> EncryptedDataVault.Indexes:
+        pass
+
+    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes):
+        pass
+
+    async def create_document(self, uri: str, meta: dict = None, **attributes):
+        pass
+
+    async def update(self, uri: str, meta: dict = None, **attributes):
+        pass
+
+    async def load(self, uri: str) -> StructuredDocument:
+        pass
+
+    async def save_document(self, uri: str, doc: EncryptedDocument):
+        pass
+
+    async def readable(self, uri: str) -> AbstractReadOnlyStream:
+        pass
+
+    async def writable(self, uri: str) -> AbstractWriteOnlyStream:
+        pass
 
 
 class CalledEncryptedDataVault(AbstractStateMachine):

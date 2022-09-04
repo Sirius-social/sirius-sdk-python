@@ -21,6 +21,8 @@ jobs:
       - run: sleep 30
 
       - name: Run tests
+        env:
+          REGRESSION_SEED_1: ${{ secrets.REGRESSION_SEED_1 }}
         run: pytest --junitxml=tests_results/result.xml tests
 
       - name: Publish Unit Test Results

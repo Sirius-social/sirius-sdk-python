@@ -174,7 +174,7 @@ def encrypt_plaintext(
     nonce = nacl.utils.random(
         nacl.bindings.crypto_aead_chacha20poly1305_ietf_NPUBBYTES
     )
-    message_bin = message.encode("ascii")
+    message_bin = message.encode()
     output = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
         message_bin, add_data, nonce, key
     )
@@ -199,7 +199,7 @@ def decrypt_plaintext(
     output = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
         ciphertext, recips_bin, nonce, key
     )
-    return output.decode("ascii")
+    return output.decode()
 
 
 def pack_message(

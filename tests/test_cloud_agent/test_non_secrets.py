@@ -127,6 +127,14 @@ async def test_wallet_search_sqlite(test_suite: ServerTestSuite):
         assert 'value1' in str(records)
 
         query = {
+            "tag1": "val1",
+            "marker": "A"
+        }
+        records, total = await sirius_sdk.NonSecrets.wallet_search(type_, query, opts)
+        assert total == 1
+        assert 'value1' in str(records)
+
+        query = {
             "$or": [{"tag1": "val1"}, {"~tag4": "6"}]
         }
         records, total = await sirius_sdk.NonSecrets.wallet_search(type_, query, opts)

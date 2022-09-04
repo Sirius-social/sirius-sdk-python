@@ -169,6 +169,10 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
         self.__ack_thread_id = None
         self._binding_ids = []
 
+    @property
+    def binding_ids(self) -> List[str]:
+        return self._binding_ids
+
     async def start(self):
         if not self.__is_setup:
             raise SiriusPendingOperation('You must Setup protocol instance at first')
@@ -255,6 +259,7 @@ class AbstractP2PCoProtocol(AbstractCoProtocol):
         )
         if ok:
             self._binding_ids.extend(binding_ids)
+            self._binding_ids = list(set(self._binding_ids))
         else:
             raise SiriusRPCError('Error with subscribe to protocol events')
 
@@ -324,6 +329,7 @@ class CoProtocolThreadedP2P(AbstractP2PCoProtocol):
         ok = await self._bus.subscribe(thid=self.__thid)
         if ok:
             self._binding_ids.append(self.__thid)
+            self._binding_ids = list(set(self._binding_ids))
         else:
             raise SiriusRPCError('Error with subscribe to protocol events')
 
