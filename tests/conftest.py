@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 import asyncio
 from typing import Tuple, Dict
 from os.path import abspath, relpath, dirname, join as path_join
@@ -316,3 +317,22 @@ def create_mediator_instance(mediator_invitation: dict, my_verkey: str, routing_
 def files_dir():
     cur = abspath(relpath(dirname(__file__)))
     return path_join(cur, 'files')
+
+
+@pytest.fixture()
+def regression_seed1() -> str:
+    val = os.getenv('REGRESSION_SEED_1', None)
+    if not val:
+        raise RuntimeError('Env var "REGRESSION_SEED_1" is empty')
+    return val
+
+
+@pytest.fixture()
+def regression_data1() -> bytes:
+    data = {
+        "protected": "eyJlbmMiOiJ4Y2hhY2hhMjBwb2x5MTMwNV9pZXRmIiwidHlwIjoiSldNLzEuMCIsImFsZyI6IkF1dGhjcnlwdCIsInJlY2lwaWVudHMiOlt7ImVuY3J5cHRlZF9rZXkiOiJUMGhrYkthVmZmQnZxN2NBekVuLTI0Y25BNnFmNjkxUU9ZQVdWNUQ3bUdtaUlBOEVhd0ZzR0VialJ4cURMLV9lIiwiaGVhZGVyIjp7ImtpZCI6IkRqZ1dONDljWFE2TTZKYXlCa1JDd0ZzeXdOaG9tbjhnZEFYSEo0YmI5OGltIiwiaXYiOiJ0MXJHcW5IYzNQS0txUVFYTWxVSGFLczlXc0Z1eVY3RSIsInNlbmRlciI6Ik1tbUxXR1pja1NTdEVSRzdfdFVXd3lPTWhUZW5jdHdRUzJkdEJlbmlwdzBrWUU1U1BscVR0RkVOT1dQSTdvcGhDYkNKYjA3OUVZa1J5eGpXUl9nNzRvQXRZNlpTTGhMSkpiYURBZ0NRSEIzdUtua0Zld2hud0JibVJaYz0ifX1dfQ==",
+        "iv": "e28LLo1CVPRFAG0-",
+        "ciphertext": "ol5MD7FEwWaaRKNa0qR_Qo0nDifQjR6Aev4VwB3saVfE-isgVojEnczoLtYW1Y-wAu3uPGl0VrDVNs7kl19DMCU0Dtod7bBIzQk38j9c1yxSQpDtpjI9vbEsN5AXBQBd3KMXiERU6ia0pXcB6BJ-E62ee9wLhlIBW6jGKFTNrFQumpWHb8tzctW_agCQ9FIvB4gouEKJZ-AJ6k2B7GiXhKjnxQllSKCJJ4QIrWBkDsKa48FF5ZTd7fA5Y0OYfiTW0DYX9so04LsC1yR6V7P1ZP2umBWHB9wYS0zM3hn5rb9ZHZAaLRJDbuWgj1c20nRTTQ08C5iO2zcibUcnacbJ75ghvoQr90V41VZ0DRP3ffLpmeX2LaEHJgiuPcxjCPCGZ6aPuwmP2gklOasYyg6nXFv-wl7Zl6kO3IukNSAtv-sV7PQoYeMVlLpL5IkUNuntz-iSIBeb-8LnoHSF9kSu1Nhv567LY7dWmBbVSkzcplY4zY6uzJWmW6g95YpnKJ-Q0E3UfKaA5zNQIdRQYyBR1A1H6-De1awxLsMzpyfz24PSXJTTF4XKCKSYHAIHCviEGamKmC09ochkFRa8pGazPvz9HKxdxCI0Docs_EN4h4kbccX1TdTYDeAzDr-hpJOhIOK-k3lltLeB6fHfY6XyvdhfOhbMKYvR1SbvPfrUxzJAQIXLGqrGd5gRiHgcKxSkULT-x-2UyK84XeaZnE5C-ZWLRvhZY10fOVBLj5zOVo9XuNH4VtzjIVdr5tCMpS1iJPTc6v_nhXXWMocq5fWqYCsgVRHvbFPmQqMxRqyMZ2dPlwURb1SnYgPL-np8IcK1ij_3l-KXThlnyhxIhfT483HRvWqjTg2tvkhru0d45jtuXSZG25z4hnAMAxNF5cwEO595LcgwocDpPA843TEAx_3f9YCB6FDltHvCMt9VID0H1eTb4VbJjXruhva331r7MBi8uH5CO-0I2YTK1GuAfa3ama-k0GaV2Jaw1uRWCAnjeVvynjM0fcJjFPWctflGUIGS91NfUUTFxvZsVxwFrRQzzl0HWhbXhWpxIS3w1W1dDdnXTli09ONyKx2XPl5mShR78AsOAf-zmSp9U4yKF6tdxmi3sf4pr2SaHVxIpatIIFS11gq2Ukjd1ZjA39E0ojIPqnFy3fIYEFXJtCfyPI5Z_8CYGcPz1FNbQVi4Hv4aOXlqS9-V6OccAikMrGQkJ2p0urNrwFYP7S9pLZ_yIxUAvgyTBOTNn2TqUZJclgwKZ6UMSETh_yq8kbUSZVMFGjGo3BGpPQ2U8QAyQTak0i9-cH1uwWOUJDfixhS68FiXOrSNgBiGRoF7c8oIcMsQJrbdsmUZ_njUzd4roZ9VG_GB9kqE_yGQKyDXsQLVpZ4=",
+        "tag": "8HIu6jqvX-hWMBx5mDHRBg=="
+    }
+    return json.dumps(data).encode()
