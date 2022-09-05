@@ -708,7 +708,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
 class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
 
     def __init__(
-            self, called: Pairwise, uri: str, thid: str = None,
+            self, called: Pairwise, uri: str, thid: str = None, read_timeout: int = 30,
             retry_count: int = 3, time_to_live: int = 60, logger=None, *args, **kwargs
     ):
         """Stream abstraction for write-only operations provided with [Vault] entity
@@ -716,13 +716,15 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
         :param called (required): Called entity who must process requests
         :param uri (required): address of stream resource
         :param thid (optional): co-protocol thread-id
+        :param read_timeout (optional): time till read-operation is timeout occurred
         :param retry_count (optional): if chunk-write-operation was terminated with timeout
                                        then protocol will re-try operation from the same seek
         :param logger (optional): state-machine logger
         """
         AbstractStateMachine.__init__(self, time_to_live=time_to_live, logger=logger, *args, **kwargs)
-        EncryptedDataVault.__init__(self, path=uri, enc=enc)
+        EncryptedDataVault.__init__(self)
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
+        self.__thid = thid or f'caller-data-vault/{uuid.uuid4().hex}'
 
     async def indexes(self) -> EncryptedDataVault.Indexes:
         pass

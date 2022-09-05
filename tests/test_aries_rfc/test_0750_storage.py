@@ -634,6 +634,54 @@ async def test_fs_streams_encoding_copy(files_dir: str):
 
 
 @pytest.mark.asyncio
+async def test_streams_encoding_decoding_wrappers(files_dir: str):
+    # Layer-2
+    target_vk, target_sk = create_keypair(seed='00000000000000000000000000TARGET'.encode())
+    target_vk, target_sk = bytes_to_b58(target_vk), bytes_to_b58(target_sk)
+    # Layer-1
+    storage_vk, storage_sk = create_keypair(seed='0000000000000000000000000STORAGE'.encode())
+    storage_vk, storage_sk = bytes_to_b58(storage_vk), bytes_to_b58(storage_sk)
+    # File on Disk
+    test_data = b'data*' * 1024
+    storage_file = os.path.join(files_dir, 'big_img_encrypted_stream.jpeg.bin')
+    # Create write-stream on Layer-1
+    wo = FileSystemWriteOnlyStream(
+        storage_file, chunk_size=1024, enc=StreamEncryption().setup(target_verkeys=[storage_vk])
+    )
+    jwe_layer1 = wo.enc.jwe
+    await wo.create(truncate=True)
+    try:
+        # Wrap with stream abstraction on Layer-2
+        wrapper_to_write = WriteOnlyStreamEncodingWrapper(
+            dest=wo, enc=StreamEncryption().setup(target_verkeys=[target_vk])
+        )
+        jwe_layer2 = wrapper_to_write.enc.jwe
+        await wrapper_to_write.open()
+        try:
+            await wrapper_to_write.write(test_data)
+        finally:
+            await wrapper_to_write.close()
+        # Open Read stream on Layer-1
+        ro = FileSystemReadOnlyStream(
+            storage_file, chunks_num=wo.chunks_num,
+            enc=StreamDecryption.from_jwe(jwe_layer1).setup(storage_vk, storage_sk)
+        )
+        # Wrap with stream abstraction on Layer-2
+        wrapper_to_read = ReadOnlyStreamDecodingWrapper(
+            src=ro,
+            enc=StreamDecryption.from_jwe(jwe_layer2).setup(target_vk, target_sk)
+        )
+        await wrapper_to_read.open()
+        try:
+            actual_data = await wrapper_to_read.read()
+            assert actual_data == test_data
+        finally:
+            await wrapper_to_read.close()
+    finally:
+        os.remove(storage_file)
+
+
+@pytest.mark.asyncio
 async def test_readonly_stream_protocols(files_dir: str, config_c: dict, config_d: dict):
     """
     Agent-C is CALLER
@@ -1250,7 +1298,8 @@ async def test_recipe_simple_datavault_metadata_and_indexes(config_a: dict, conf
             # check2
             load_for_stream = await vault.load(uri_under_test2)
             assert isinstance(load_for_stream, StructuredDocument)
-            assert isinstance(load_for_stream.content, AbstractReadOnlyStream)
+            assert isinstance(load_for_stream.stream.readable(), AbstractReadOnlyStream)
+            assert isinstance(load_for_stream.stream.writable(), AbstractWriteOnlyStream)
             assert load_for_stream.meta['contentType'] == 'video/mpeg'
             assert 'created' in load_for_stream.meta
             assert 'chunks' in load_for_stream.meta and type(load_for_stream.meta['chunks']) is int
@@ -1412,6 +1461,8 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
         - vault encrypt + controller encrypt data over vault config
         - vault don't encrypt + controller encrypt on self side (it can share encrypted data among pairwises)
         - vault don't encrypt + controller don't encrypt on self side
+
+    P.S. Controller is participant who control data semantic
     """
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
@@ -1455,25 +1506,21 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
                     with open(structured_doc_file_path, 'rb') as f:
                         actual_data = f.read()
                         assert actual_data == test_data
-
-                # Case 2
-                if case_vault_encrypt is True and case_controller_encrypt is False:
-                    # If vault is encrypted but controller don't encrypt, then vault side can read data
+                else:
+                    # If vault is encrypted OR controller does encrypt, then data is encrypted on Disk
                     with open(structured_doc_file_path, 'rb') as f:
                         actual_data = f.read()
                         # Data on disk is encrypted
                         assert actual_data != test_data
+
+                # Case 2
+                if case_vault_encrypt is True and case_controller_encrypt is False:
                     # Data if read in Vault context is decrypted
                     loaded_doc = await vault.load(structured_doc.id)
                     assert loaded_doc.content.content == test_data
 
                 # Case 3
                 if case_vault_encrypt is False and case_controller_encrypt is True:
-                    # If vault don't encrypted but controller encrypt and may share among other pairwises
-                    with open(structured_doc_file_path, 'rb') as f:
-                        actual_data = f.read()
-                        # Data on disk is encrypted
-                        assert actual_data != test_data
                     # Doc controller has access to document content
                     loaded_doc = await vault.load(structured_doc.id)
                     async with sirius_sdk.context(**controller_config):
@@ -1482,11 +1529,6 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
                         assert loaded_doc.content.encrypted is False
                 # Case 4
                 if case_vault_encrypt is True and case_controller_encrypt is True:
-                    # If both side encrypt data then only controller may read it
-                    with open(structured_doc_file_path, 'rb') as f:
-                        actual_data = f.read()
-                        # Data on disk is encrypted
-                        assert actual_data != test_data
                     # Vault side don/t have access to data
                     loaded_doc = await vault.load(structured_doc.id)
                     loaded_doc.content.encrypted = True
@@ -1509,19 +1551,20 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
         - vault encrypt + controller encrypt data over vault config
         - vault don't encrypt + controller encrypt on self side (it can share encrypted data among pairwises)
         - vault don't encrypt + controller don't encrypt on self side
+
+    P.S. Controller is participant who control data semantic
     """
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
     vault_config = config_a
     controller_config = config_b
     test_data = b'xxx' * 1024
-
-    async with sirius_sdk.context(**controller_config):
-        controller_encrypt_key = await sirius_sdk.Crypto.create_key()
+    controller_pk, controller_sk = create_keypair(seed='0000000000000000000000CONTROLLER'.encode())
+    controller_pk, controller_sk = bytes_to_b58(controller_pk), bytes_to_b58(controller_sk)
 
     try:
         os.mkdir(dir_under_test)
-        for case_vault_encrypt, case_controller_encrypt in [(False, False)]:
+        for case_vault_encrypt, case_controller_encrypt in [(False, False), (False, True), (True, False), (True, True)]:
             uri_under_test = f'document_{uuid.uuid4().hex}.bin'
             async with sirius_sdk.context(**vault_config):
                 auth = ConfidentialStorageAuthProvider()
@@ -1535,10 +1578,74 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
                 structured_doc = await vault.create_stream(uri_under_test)
                 structured_doc_file_path = os.path.join(dir_under_test, vault.mounted_dir, structured_doc.id)
                 assert os.path.isfile(structured_doc_file_path)
-
+                stream_to_write_layer1 = await vault.writable(uri_under_test)
                 if case_controller_encrypt:
-                    pass
+                    stream_to_write_layer2 = WriteOnlyStreamEncodingWrapper(
+                        dest=stream_to_write_layer1,
+                        enc=StreamEncryption().setup(target_verkeys=[controller_pk])
+                    )
+                    jwe_layer2 = stream_to_write_layer2.enc.jwe
                 else:
-                    pass
+                    # Ignore adv encoding layer
+                    stream_to_write_layer2 = stream_to_write_layer1
+                    jwe_layer2 = None
+                # Write Data to stream under test
+                await stream_to_write_layer2.open()
+                await stream_to_write_layer2.write(test_data)
+                await stream_to_write_layer2.close()
+
+                # Run Test cases
+
+                # Case 1
+                if case_vault_encrypt is False and case_controller_encrypt is False:
+                    # If both parties don't encrypt data so it is raw data stored on disk
+                    with open(structured_doc_file_path, 'rb') as f:
+                        actual_data = f.read()
+                        assert actual_data == test_data
+                else:
+                    # If vault is encrypted or controller is encrypt, then data is encrypted
+                    with open(structured_doc_file_path, 'rb') as f:
+                        actual_data = f.read()
+                        # Data on disk is encrypted
+                        assert actual_data != test_data
+                # Case 2
+                if case_vault_encrypt is True and case_controller_encrypt is False:
+                    # Data if read in Vault context is decrypted
+                    loaded_doc = await vault.load(structured_doc.id)
+                    stream_to_read_layer2 = loaded_doc.stream.readable()
+                    await stream_to_read_layer2.open()
+                    try:
+                        actual_data = await stream_to_read_layer2.read()
+                    finally:
+                        await stream_to_read_layer2.close()
+                    assert actual_data == test_data
+                # Case 3
+                if case_vault_encrypt is False and case_controller_encrypt is True:
+                    # Doc controller has access to document content
+                    loaded_doc = await vault.load(structured_doc.id)
+                    stream_to_read_layer2 = loaded_doc.stream.readable(
+                        jwe_layer2,
+                        keys=KeyPair(controller_pk, controller_sk)
+                    )
+                    await stream_to_read_layer2.open()
+                    try:
+                        actual_data = await stream_to_read_layer2.read()
+                    finally:
+                        await stream_to_read_layer2.close()
+                    assert actual_data == test_data
+                # Case 4
+                if case_vault_encrypt is True and case_controller_encrypt is True:
+                    # Vault side don/t have access to data
+                    loaded_doc = await vault.load(structured_doc.id)
+                    stream_to_read_layer2 = loaded_doc.stream.readable(
+                        jwe_layer2,
+                        keys=KeyPair(controller_pk, controller_sk)
+                    )
+                    await stream_to_read_layer2.open()
+                    try:
+                        actual_data = await stream_to_read_layer2.read()
+                    finally:
+                        await stream_to_read_layer2.close()
+                    assert actual_data == test_data
     finally:
         shutil.rmtree(dir_under_test)

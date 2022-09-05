@@ -1,12 +1,12 @@
 from .documents import Document, EncryptedDocument
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, StreamEncryption, \
-  StreamDecryption
+  StreamDecryption, ReadOnlyStreamDecodingWrapper, WriteOnlyStreamEncodingWrapper
 
-from .encoding import ConfidentialStorageEncType
+from .encoding import ConfidentialStorageEncType, JWE, KeyPair
 from .errors import BaseConfidentialStorageError, StreamEOF, EncryptionError, StreamInitializationError, StreamSeekableError, \
     StreamFormatError, ConfidentialStorageTimeoutOccurred
 from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage, \
-    VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument
+    VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument, DataVaultStreamWrapper
 from .messages import StructuredDocumentAttach
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
@@ -20,8 +20,9 @@ __all__ = [
     "CallerWriteOnlyStreamProtocol", "CalledWriteOnlyStreamProtocol", "Document", "EncryptedDocument",
     "BaseConfidentialStorageError", "StreamEOF", "EncryptionError", "StreamInitializationError",
     "StreamSeekableError", "StreamFormatError", "ConfidentialStorageTimeoutOccurred", "ConfidentialStorageEncType",
-    "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream",
+    "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream", "DataVaultStreamWrapper",
     "ConfidentialStorageAuthProvider", "EncryptedDataVault", "FileSystemRawByteStorage",
     "Document", "EncryptedDocument", "VaultConfig", "ConfidentialStorageRawByteStorage", "StructuredDocument",
-    "StructuredDocumentAttach"
+    "StructuredDocumentAttach", "ReadOnlyStreamDecodingWrapper", "WriteOnlyStreamEncodingWrapper",
+    "JWE", "KeyPair"
 ]

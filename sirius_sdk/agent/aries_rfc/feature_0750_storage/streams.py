@@ -102,6 +102,12 @@ class StreamEncryption(BaseStreamEncryption):
         self._cek = cek
         return self
 
+    @classmethod
+    def from_jwe(cls, jwe: Union[JWE, dict]) -> "StreamEncryption":
+        inst = StreamEncryption()
+        inst.jwe = jwe
+        return inst
+
 
 class StreamDecryption(BaseStreamEncryption):
 
@@ -125,6 +131,12 @@ class StreamDecryption(BaseStreamEncryption):
         )
         self._cek = cek
         return self
+
+    @classmethod
+    def from_jwe(cls, jwe: Union[JWE, dict]) -> "StreamDecryption":
+        inst = StreamDecryption()
+        inst.jwe = jwe
+        return inst
 
 
 class AbstractStream(ABC):
@@ -395,3 +407,93 @@ class AbstractWriteOnlyStream(AbstractStream):
                 return
 
 
+class ReadOnlyStreamDecodingWrapper(AbstractReadOnlyStream):
+
+    def __init__(self, src: AbstractReadOnlyStream, enc: BaseStreamEncryption):
+        if enc is None:
+            raise RuntimeError('You should setup encoding')
+        super().__init__(path=src.path, chunks_num=src.chunks_num, enc=enc)
+        self.__src = src
+
+    @property
+    def is_open(self) -> bool:
+        return self.__src.is_open
+
+    @property
+    def seekable(self) -> Optional[bool]:
+        return self.__src.seekable
+
+    @property
+    def chunks_num(self) -> int:
+        return self.__src.chunks_num
+
+    @property
+    def current_chunk(self) -> int:
+        return self.__src.current_chunk
+
+    async def read_chunk(self, no: int = None) -> (int, bytes):
+        no, chunk = await self.__src.read_chunk(no)
+        if self.enc is not None:
+            decoded = await self.decrypt(chunk)
+        else:
+            decoded = chunk
+        return no, decoded
+
+    async def eof(self) -> bool:
+        return await self.__src.eof()
+
+    async def open(self):
+        await self.__src.open()
+
+    async def close(self):
+        await self.__src.close()
+
+    async def seek_to_chunk(self, no: int) -> int:
+        no = await self.__src.seek_to_chunk(no)
+        return no
+
+
+class WriteOnlyStreamEncodingWrapper(AbstractWriteOnlyStream):
+
+    def __init__(self, dest: AbstractWriteOnlyStream, enc: BaseStreamEncryption):
+        if enc is None:
+            raise RuntimeError('You should setup encoding')
+        super().__init__(path=dest.path, chunk_size=dest.chunk_size, enc=enc)
+        self.__src = dest
+
+    @property
+    def is_open(self) -> bool:
+        return self.__src.is_open
+
+    @property
+    def seekable(self) -> Optional[bool]:
+        return self.__src.seekable
+
+    @property
+    def chunks_num(self) -> int:
+        return self.__src.chunks_num
+
+    @property
+    def current_chunk(self) -> int:
+        return self.__src.current_chunk
+
+    async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
+        if self.enc is not None:
+            encoded = await self.encrypt(chunk)
+        else:
+            encoded = chunk
+        no, sz = await self.__src.write_chunk(encoded, no)
+        return no, sz
+
+    async def truncate(self, no: int = 0):
+        await self.__src.truncate(no)
+
+    async def open(self):
+        await self.__src.open()
+
+    async def close(self):
+        await self.__src.close()
+
+    async def seek_to_chunk(self, no: int) -> int:
+        no = await self.__src.seek_to_chunk(no)
+        return no

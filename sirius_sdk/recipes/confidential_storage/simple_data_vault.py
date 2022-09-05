@@ -3,12 +3,12 @@ import json
 import os.path
 import uuid
 
-from typing import List, Optional
+from typing import List, Optional, Tuple, Any
 
 import sirius_sdk
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import EncryptedDataVault, StructuredDocument, \
     ConfidentialStorageAuthProvider, VaultConfig, ConfidentialStorageRawByteStorage, FileSystemRawByteStorage, \
-    StreamEncryption, AbstractWriteOnlyStream, AbstractReadOnlyStream, EncryptedDocument
+    StreamEncryption, AbstractWriteOnlyStream, AbstractReadOnlyStream, EncryptedDocument, DataVaultStreamWrapper
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import EncryptionError, DataVaultCreateResourceError, \
     BaseConfidentialStorageError, DataVaultCreateResourceMissing, StreamInitializationError
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.encoding import ConfidentialStorageEncType
@@ -40,6 +40,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         if not os.path.isdir(self.__mounted_dir):
             os.mkdir(self.__mounted_dir)
         self.__storage: Optional[ConfidentialStorageRawByteStorage] = None
+        self.__cached_info: Tuple[str, dict] = ('', {})
 
     @property
     def mounted_dir(self) -> str:
@@ -74,6 +75,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         )
 
     async def update(self, uri: str, meta: dict = None, **attributes):
+        self.__cached_info = ('', {})
         info = await self.__load_resource_info(uri)
         if info is None:
             raise DataVaultCreateResourceMissing(f'Mission resource uri: {uri}')
@@ -102,10 +104,16 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         attrib_as_dict = self.__extract_attributed_from_info(info)
         indexed = [StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))]
         if is_stream:
-            stream = await storage.readable(uri, chunks_num)
             if self.META_CREATED_CHUNKS_ATTR not in meta:
                 meta[self.META_CREATED_CHUNKS_ATTR] = int(chunks_num)
-            return StructuredDocument(id_=uri, meta=meta, content=stream, urn=urn, indexed=indexed)
+            if self.auth.can_read or self.auth.can_write:
+                stream_wrapper = DataVaultStreamWrapper(
+                    readable=await self.readable(uri) if self.auth.can_read else None,
+                    writable=await self.writable(uri) if self.auth.can_write else None
+                )
+            else:
+                stream_wrapper = None
+            return StructuredDocument(id_=uri, meta=meta, content=None, stream=stream_wrapper, urn=urn, indexed=indexed)
         else:
             if chunks_num > 0:
                 stream = await storage.readable(uri, chunks_num)
@@ -219,6 +227,9 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         return self.__storage
 
     async def __load_resource_info(self, uri: str) -> Optional[dict]:
+        cached_uri, cached_info = self.__cached_info
+        if cached_uri == uri:
+            return cached_info
         opts = sirius_sdk.NonSecretsRetrieveRecordOptions()
         opts.check_all()
         try:
@@ -233,6 +244,8 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             )
             if recs:
                 rec = recs[0]
+        if rec:
+            self.__cached_info = (uri, rec)
         return rec
 
     def __clean_income_attributes(self, **attributes) -> dict:
