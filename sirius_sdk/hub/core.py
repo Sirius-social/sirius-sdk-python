@@ -72,6 +72,20 @@ class Hub:
             if self.__mediator is not None and self.__mediator.is_connected:
                 asyncio.ensure_future(self.__mediator.disconnect(), loop=self.__loop)
 
+    @property
+    def global_id(self) -> Optional[str]:
+        if self.__config.cloud_opts.is_filled:
+            if isinstance(self.__config.cloud_opts.credentials, str):
+                cred = self.__config.cloud_opts.credentials.encode()
+            else:
+                cred = self.__config.cloud_opts.credentials
+            return hashlib.md5(cred).hexdigest()
+        elif self.__config.mediator_opts.is_filled:
+            cred = f'{self.__config.mediator_opts.my_verkey}:{self.__config.mediator_opts.mediator_verkey}'
+            return hashlib.md5(cred).hexdigest()
+        else:
+            return None
+
     def copy(self):
         inst = Hub(config=self.__config)
         return inst
