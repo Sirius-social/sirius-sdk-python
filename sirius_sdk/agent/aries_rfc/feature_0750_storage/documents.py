@@ -67,6 +67,17 @@ class EncryptedDocument(Document):
     def target_verkeys(self) -> List[str]:
         return self.__target_verkeys
 
+    @property
+    def jwm(self) -> Optional[dict]:
+        if self.__encrypted:
+            if isinstance(self.__encrypted, bytes):
+                jwm = json.loads(self.content.decode())
+                return jwm
+            else:
+                return None
+        else:
+            return None
+
     async def encrypt(self, my_vk: str = None):
         if not self.__encrypted:
             if not self.__target_verkeys:

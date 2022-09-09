@@ -26,6 +26,9 @@ class HMAC:
         else:
             return False
 
+    def as_json(self) -> dict:
+        return {'id': self.id, 'type': self.type}
+
 
 class DataVaultStreamWrapper:
 
@@ -89,7 +92,7 @@ class StructuredDocument:
         return self.__meta
 
     @property
-    def content(self) -> Optional[Union[AbstractReadOnlyStream, EncryptedDocument]]:
+    def content(self) -> Optional[EncryptedDocument]:
         return self.__content
 
     @property
@@ -209,7 +212,7 @@ class VaultConfig:
                 return True
             else:
                 return False
-
+    id: str
     # The entity or cryptographic key that is in control of the data vault.
     # The value is required and MUST be a URI. Example: "did:example:123456789"
     controller: str
@@ -236,6 +239,7 @@ class VaultConfig:
 
     def as_json(self) -> dict:
         js = {
+            'id': self.id,
             'sequence': self.sequence,
             'controller': self.controller,
         }
@@ -259,6 +263,7 @@ class VaultConfig:
 
     def from_json(self, js: dict):
         js = dict(**js)
+        self.id = js.get('id', None)
         self.sequence = js.pop('sequence', 0)
         self.controller = js.pop('controller', None)
         self.invoker = js.pop('invoker', None)
@@ -274,7 +279,7 @@ class VaultConfig:
             self.key_agreement = None
         hmac = js.pop('hmac', {})
         hmac_id = hmac.get('id', None)
-        hmac_type = hmac_id.get('type', None)
+        hmac_type = hmac.get('type', None)
         if hmac_id or hmac_type:
             self.hmac = HMAC(
                 hmac_id, hmac_type
@@ -284,6 +289,12 @@ class VaultConfig:
         # Copy others
         for fld, value in js.items():
             self.__setattr__(fld, value)
+
+    @staticmethod
+    def create_from_json(js: dict) -> 'VaultConfig':
+        inst = VaultConfig(id='id', controller='')
+        inst.from_json(js)
+        return inst
 
 
 class ConfidentialStorageRawByteStorage(ABC):
@@ -315,6 +326,10 @@ class ConfidentialStorageRawByteStorage(ABC):
     async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError
 
+    @abstractmethod
+    async def exists(self, uri: str) -> bool:
+        raise NotImplementedError
+
 
 class EncryptedDataVault:
     """Layer B: Encrypted Vault Storage
@@ -338,13 +353,15 @@ class EncryptedDataVault:
             if ':' not in my_vk:
                 my_vk = f'did:key:{my_vk}'
             cfg = VaultConfig(
+                id=f'did:edvs:{auth.entity.their.did}',
                 sequence=0,
                 controller=my_did,
                 delegator=[their_did],
                 key_agreement=VaultConfig.KeyAgreement(
                     id=my_vk,
                     type='X25519KeyAgreementKey2019'
-                )
+                ),
+                reference_id='default'
             )
         self._cfg = cfg
 
@@ -363,6 +380,14 @@ class EncryptedDataVault:
             raise NotImplementedError
 
     @abstractmethod
+    async def open(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def close(self):
+        raise NotImplementedError
+
+    @abstractmethod
     async def indexes(self) -> Indexes:
         raise NotImplementedError
 
@@ -372,6 +397,10 @@ class EncryptedDataVault:
 
     @abstractmethod
     async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def remove(self, uri: str):
         raise NotImplementedError
 
     @abstractmethod
@@ -393,3 +422,5 @@ class EncryptedDataVault:
     @abstractmethod
     async def writable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError
+
+

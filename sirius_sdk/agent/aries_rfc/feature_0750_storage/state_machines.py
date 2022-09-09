@@ -1,7 +1,9 @@
 import base64
+import json
+import logging
 import uuid
 import contextlib
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
@@ -9,8 +11,8 @@ from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
 
-from .components import EncryptedDataVault
-from .messages import StreamOperation, StreamOperationResult, ConfidentialStorageMessageProblemReport
+from .components import EncryptedDataVault, VaultConfig
+from .messages import *
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
 from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument
 from .errors import *
@@ -270,6 +272,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
         super(CalledReadOnlyStreamProtocol, self).__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__caller: Pairwise = caller
         self.__thid = thid
+        self.__stream_is_open = False
         self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
 
@@ -280,6 +283,14 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
     @property
     def thid(self) -> str:
         return self.__thid
+
+    @property
+    def stream_is_open(self) -> bool:
+        return self.__stream_is_open
+
+    @stream_is_open.setter
+    def stream_is_open(self, value: bool):
+        self.__stream_is_open = value
 
     async def run_forever(self, proxy_to: AbstractReadOnlyStream, exit_on_close: bool = True):
         """Proxy requests in loop
@@ -309,6 +320,11 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
         elif isinstance(request, StreamOperation):
             co = await self.open_coprotocol()
             try:
+                if proxy_to.is_open != self.stream_is_open:
+                    if self.stream_is_open:
+                        await proxy_to.open()
+                    else:
+                        await proxy_to.close()
                 if request.operation == StreamOperation.OperationCode.OPEN:
                     encrypted = request.params.get('encrypted', False)
                     if encrypted:
@@ -324,6 +340,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                         }
                     }
                     await co.send(StreamOperationResult(request.operation, params))
+                    self.stream_is_open = True
                 elif request.operation == StreamOperation.OperationCode.CLOSE:
                     await proxy_to.close()
                 elif request.operation == StreamOperation.OperationCode.SEEK_TO_CHUNK:
@@ -587,6 +604,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__caller: Pairwise = caller
         self.__thid = thid
+        self.__stream_is_open = False
         self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
 
@@ -597,6 +615,14 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
     @property
     def thid(self) -> str:
         return self.__thid
+
+    @property
+    def stream_is_open(self) -> bool:
+        return self.__stream_is_open
+
+    @stream_is_open.setter
+    def stream_is_open(self, value: bool):
+        self.__stream_is_open = value
 
     async def run_forever(self, proxy_to: AbstractWriteOnlyStream, exit_on_close: bool = True):
         """Proxy requests in loop
@@ -631,6 +657,11 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         elif isinstance(request, StreamOperation):
             co = await self.open_coprotocol()
             try:
+                if proxy_to.is_open != self.stream_is_open:
+                    if self.stream_is_open:
+                        await proxy_to.open()
+                    else:
+                        await proxy_to.close()
                 if request.operation == StreamOperation.OperationCode.OPEN:
                     encrypted = request.params.get('encrypted', False)
                     if encrypted:
@@ -647,6 +678,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                         }
                     }
                     await co.send(StreamOperationResult(request.operation, params))
+                    self.stream_is_open = True
                 elif request.operation == StreamOperation.OperationCode.CLOSE:
                     await proxy_to.close()
                 elif request.operation == StreamOperation.OperationCode.SEEK_TO_CHUNK:
@@ -708,8 +740,8 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
 class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
 
     def __init__(
-            self, called: Pairwise, uri: str, thid: str = None, read_timeout: int = 30,
-            retry_count: int = 3, time_to_live: int = 60, logger=None, *args, **kwargs
+            self, called: Pairwise, read_timeout: int = 30,
+            retry_count: int = 3, logger=None, *args, **kwargs
     ):
         """Stream abstraction for write-only operations provided with [Vault] entity
 
@@ -721,19 +753,78 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
                                        then protocol will re-try operation from the same seek
         :param logger (optional): state-machine logger
         """
-        AbstractStateMachine.__init__(self, time_to_live=time_to_live, logger=logger, *args, **kwargs)
+        AbstractStateMachine.__init__(self, time_to_live=None, logger=logger, *args, **kwargs)
         EncryptedDataVault.__init__(self)
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
-        self.__thid = thid or f'caller-data-vault/{uuid.uuid4().hex}'
+        self.__thid: Optional[str] = None
+        self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
+        self.__called = called
+        self.__current_vault: Optional[str] = None
+
+    @property
+    def thid(self) -> Optional[str]:
+        return self.__thid
+
+    @property
+    def is_open(self) -> bool:
+        return self.__coprotocol is not None
+
+    @property
+    def called(self) -> Pairwise:
+        return self.__called
+
+    def select(self, vault: str):
+        self.__current_vault = vault
+
+    async def open(self):
+        if self.__current_vault is None:
+            raise RuntimeError('You should select vault (query list of ones at first)!')
+        if self.is_open:
+            raise RuntimeError('state machine already open! Close it before to start new session')
+        session_id = uuid.uuid4().hex
+        self.__thid = f'vault[{self.__current_vault}]/{session_id}'
+        await self._open_coprotocol()
+        await self._rpc(request=DataVaultOpen(vault=self.__current_vault))
+
+    async def close(self):
+        await self._close_coprotocol()
+
+    async def list_vaults(self) -> List[VaultConfig]:
+        resp = await self._request(request=DataVaultQueryList())
+        if isinstance(resp, DataVaultResponseList):
+            return resp.vaults
+        elif isinstance(resp, ConfidentialStorageMessageProblemReport):
+            raise StateMachineTerminatedWithError(resp.problem_code, resp.explain)
+        else:
+            raise RuntimeError(f'Unexpected response type: {resp.__class__.__name__}')
 
     async def indexes(self) -> EncryptedDataVault.Indexes:
         pass
 
-    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes):
+    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
         pass
 
-    async def create_document(self, uri: str, meta: dict = None, **attributes):
-        pass
+    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+        resp = await self._rpc(
+            request=DataVaultCreateDocument(uri=uri, meta=meta, **attributes)
+        )
+        if isinstance(resp, StructuredDocumentMessage):
+            attach = resp.documents[0]
+            doc = StructuredDocument(
+                id_=attach.id,
+                meta=attach.meta,
+                indexed=[
+                    StructuredDocument.Index(
+                        sequence=ind.sequence,
+                        hmac=ind.hmac,
+                        attributes=ind.attributes
+                    )
+                    for ind in attach.indexed
+                ]
+            )
+            return doc
+        else:
+            raise ConfidentialStorageUnexpectedMessageType(resp)
 
     async def update(self, uri: str, meta: dict = None, **attributes):
         pass
@@ -750,6 +841,174 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
     async def writable(self, uri: str) -> AbstractWriteOnlyStream:
         pass
 
+    async def _request(self, request: BaseDataVaultOperation) -> BaseConfidentialStorageMessage:
+        co = sirius_sdk.CoProtocolP2P(
+            pairwise=self.called,
+            protocols=[BaseDataVaultOperation.PROTOCOL],
+            time_to_live=15
+        )
+        await co.start()
+        try:
+            ok, resp = await co.switch(request)
+            if ok:
+                return resp
+            else:
+                err_message = 'Caller write operation timeout occurred!'
+                report = ConfidentialStorageMessageProblemReport(
+                    problem_code=PROBLEM_CODE_TIMEOUT_OCCURRED,
+                    explain=err_message
+                )
+                await co.send(report)
+                raise ConfidentialStorageTimeoutOccurred(err_message)
+        finally:
+            await co.stop()
+
+    async def _rpc(self, request: BaseDataVaultOperation) -> Union[BaseDataVaultOperation, DataVaultOperationAck, StructuredDocumentMessage]:
+        if not self.is_open:
+            raise RuntimeError('Open Vault at first!')
+        async with self._coprotocol() as co:
+            while True:
+                success, resp = await co.switch(request)
+                if success:
+                    if isinstance(resp, BaseDataVaultOperation) or isinstance(resp, DataVaultOperationAck) or isinstance(resp, StructuredDocumentMessage):
+                        return resp
+                    elif isinstance(resp, ConfidentialStorageMessageProblemReport):
+                        self._problem_report = resp
+                        raise StateMachineTerminatedWithError(resp.problem_code, resp.explain, notify=False)
+                    else:
+                        raise ConfidentialStorageUnexpectedMessageType(resp)
+                else:
+                    err_message = 'Caller write operation timeout occurred!'
+                    raise ConfidentialStorageTimeoutOccurred(err_message)
+
+    async def _open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+        if self.__coprotocol is None:
+            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+                thid=self.__thid,
+                to=self.__called,
+                time_to_live=self.time_to_live
+            )
+            self._register_for_aborting(self.__coprotocol)
+        return self.__coprotocol
+
+    async def _close_coprotocol(self):
+        if self.__coprotocol:
+            await self.__coprotocol.clean()
+            self._unregister_for_aborting(self.__coprotocol)
+            self.__coprotocol = None
+
+    @contextlib.asynccontextmanager
+    async def _coprotocol(self, close_on_exit: bool = False):
+        co = await self._open_coprotocol()
+        try:
+            try:
+                yield co
+            except OperationAbortedManually:
+                await self.log(progress=100, message='Aborted')
+                raise StateMachineAborted('Aborted by User')
+        finally:
+            if close_on_exit:
+                await self._close_coprotocol()
+
 
 class CalledEncryptedDataVault(AbstractStateMachine):
-    pass
+
+    def __init__(self, caller: Pairwise, proxy_to: List[EncryptedDataVault], logger=None, *args, **kwargs):
+        """Setup proxy environment
+
+        :param thid (optional): co-protocol thread-id
+        :param logger (optional): state-machine logger
+        """
+        super().__init__(time_to_live=None, logger=logger, *args, **kwargs)
+        self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
+        self.__proxy_to = proxy_to
+        self.__caller = caller
+        self.__sessions: Dict[str, EncryptedDataVault] = {}
+        self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
+
+    @property
+    def caller(self) -> Pairwise:
+        return self.__caller
+
+    @property
+    def proxy_to(self) -> List[EncryptedDataVault]:
+        return self.__proxy_to
+
+    async def handle(self, request: BaseConfidentialStorageMessage):
+        if isinstance(request, ConfidentialStorageMessageProblemReport):
+            # Process problem-report
+            self._problem_report = request
+            logging.warning(
+                f'Received problem report problem_code: "{request.problem_code}" explain: "{request.explain}"'
+            )
+        elif isinstance(request, DataVaultQueryList):
+            # Process query of list of available Vaults
+            response = DataVaultResponseList(vaults=[vault.cfg for vault in self.proxy_to])
+            sirius_sdk.prepare_response(request, response)
+            await sirius_sdk.send_to(response, self.caller)
+        elif isinstance(request, BaseDataVaultOperation):
+            # Process Vault operation
+            thread = request.thread
+            if thread is None or not thread.thid:
+                raise ConfidentialStorageInvalidRequest(
+                    'Data Vault request should have "~thread.thid" attribute to bind sessions'
+                )
+            if isinstance(request, DataVaultOpen):
+                # Request to open
+                if not request.vault:
+                    raise ConfidentialStorageInvalidRequest('You should set "vault" attribute')
+                proxy_to = [
+                    vault for vault in self.proxy_to
+                    if vault.cfg.id == request.vault or vault.cfg.reference_id == request.vault
+                ]
+                if not proxy_to:
+                    raise ConfidentialStorageInvalidRequest(f'Vault with ID "{request.vault}" dow bot exists')
+                vault: EncryptedDataVault = proxy_to[0]
+                await vault.open()
+                self.__sessions[request.thread.thid] = vault
+                await self.__send_response(request, DataVaultOperationAck())
+            elif isinstance(request, DataVaultClose):
+                # Request to close
+                vault = self.__sessions.get(request.thread.thid, None)
+                if vault is not None:
+                    await vault.close()
+                    del self.__sessions[request.thread.thid]
+                await self.__send_response(request, DataVaultOperationAck())
+            if isinstance(request, DataVaultCreateStream):
+                vault = self.__get_vault(request.thread.thid)
+                attributes = request.attributes or {}
+                structured_document = await vault.create_stream(
+                    uri=request.uri, meta=request.meta, chunk_size=request.chunk_size, **attributes
+                )
+                response = StructuredDocumentMessage(
+                    documents=[
+                        StructuredDocumentAttach.create_from(src=structured_document, sequence=0)
+                    ]
+                )
+                await self.__send_response(request, response)
+            elif isinstance(request, DataVaultCreateDocument):
+                vault = self.__get_vault(request.thread.thid)
+                attributes = request.attributes or {}
+                structured_document = await vault.create_document(
+                    uri=request.uri, meta=request.meta, **attributes
+                )
+                response = StructuredDocumentMessage(
+                    documents=[
+                        StructuredDocumentAttach.create_from(src=structured_document, sequence=0)
+                    ]
+                )
+                await self.__send_response(request, response)
+
+    def __get_vault(self, thid: str) -> EncryptedDataVault:
+        vault = self.__sessions.get(thid, None)
+        if vault is None:
+            raise ConfidentialStorageInvalidRequest(f'Not found vault bind for session thread: {thid}')
+        return vault
+
+    async def __send_response(
+            self,
+            request_: BaseConfidentialStorageMessage,
+            response_: Union[BaseConfidentialStorageMessage, DataVaultOperationAck]
+    ):
+        sirius_sdk.prepare_response(request_, response_)
+        await sirius_sdk.send_to(response_, self.caller)

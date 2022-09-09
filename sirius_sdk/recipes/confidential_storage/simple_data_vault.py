@@ -2,6 +2,7 @@ import datetime
 import json
 import os.path
 import uuid
+from urllib.parse import urlparse
 
 from typing import List, Optional, Tuple, Any
 
@@ -9,8 +10,7 @@ import sirius_sdk
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import EncryptedDataVault, StructuredDocument, \
     ConfidentialStorageAuthProvider, VaultConfig, ConfidentialStorageRawByteStorage, FileSystemRawByteStorage, \
     StreamEncryption, AbstractWriteOnlyStream, AbstractReadOnlyStream, EncryptedDocument, DataVaultStreamWrapper
-from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import EncryptionError, DataVaultCreateResourceError, \
-    BaseConfidentialStorageError, DataVaultCreateResourceMissing, StreamInitializationError
+from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import *
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.encoding import ConfidentialStorageEncType
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.impl.file_system import FileSystemWriteOnlyStream
 
@@ -41,16 +41,34 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             os.mkdir(self.__mounted_dir)
         self.__storage: Optional[ConfidentialStorageRawByteStorage] = None
         self.__cached_info: Tuple[str, dict] = ('', {})
+        self.__is_open: bool = False
 
     @property
     def mounted_dir(self) -> str:
         return self.__mounted_dir
+
+    @property
+    def is_open(self) -> bool:
+        return self.__is_open
+
+    async def open(self):
+        if not self.__is_open:
+            self.__storage = await self._mounted()
+            self.__is_open = True
+
+    async def close(self):
+        if self.__is_open:
+            if self.__storage is not None:
+                self.__storage = None
+            self.__is_open = False
 
     async def indexes(self) -> EncryptedDataVault.Indexes:
         self.auth.validate(can_read=True)
         return self
 
     async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
+        self.__check_is_open()
+        uri = self.__normalize_uri(uri)
         await self.__create_resource(uri, is_stream=True, meta=meta, chunk_size=chunk_size, **attributes)
         info = await self.__load_resource_info(uri)
         meta = self.__extract_meta_from_info(info)
@@ -63,6 +81,8 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         )
 
     async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+        self.__check_is_open()
+        uri = self.__normalize_uri(uri)
         await self.__create_resource(uri, is_stream=False, meta=meta, **attributes)
         info = await self.__load_resource_info(uri)
         meta = self.__extract_meta_from_info(info)
@@ -74,11 +94,17 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             indexed=[StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))]
         )
 
+    async def remove(self, uri: str):
+        uri = self.__normalize_uri(uri)
+        await self.__remove_resource(uri, only_infos=False)
+
     async def update(self, uri: str, meta: dict = None, **attributes):
+        self.__check_is_open()
+        uri = self.__normalize_uri(uri)
         self.__cached_info = ('', {})
         info = await self.__load_resource_info(uri)
         if info is None:
-            raise DataVaultCreateResourceMissing(f'Mission resource uri: {uri}')
+            raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
         stored_meta = self.__extract_meta_from_info(info)
         cleaned_meta = {k: v for k, v in stored_meta.items() if k in self.RESERVED_META_ATTRS}
         new_meta = dict(**meta)
@@ -91,15 +117,18 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         await sirius_sdk.NonSecrets.update_wallet_record_tags(type_=self.STORAGE_TYPE, id_=uri, tags=new_tags)
 
     async def load(self, uri: str) -> StructuredDocument:
+        self.__check_is_open()
         self.auth.validate(can_read=True)
+        storage = await self._mounted()
         info = await self.__load_resource_info(uri)
-        if info is None:
-            raise DataVaultCreateResourceMissing(f'Mission resource uri: {uri}')
+        if info:
+            urn = info['tags'].get(self.ATTR_URN, None)
+            uri = info['id']
+        if info is None or not await storage.exists(uri):
+            raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
         meta = self.__extract_meta_from_info(info)
         is_stream = info['tags'].get(self.ATTR_IS_STREAM, None) != 'no'
         chunks_num = int(info['tags'].get(self.ATTR_CHUNKS_NUM, '0'))
-        urn = info['tags'].get(self.ATTR_URN, None)
-        uri = info['id']
         storage = await self._mounted()
         attrib_as_dict = self.__extract_attributed_from_info(info)
         indexed = [StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))]
@@ -137,10 +166,11 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
                 return StructuredDocument(id_=uri, meta=meta, content=doc, urn=urn, indexed=indexed)
 
     async def save_document(self, uri: str, doc: EncryptedDocument):
+        self.__check_is_open()
         self.auth.validate(can_write=True)
         info = await self.__load_resource_info(uri)
         if info is None:
-            raise DataVaultCreateResourceMissing(f'Mission resource uri: {uri}')
+            raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
         if info['tags'][self.ATTR_IS_STREAM] != 'no':
             raise StreamInitializationError(f'Resource uri: "{uri}" is stream, you can not operate as document with it')
         tags = info['tags']
@@ -158,10 +188,11 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             await stream.close()
 
     async def readable(self, uri: str) -> AbstractReadOnlyStream:
+        self.__check_is_open()
         self.auth.validate(can_read=True)
         info = await self.__load_resource_info(uri)
         if info is None:
-            raise DataVaultCreateResourceMissing(f'Mission resource uri: {uri}')
+            raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
         if info['tags'][self.ATTR_IS_STREAM] != 'yes':
             raise StreamInitializationError(f'Resource uri: "{uri}" is not stream')
         chunks_num = int(info['tags'].get(self.ATTR_CHUNKS_NUM, '0'))
@@ -170,10 +201,11 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         return stream
 
     async def writable(self, uri: str) -> AbstractWriteOnlyStream:
+        self.__check_is_open()
         self.auth.validate(can_write=True)
         info = await self.__load_resource_info(uri)
         if info is None:
-            raise DataVaultCreateResourceMissing(f'Mission resource uri: {uri}')
+            raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
         if info['tags'][self.ATTR_IS_STREAM] != 'yes':
             raise StreamInitializationError(f'Resource uri: "{uri}" is not stream')
         storage = await self._mounted()
@@ -194,6 +226,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         return stream
 
     async def filter(self, **attributes) -> List[StructuredDocument]:
+        self.__check_is_open()
         opts = sirius_sdk.NonSecretsRetrieveRecordOptions()
         opts.check_all()
         limit = 10000
@@ -248,6 +281,14 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             self.__cached_info = (uri, rec)
         return rec
 
+    @staticmethod
+    def __normalize_uri(uri: str):
+        p = urlparse(uri)
+        path = os.path.join(p.netloc, p.path)
+        while path.startswith('/'):
+            path = path[1:]
+        return os.path.join('file:///', path)
+
     def __clean_income_attributes(self, **attributes) -> dict:
         return {k: v for k, v in attributes.items() if k not in self.RESERVED_ATTRIBS}
 
@@ -265,11 +306,18 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         tags = info.get('tags', {})
         return {k: v for k, v in tags.items() if k not in self.RESERVED_ATTRIBS}
 
+    def __check_is_open(self):
+        if not self.__is_open:
+            raise DataVaultStateError('You should open Vault at first!')
+
     async def __create_resource(self, uri: str, is_stream: bool, meta: dict = None, chunk_size: int = None, **attributes):
         self.auth.validate(can_create=True)
+        storage = await self._mounted()
         info = await self.__load_resource_info(uri)
-        if info is not None:
+        if await storage.exists(uri):
             raise DataVaultCreateResourceError(f'Resource with uri: "{uri}" already exists')
+        if info is not None:
+            await self.__remove_resource(uri, only_infos=True)
         meta = meta or {}
         if self.META_CREATED_ATTR not in meta:
             meta[self.META_CREATED_ATTR] = datetime.datetime.utcnow().isoformat(sep=' ') + 'Z'
@@ -288,8 +336,17 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             type_=self.STORAGE_TYPE, id_=uri, value=json.dumps(meta), tags=tags
         )
         try:
-            storage = await self._mounted()
             await storage.create(uri)
         except BaseConfidentialStorageError:
             await sirius_sdk.NonSecrets.delete_wallet_record(type_=self.STORAGE_TYPE, id_=uri)
             raise
+
+    async def __remove_resource(self, uri: str, only_infos: bool = True):
+        self.auth.validate(can_create=True)
+        if only_infos is False:
+            storage = await self._mounted()
+            await storage.remove(uri)
+        info = await self.__load_resource_info(uri)
+        if info:
+            await sirius_sdk.NonSecrets.delete_wallet_record(type_=self.STORAGE_TYPE, id_=uri)
+        self.__cached_info = ('', {})

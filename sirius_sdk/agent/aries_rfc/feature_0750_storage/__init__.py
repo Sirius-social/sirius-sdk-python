@@ -7,11 +7,11 @@ from .errors import BaseConfidentialStorageError, StreamEOF, EncryptionError, St
     StreamFormatError, ConfidentialStorageTimeoutOccurred
 from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage, \
     VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument, DataVaultStreamWrapper
-from .messages import StructuredDocumentAttach
+from .messages import StructuredDocumentAttach, DataVaultQueryList, DataVaultResponseList
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
-    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol
+    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault
 
 
 __all__ = [
@@ -24,5 +24,5 @@ __all__ = [
     "ConfidentialStorageAuthProvider", "EncryptedDataVault", "FileSystemRawByteStorage",
     "Document", "EncryptedDocument", "VaultConfig", "ConfidentialStorageRawByteStorage", "StructuredDocument",
     "StructuredDocumentAttach", "ReadOnlyStreamDecodingWrapper", "WriteOnlyStreamEncodingWrapper",
-    "JWE", "KeyPair"
+    "JWE", "KeyPair", "CallerEncryptedDataVault", "CalledEncryptedDataVault", "DataVaultQueryList", "DataVaultResponseList"
 ]

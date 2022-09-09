@@ -514,6 +514,23 @@ class CoProtocolThreadedTheirs(AbstractCoProtocol):
         return None
 
 
+def prepare_response(request: Message, response: Message):
+    thread_id = None
+    parent_thread_id = None
+    thread = ThreadMixin.get_thread(request)
+    if thread and thread.thid:
+        thread_id = thread.thid
+    ack_id = PleaseAckMixin.get_ack_message_id(request)
+    if ack_id:
+        parent_thread_id = thread_id
+        thread_id = ack_id
+    if thread_id:
+        ThreadMixin.set_thread(
+            response,
+            value=ThreadMixin.Thread(thid=thread_id, pthid=parent_thread_id)
+        )
+
+
 async def open_communication(event: Event, time_to_live: int = None) -> Optional[AbstractP2PCoProtocol]:
     if event.pairwise is not None and event.message is not None:
         thread_id = None
