@@ -1751,7 +1751,6 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
 
 @pytest.mark.asyncio
 async def test_data_vault_state_machines(config_a: dict, config_b: dict):
-    assert 0
     vault_cfg = config_a
     controller_cfg = config_b
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
@@ -1770,25 +1769,39 @@ async def test_data_vault_state_machines(config_a: dict, config_b: dict):
                 async for e in (await sirius_sdk.subscribe()):
                     assert e.pairwise.their.did == called.their.did
                     assert isinstance(e.message, BaseConfidentialStorageMessage)
+                    request: BaseConfidentialStorageMessage = e.message
                     print('')
-                    await sm.handle(e.message)
+                    await sm.handle(request)
                     print('')
 
         async def run_controller():
             async with sirius_sdk.context(**controller_cfg):
                 m = CallerEncryptedDataVault(caller)
-                print('#1')
+                print('List all vaults')
                 vaults = await m.list_vaults()
                 assert vaults
                 vault_id = vaults[0].id
-                print('#1')
+                print('Select Vault')
                 m.select(vault_id)
-                print('#1')
+                print('Open selected vault')
                 await m.open()
+                print('Create resources')
+                sd1 = await m.create_document(uri=f'my_document.bin', meta={'meta1': 'value-1'}, attr1='attr1')
+                assert 'my_document.bin' in sd1.id
+                assert sd1.urn.startswith('urn:uuid:')
+                assert sd1.meta['meta1'] == 'value-1'
+                assert sd1.indexed[0].attributes == ['attr1']
+                sd2 = await m.create_stream(uri=f'my_stream.bin', meta={'meta2': 'value-2'}, attr2='attr2')
+                assert 'my_stream.bin' in sd2.id
+                assert sd2.urn.startswith('urn:uuid:')
+                assert sd2.meta['meta2'] == 'value-2'
+                assert sd2.indexed[0].attributes == ['attr2']
+                print('Update resource metadata')
+                await m.update(sd1.id, meta={'meta-x': 'value-x'}, attrx='attrx')
+                loaded = await m.load(sd1.id)
+                assert loaded.meta['meta-x'] == 'value-x'
+                assert loaded.indexed[0].attributes == ['attrx']
                 print('')
-                sd = await m.create_document(uri=f'my_document.bin', meta={'meta1': 'value-1'}, attr1='attr1')
-                print('#1')
-
 
         await run_coroutines(
             run_vault(),

@@ -151,7 +151,7 @@ class StructuredDocumentAttach:
             if src.content.encrypted:
                 inst._jwm = src.content.jwm
             else:
-                inst._content = src.content.content
+                inst._content = src.content.content or b''
         return inst
 
     @property
@@ -176,6 +176,7 @@ class StructuredDocumentAttach:
 
     @document.setter
     def document(self, doc: EncryptedDocument):
+        self._cached = None
         self._content = None
         self._jwm = None
         if doc.encrypted and isinstance(doc.content, bytes):
@@ -186,7 +187,7 @@ class StructuredDocumentAttach:
             self._content = {'message': doc.content}
 
     def as_json(self) -> dict:
-        js = {'id': self.id}
+        js = {'id': self.urn}
         if self.meta is not None:
             js['meta'] = dict(self.meta)
         if self.stream is not None:
@@ -194,14 +195,26 @@ class StructuredDocumentAttach:
         if self.indexed is not None:
             js['indexed'] = [dict(ind) for ind in self.indexed]
         if self._content is not None:
-            js['content'] = self._content
+            content_js = {'id': self.id}
+            if self._content:
+                if isinstance(self._content, bytes):
+                    message = self._content.decode()
+                elif isinstance(self._content, str) or isinstance(self._content, dict) or isinstance(self._content, list):
+                    message = self._content
+                else:
+                    message = None
+                if message is not None:
+                    content_js['message'] = message
+            js['content'] = content_js
         if self._jwm is not None:
             js['jwm'] = self._jwm
         return js
 
     def from_json(self, js: dict):
         self._cached = None
-        self.id = js.get('id', None)
+        # Id restored from sub-attrs
+        self.id = js.get('content', {}).get('id') or js.get('stream', {}).get('id')
+        self.urn = js.get('id', None)
         self.sequence = js.get('sequence', None)
         self.meta = self.Meta(**js['meta']) if 'meta' in js else None
         self.stream = self.Stream(**js['stream']) if 'stream' in js else None
@@ -209,8 +222,12 @@ class StructuredDocumentAttach:
             self.indexed = [self.Indexed(**kwargs) for kwargs in js['indexed']]
         else:
             self.indexed = None
-        self._jwm = js['jwm'] if 'jwm' in js else None
-        self._content = js['content'] if 'content' in js else None
+        self._jwm = None
+        self._content = None
+        if 'jwm' in js:
+            self._jwm = js['jwm'] if 'jwm' in js else None
+        if 'content' in js:
+            self._content = js['content'].get('message', None)
 
 
 class StreamOperation(BaseConfidentialStorageMessage):
@@ -348,6 +365,31 @@ class DataVaultUpdateResource(BaseDataVaultOperation):
     NAME = 'data-vault-update-resource'
 
 
+class DataVaultLoadResource(BaseDataVaultOperation):
+    NAME = 'data-vault-load-resource'
+
+
+class DataVaultSaveDocument(BaseDataVaultOperation):
+    NAME = 'data-vault-save-document'
+
+    def __init__(self, document: StructuredDocumentAttach = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if document is not None:
+            doc_attach = {'@id': f'doc-0', 'data': document.as_json()}
+            self['doc~attach'] = [doc_attach]
+
+    @property
+    def document(self) -> Optional[StructuredDocumentAttach]:
+        attaches = self.get('doc~attach', [])
+        if attaches:
+            attach = attaches[0]
+            doc = StructuredDocumentAttach()
+            doc.from_json(attach['data'])
+            return doc
+        else:
+            return None
+
+
 class DataVaultOperationAck(Ack):
     PROTOCOL = BaseDataVaultOperation.PROTOCOL
 
@@ -371,4 +413,3 @@ class StructuredDocumentMessage(BaseConfidentialStorageMessage):
             doc.from_json(attach['data'])
             collection.append(doc)
         return collection
-

@@ -67,7 +67,7 @@ class StructuredDocument:
     def __init__(
             self, id_: str, meta: dict,
             urn: str = None, indexed: List[Index] = None,
-            content: Union[AbstractReadOnlyStream, EncryptedDocument] = None,
+            content: EncryptedDocument = None,
             stream: DataVaultStreamWrapper = None
     ):
         self.__id = id_

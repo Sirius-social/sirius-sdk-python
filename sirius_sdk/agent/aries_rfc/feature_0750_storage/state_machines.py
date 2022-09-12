@@ -802,35 +802,42 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
         pass
 
     async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
-        pass
-
-    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
         resp = await self._rpc(
-            request=DataVaultCreateDocument(uri=uri, meta=meta, **attributes)
+            request=DataVaultCreateStream(uri=uri, meta=meta, chunk_size=chunk_size, attributes=attributes)
         )
         if isinstance(resp, StructuredDocumentMessage):
             attach = resp.documents[0]
-            doc = StructuredDocument(
-                id_=attach.id,
-                meta=attach.meta,
-                indexed=[
-                    StructuredDocument.Index(
-                        sequence=ind.sequence,
-                        hmac=ind.hmac,
-                        attributes=ind.attributes
-                    )
-                    for ind in attach.indexed
-                ]
-            )
+            doc = self.__extract_structured_doc(attach)
+            return doc
+        else:
+            raise ConfidentialStorageUnexpectedMessageType(resp)
+
+    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+        resp = await self._rpc(
+            request=DataVaultCreateDocument(uri=uri, meta=meta, attributes=attributes)
+        )
+        if isinstance(resp, StructuredDocumentMessage):
+            attach = resp.documents[0]
+            doc = self.__extract_structured_doc(attach)
             return doc
         else:
             raise ConfidentialStorageUnexpectedMessageType(resp)
 
     async def update(self, uri: str, meta: dict = None, **attributes):
-        pass
+        await self._rpc(
+            request=DataVaultUpdateResource(uri=uri, meta=meta, attributes=attributes)
+        )
 
     async def load(self, uri: str) -> StructuredDocument:
-        pass
+        resp = await self._rpc(
+            request=DataVaultLoadResource(uri=uri)
+        )
+        if isinstance(resp, StructuredDocumentMessage):
+            attach = resp.documents[0]
+            doc = self.__extract_structured_doc(attach)
+            return doc
+        else:
+            raise ConfidentialStorageUnexpectedMessageType(resp)
 
     async def save_document(self, uri: str, doc: EncryptedDocument):
         pass
@@ -910,6 +917,23 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
             if close_on_exit:
                 await self._close_coprotocol()
 
+    @staticmethod
+    def __extract_structured_doc(attach: StructuredDocumentAttach) -> StructuredDocument:
+        doc = StructuredDocument(
+            id_=attach.id,
+            urn=attach.urn,
+            meta=attach.meta,
+            indexed=[
+                StructuredDocument.Index(
+                    sequence=ind.sequence,
+                    hmac=ind.hmac,
+                    attributes=ind.attributes
+                )
+                for ind in attach.indexed
+            ]
+        )
+        return doc
+
 
 class CalledEncryptedDataVault(AbstractStateMachine):
 
@@ -976,6 +1000,8 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                 await self.__send_response(request, DataVaultOperationAck())
             if isinstance(request, DataVaultCreateStream):
                 vault = self.__get_vault(request.thread.thid)
+                if not request.uri:
+                    raise ConfidentialStorageInvalidRequest('You should set "uri" attribute')
                 attributes = request.attributes or {}
                 structured_document = await vault.create_stream(
                     uri=request.uri, meta=request.meta, chunk_size=request.chunk_size, **attributes
@@ -988,6 +1014,8 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                 await self.__send_response(request, response)
             elif isinstance(request, DataVaultCreateDocument):
                 vault = self.__get_vault(request.thread.thid)
+                if not request.uri:
+                    raise ConfidentialStorageInvalidRequest('You should set "uri" attribute')
                 attributes = request.attributes or {}
                 structured_document = await vault.create_document(
                     uri=request.uri, meta=request.meta, **attributes
@@ -998,6 +1026,35 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                     ]
                 )
                 await self.__send_response(request, response)
+            elif isinstance(request, DataVaultUpdateResource):
+                vault = self.__get_vault(request.thread.thid)
+                if not request.uri:
+                    raise ConfidentialStorageInvalidRequest('You should set "uri" attribute')
+                attributes = request.attributes or {}
+                await vault.update(
+                    uri=request.uri, meta=request.meta, **attributes
+                )
+                await self.__send_response(request, DataVaultOperationAck())
+            elif isinstance(request, DataVaultLoadResource):
+                vault = self.__get_vault(request.thread.thid)
+                if not request.uri:
+                    raise ConfidentialStorageInvalidRequest('You should set "uri" attribute')
+                structured_document = await vault.load(request.uri)
+                response = StructuredDocumentMessage(
+                    documents=[
+                        StructuredDocumentAttach.create_from(src=structured_document, sequence=0)
+                    ]
+                )
+                await self.__send_response(request, response)
+            elif isinstance(request, DataVaultSaveDocument):
+                vault = self.__get_vault(request.thread.thid)
+                if not request.uri:
+                    raise ConfidentialStorageInvalidRequest('You should set "uri" attribute')
+                if not request.document:
+                    raise ConfidentialStorageInvalidRequest('You should attach document with "doc~attach"')
+                enc_doc: EncryptedDocument = request.document.document
+                await vault.save_document(uri=request.uri, doc=enc_doc)
+                await self.__send_response(request, DataVaultOperationAck())
 
     def __get_vault(self, thid: str) -> EncryptedDataVault:
         vault = self.__sessions.get(thid, None)

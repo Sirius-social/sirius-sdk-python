@@ -41,7 +41,7 @@ class Document:
 class EncryptedDocument(Document):
 
     def __init__(
-            self, src: "EncryptedDocument" = None, target_verkeys: List[str] = None
+            self, src: "EncryptedDocument" = None, target_verkeys: List[str] = None, content: Any = None
     ):
         super().__init__()
         self.__target_verkeys = target_verkeys or []
@@ -50,6 +50,9 @@ class EncryptedDocument(Document):
         if src:
             self.content = src.content
             self.__encrypted = src.__encrypted
+        else:
+            if content is not None:
+                self.content = content
 
     @property
     def encrypted(self) -> bool:

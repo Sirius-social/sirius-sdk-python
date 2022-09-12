@@ -77,7 +77,8 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         uri = info['id']
         return StructuredDocument(
             id_=uri, meta=meta, content=None, urn=urn,
-            indexed=[StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))]
+            indexed=[StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))],
+            stream=DataVaultStreamWrapper()
         )
 
     async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
@@ -90,7 +91,9 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         urn = info['tags'].get(self.ATTR_URN, None)
         uri = info['id']
         return StructuredDocument(
-            id_=uri, meta=meta, content=None, urn=urn,
+            id_=uri, meta=meta,
+            content=EncryptedDocument(content=None),
+            urn=urn,
             indexed=[StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))]
         )
 
@@ -100,8 +103,8 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
 
     async def update(self, uri: str, meta: dict = None, **attributes):
         self.__check_is_open()
+        self.auth.validate(can_write=True)
         uri = self.__normalize_uri(uri)
-        self.__cached_info = ('', {})
         info = await self.__load_resource_info(uri)
         if info is None:
             raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
@@ -115,6 +118,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         new_tags.update({k: v for k, v in tags.items() if k in self.RESERVED_ATTRIBS})
         await sirius_sdk.NonSecrets.update_wallet_record_value(type_=self.STORAGE_TYPE, id_=uri, value=json.dumps(new_meta))
         await sirius_sdk.NonSecrets.update_wallet_record_tags(type_=self.STORAGE_TYPE, id_=uri, tags=new_tags)
+        self.__clean_caches()
 
     async def load(self, uri: str) -> StructuredDocument:
         self.__check_is_open()
@@ -122,10 +126,10 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         storage = await self._mounted()
         info = await self.__load_resource_info(uri)
         if info:
-            urn = info['tags'].get(self.ATTR_URN, None)
             uri = info['id']
         if info is None or not await storage.exists(uri):
             raise DataVaultResourceMissing(f'Mission resource uri: {uri}')
+        urn = info['tags'].get(self.ATTR_URN, None)
         meta = self.__extract_meta_from_info(info)
         is_stream = info['tags'].get(self.ATTR_IS_STREAM, None) != 'no'
         chunks_num = int(info['tags'].get(self.ATTR_CHUNKS_NUM, '0'))
@@ -162,7 +166,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
                     await stream.close()
             else:
                 doc = EncryptedDocument()
-                doc.content = b''
+                doc.content = None
                 return StructuredDocument(id_=uri, meta=meta, content=doc, urn=urn, indexed=indexed)
 
     async def save_document(self, uri: str, doc: EncryptedDocument):
@@ -349,4 +353,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         info = await self.__load_resource_info(uri)
         if info:
             await sirius_sdk.NonSecrets.delete_wallet_record(type_=self.STORAGE_TYPE, id_=uri)
+        self.__clean_caches()
+
+    def __clean_caches(self):
         self.__cached_info = ('', {})
