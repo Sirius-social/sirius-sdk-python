@@ -9,6 +9,7 @@ from sirius_sdk.agent.aries_rfc import Ack
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, \
     VALID_DOC_URI, AriesProblemReport
 from .documents import EncryptedDocument
+from .components import StructuredDocument, HMAC, VaultConfig
 
 
 class BaseConfidentialStorageMessage(AriesProtocolMessage, metaclass=RegisterMessage):
@@ -78,12 +79,16 @@ class StructuredDocumentAttach:
 
     class Indexed(UserDict):
 
-        def __init__(self, sequence: int = None, attributes: List[str] = None, **kwargs):
+        def __init__(self, sequence: int = None, attributes: List[str] = None, hmac: Union[dict, HMAC] = None, **kwargs):
             super().__init__(**kwargs)
             if sequence is not None:
                 self['sequence'] = sequence
             if attributes is not None:
                 self['attributes'] = attributes
+            if isinstance(hmac, HMAC):
+                self['hmac'] = hmac.as_json()
+            elif isinstance(hmac, dict):
+                self['hmac'] = hmac
 
         @property
         def sequence(self) -> Optional[int]:
@@ -93,9 +98,18 @@ class StructuredDocumentAttach:
         def attributes(self) -> List[str]:
             return self.get('attributes', [])
 
+        @property
+        def hmac(self) -> Optional[HMAC]:
+            js = self.get('hmac', None)
+            if js:
+                return HMAC(id=js.get('id', None), type=js.get('type', None))
+            else:
+                return None
+
     # An identifier for the structured document.
     # The value is required and MUST be a Base58-encoded 128-bit random value.
     id: Optional[str] = None
+    urn: Optional[str] = None
     # A unique counter for the data vault in order to ensure that clients are properly synchronized to the data vault.
     # The value is required and MUST be an unsigned 64-bit number.
     sequence: int = None
@@ -113,9 +127,32 @@ class StructuredDocumentAttach:
     _content: Optional[Union[dict, str]] = None
 
     # A JSON Web Encryption or COSE Encrypted value that, if decoded, results in the corresponding StructuredDocument.
-    _jwe: Optional[dict] = None
+    _jwm: Optional[dict] = None
 
     _cached: Optional[EncryptedDocument] = None
+
+    @staticmethod
+    def create_from(src: StructuredDocument, sequence: int) -> "StructuredDocumentAttach":
+        inst = StructuredDocumentAttach(id=src.id, sequence=sequence, urn=src.urn)
+        if src.indexed:
+            inst.indexed = [
+                StructuredDocumentAttach.Indexed(
+                    sequence=index.sequence or i,
+                    attributes=index.attributes,
+                    hmac=index.hmac
+                )
+                for i, index in enumerate(src.indexed)
+            ]
+        if src.meta:
+            inst.meta = StructuredDocumentAttach.Meta(**src.meta)
+        if src.stream:
+            inst.stream = StructuredDocumentAttach.Stream(id_=src.id)
+        if src.content:
+            if src.content.encrypted:
+                inst._jwm = src.content.jwm
+            else:
+                inst._content = src.content.content or b''
+        return inst
 
     @property
     def document(self) -> EncryptedDocument:
@@ -126,45 +163,58 @@ class StructuredDocumentAttach:
             doc.content = self._content
             self._cached = doc
             return doc
-        elif self._jwe is not None:
-            recipients = self._jwe.get('recipients', [])
+        elif self._jwm is not None:
+            recipients = self._jwm.get('recipients', [])
             target_verkeys = []
             for item in recipients:
                 target_verkeys.append(item['header']['kid'])
             doc = EncryptedDocument(target_verkeys=target_verkeys)
-            doc.content = json.dumps(self._jwe).encode()
+            doc.content = json.dumps(self._jwm).encode()
             doc.encrypted = True
             self._cached = doc
             return doc
 
     @document.setter
     def document(self, doc: EncryptedDocument):
+        self._cached = None
         self._content = None
-        self._jwe = None
+        self._jwm = None
         if doc.encrypted and isinstance(doc.content, bytes):
-            self._jwe = json.loads(doc.content.decode())
+            self._jwm = json.loads(doc.content.decode())
         elif isinstance(doc.content, dict):
             self._content = doc.content
         elif isinstance(doc.content, str):
             self._content = {'message': doc.content}
 
     def as_json(self) -> dict:
-        js = {'id': self.id}
+        js = {'id': self.urn}
         if self.meta is not None:
-            js['meta'] = self.meta
+            js['meta'] = dict(self.meta)
         if self.stream is not None:
-            js['stream'] = self.stream
+            js['stream'] = dict(self.stream)
         if self.indexed is not None:
-            js['indexed'] = self.indexed
+            js['indexed'] = [dict(ind) for ind in self.indexed]
         if self._content is not None:
-            js['content'] = self._content
-        if self._jwe is not None:
-            js['jwe'] = self._jwe
+            content_js = {'id': self.id}
+            if self._content:
+                if isinstance(self._content, bytes):
+                    message = self._content.decode()
+                elif isinstance(self._content, str) or isinstance(self._content, dict) or isinstance(self._content, list):
+                    message = self._content
+                else:
+                    message = None
+                if message is not None:
+                    content_js['message'] = message
+            js['content'] = content_js
+        if self._jwm is not None:
+            js['jwm'] = self._jwm
         return js
 
     def from_json(self, js: dict):
         self._cached = None
-        self.id = js.get('id', None)
+        # Id restored from sub-attrs
+        self.id = js.get('content', {}).get('id') or js.get('stream', {}).get('id')
+        self.urn = js.get('id', None)
         self.sequence = js.get('sequence', None)
         self.meta = self.Meta(**js['meta']) if 'meta' in js else None
         self.stream = self.Stream(**js['stream']) if 'stream' in js else None
@@ -172,8 +222,12 @@ class StructuredDocumentAttach:
             self.indexed = [self.Indexed(**kwargs) for kwargs in js['indexed']]
         else:
             self.indexed = None
-        self._jwe = js['jwe'] if 'jwe' in js else None
-        self._content = js['content'] if 'content' in js else None
+        self._jwm = None
+        self._content = None
+        if 'jwm' in js:
+            self._jwm = js['jwm'] if 'jwm' in js else None
+        if 'content' in js:
+            self._content = js['content'].get('message', None)
 
 
 class StreamOperation(BaseConfidentialStorageMessage):
@@ -228,9 +282,12 @@ class StreamOperationResult(BaseConfidentialStorageMessage):
         return self.get('params', None)
 
 
-class BaseDataVaultResourceOperation(BaseConfidentialStorageMessage):
+class BaseDataVaultOperation(BaseConfidentialStorageMessage):
 
-    def __init__(self, uri: str, meta: dict = None, attributes: dict = None, *args, **kwargs):
+    def __init__(
+            self, uri: str = None, meta: dict = None, attributes: dict = None,
+            chunk_size: int = None, vault: str = None, *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         if uri:
             self['uri'] = uri
@@ -238,31 +295,103 @@ class BaseDataVaultResourceOperation(BaseConfidentialStorageMessage):
             self['meta'] = meta
         if attributes:
             self['attributes'] = attributes
+        if chunk_size is not None:
+            self['chunk_size'] = chunk_size
+        if vault is not None:
+            self['vault'] = vault
 
+    @property
     def uri(self) -> Optional[str]:
         return self.get('uri', None)
 
+    @property
     def meta(self) -> Optional[dict]:
         return self.get('meta', None)
 
+    @property
     def attributes(self) -> Optional[dict]:
         return self.get('attributes', None)
 
+    @property
+    def chunk_size(self) -> Optional[int]:
+        return self.get('chunk_size', None)
 
-class DataVaultCreateStream(BaseDataVaultResourceOperation):
+    @property
+    def vault(self) -> Optional[str]:
+        return self.get('vault', None)
+
+
+class DataVaultQueryList(BaseDataVaultOperation):
+    NAME = 'vault-query'
+
+
+class DataVaultResponseList(BaseDataVaultOperation):
+    NAME = 'vault-response'
+
+    def __init__(self, vaults: Union[List[VaultConfig], List[dict]] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if vaults is not None and isinstance(vaults, list):
+            collection = []
+            for cfg in vaults:
+                if isinstance(cfg, VaultConfig):
+                    collection.append(cfg.as_json())
+                elif isinstance(cfg, dict):
+                    collection.append(cfg)
+            self['vaults'] = collection
+
+    @property
+    def vaults(self) -> List[VaultConfig]:
+        collection = [VaultConfig.create_from_json(js) for js in self.get('vaults', [])]
+        return collection
+
+
+class DataVaultOpen(BaseDataVaultOperation):
+    NAME = 'vault-open'
+
+
+class DataVaultClose(BaseDataVaultOperation):
+    NAME = 'vault-close'
+
+
+class DataVaultCreateStream(BaseDataVaultOperation):
     NAME = 'vault-create-stream'
 
 
-class DataVaultCreateDocument(BaseDataVaultResourceOperation):
+class DataVaultCreateDocument(BaseDataVaultOperation):
     NAME = 'vault-create-document'
 
 
-class DataVaultUpdateResource(BaseDataVaultResourceOperation):
+class DataVaultUpdateResource(BaseDataVaultOperation):
     NAME = 'data-vault-update-resource'
 
 
+class DataVaultLoadResource(BaseDataVaultOperation):
+    NAME = 'data-vault-load-resource'
+
+
+class DataVaultSaveDocument(BaseDataVaultOperation):
+    NAME = 'data-vault-save-document'
+
+    def __init__(self, document: StructuredDocumentAttach = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if document is not None:
+            doc_attach = {'@id': f'doc-0', 'data': document.as_json()}
+            self['doc~attach'] = [doc_attach]
+
+    @property
+    def document(self) -> Optional[StructuredDocumentAttach]:
+        attaches = self.get('doc~attach', [])
+        if attaches:
+            attach = attaches[0]
+            doc = StructuredDocumentAttach()
+            doc.from_json(attach['data'])
+            return doc
+        else:
+            return None
+
+
 class DataVaultOperationAck(Ack):
-    PROTOCOL = BaseDataVaultResourceOperation.PROTOCOL
+    PROTOCOL = BaseDataVaultOperation.PROTOCOL
 
 
 class StructuredDocumentMessage(BaseConfidentialStorageMessage):
@@ -274,7 +403,7 @@ class StructuredDocumentMessage(BaseConfidentialStorageMessage):
             attach = []
             for i, doc in enumerate(documents):
                 attach.append({'@id': f'doc-{i}', 'data': doc.as_json()})
-            self['doc~attach'] = documents
+            self['doc~attach'] = attach
 
     @property
     def documents(self) -> List[StructuredDocumentAttach]:

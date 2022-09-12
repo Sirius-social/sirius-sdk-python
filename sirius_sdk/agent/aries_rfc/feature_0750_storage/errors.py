@@ -1,11 +1,34 @@
+from typing import Union
+
+from sirius_sdk.messaging import Message
+
+
 class BaseConfidentialStorageError(RuntimeError):
 
-    def __init__(self, message):
-        super().__init__(message)
+    def __init__(self, message, *args):
+        super().__init__(message, *args)
 
     @property
     def message(self) -> str:
         return self.args[0] if self.args else ''
+
+
+class ConfidentialStorageUnexpectedMessageType(BaseConfidentialStorageError):
+
+    def __init__(self, message: Union[str, Message], *args, **kwargs):
+        if isinstance(message, Message):
+            if '@type' in message:
+                typ = message.get('@type')
+                err_msg = f'Unexpected message type: "{typ}"'
+            else:
+                err_msg = f'Unexpected message type of type: "{message.__class__.__name__}"'
+            super().__init__(err_msg)
+        else:
+            super().__init__(message)
+
+
+class ConfidentialStorageInvalidRequest(BaseConfidentialStorageError):
+    pass
 
 
 class StreamEOF(BaseConfidentialStorageError):
@@ -44,5 +67,13 @@ class DataVaultCreateResourceError(BaseConfidentialStorageError):
     pass
 
 
-class DataVaultCreateResourceMissing(BaseConfidentialStorageError):
+class DataVaultResourceMissing(BaseConfidentialStorageError):
+    pass
+
+
+class DataVaultSessionError(BaseConfidentialStorageError):
+    pass
+
+
+class DataVaultStateError(BaseConfidentialStorageError):
     pass

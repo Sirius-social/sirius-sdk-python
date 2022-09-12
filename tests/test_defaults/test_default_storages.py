@@ -1,6 +1,10 @@
+import uuid
+
 import pytest
 
+import sirius_sdk
 from sirius_sdk.hub.defaults.default_storage import InMemoryImmutableCollection, InMemoryKeyValueStorage
+from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
 
 
 @pytest.mark.asyncio
@@ -59,3 +63,22 @@ async def test_inmemory_immutable_collection():
     await collection.select_db('db2')
     fetched3 = await collection.fetch({})
     assert len(fetched3) == 0
+
+
+@pytest.mark.asyncio
+async def test_default_storage_different_space_for_different_hub(config_a: dict, config_b: dict):
+    test_key = 'key-' + uuid.uuid4().hex
+    test_val = 'test_value'
+    typ = 'StorageType'
+    async with sirius_sdk.context(**config_a):
+        await sirius_sdk.NonSecrets.add_wallet_record(
+            type_=typ, id_=test_key, value=test_val
+        )
+        val = await sirius_sdk.NonSecrets.get_wallet_record(
+            type_=typ, id_=test_key, options=sirius_sdk.NonSecretsRetrieveRecordOptions().check_all()
+        )
+    async with sirius_sdk.context(**config_b):
+        with pytest.raises(WalletItemNotFound):
+            val = await sirius_sdk.NonSecrets.get_wallet_record(
+                type_=typ, id_=test_key, options=sirius_sdk.NonSecretsRetrieveRecordOptions().check_all()
+            )

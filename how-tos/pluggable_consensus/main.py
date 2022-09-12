@@ -234,15 +234,15 @@ if __name__ == '__main__':
     print('#2')
     asyncio.ensure_future(acceptor(
         topic='Acceptor[1]', context=ACCEPTOR1,
-        microledger=microledger_acceptor1, ledger=InMemoryLedger()
+        microledger=microledger_acceptor1, dkms=InMemoryLedger()
     ))
     asyncio.ensure_future(acceptor(
         topic='Acceptor[2]', context=ACCEPTOR2,
-        microledger=microledger_acceptor2, ledger=InMemoryLedger()
+        microledger=microledger_acceptor2, dkms=InMemoryLedger()
     ))
     asyncio.ensure_future(acceptor(
         topic='Acceptor[3]', context=ACCEPTOR3,
-        microledger=microledger_acceptor3, ledger=InMemoryLedger()
+        microledger=microledger_acceptor3, dkms=InMemoryLedger()
     ))
 
     async def run():
@@ -262,7 +262,7 @@ if __name__ == '__main__':
                         'seq_no': txn_counter
                     },
                     microledger=microledger_leader,
-                    ledger=my_ledger
+                    dkms=my_ledger
                 )
             elif case == 'exit':
                 exit(0)

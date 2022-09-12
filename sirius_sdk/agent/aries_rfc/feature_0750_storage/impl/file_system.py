@@ -319,6 +319,13 @@ class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
         if os.path.isfile(path):
             raise StreamInitializationError(f'Stream with URI: {uri} already exists!')
         else:
+            dirname = os.path.dirname(path)
+            if not os.path.isdir(dirname):
+                # Ensure nested dirs exists
+                try:
+                    os.makedirs(dirname, exist_ok=True)
+                except OSError as e:
+                    raise StreamInitializationError(*e.args)
             stream = FileSystemWriteOnlyStream(path)
             await stream.create()
 
@@ -339,9 +346,15 @@ class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
             raise StreamInitializationError(f'Stream with URI: {uri} doe not exists!')
         return FileSystemWriteOnlyStream(path=path, enc=self.encryption)
 
+    async def exists(self, uri: str) -> bool:
+        path = self.__uri_to_path(uri)
+        return os.path.isfile(path)
+
     def __uri_to_path(self, uri: str) -> str:
         p = urlparse(uri)
         path = os.path.join(p.netloc, p.path)
+        while path.startswith('/'):
+            path = path[1:]
         if self.__mount_dir is not None:
-            path = os.path.join(self.__mount_dir, path)
+            path = os.path.realpath(os.path.join(self.__mount_dir, path))
         return path

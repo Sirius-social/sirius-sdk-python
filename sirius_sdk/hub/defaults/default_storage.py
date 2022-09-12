@@ -5,6 +5,14 @@ from sirius_sdk.abstract.storage import AbstractImmutableCollection, AbstractKey
 from sirius_sdk.hub.context import get as context_get, set as context_set
 
 
+def _get_current_hub_id() -> str:
+    hub = context_get('hub')
+    if hub:
+        return hub.global_id
+    else:
+        return '*'
+
+
 class InMemoryImmutableCollection(AbstractImmutableCollection):
 
     __lock_singleton = threading.Lock()
@@ -12,11 +20,12 @@ class InMemoryImmutableCollection(AbstractImmutableCollection):
     __database_singleton = {}
 
     async def select_db(self, db_name: str):
+        mangled_db_name = f'{_get_current_hub_id()}/{db_name}'
         self.__acquire()
         try:
-            if db_name not in self.__database_singleton:
-                self.__database_singleton[db_name] = []
-            self.__set_current_db(db_name)
+            if mangled_db_name not in self.__database_singleton:
+                self.__database_singleton[mangled_db_name] = []
+            self.__set_current_db(mangled_db_name)
         finally:
             self.__release()
 
@@ -80,11 +89,12 @@ class InMemoryKeyValueStorage(AbstractKeyValueStorage):
     __database_singleton = {}
 
     async def select_db(self, db_name: str):
+        mangled_db_name = f'{_get_current_hub_id()}/{db_name}'
         self.__acquire()
         try:
-            if db_name not in self.__database_singleton:
-                self.__database_singleton[db_name] = {}
-            self.__set_current_db(db_name)
+            if mangled_db_name not in self.__database_singleton:
+                self.__database_singleton[mangled_db_name] = {}
+            self.__set_current_db(mangled_db_name)
         finally:
             self.__release()
 

@@ -12,10 +12,11 @@ class RetrieveRecordOptions(JsonSerializable):
         self.retrieve_value = retrieve_value
         self.retrieve_tags = retrieve_tags
 
-    def check_all(self):
+    def check_all(self) -> "RetrieveRecordOptions":
         self.retrieve_type = True
         self.retrieve_value = True
         self.retrieve_tags = True
+        return self
 
     def to_json(self):
         options = dict()

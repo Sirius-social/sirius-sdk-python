@@ -1,7 +1,7 @@
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Union, List
+from typing import Any, Union, List, Optional
 from urllib.parse import urljoin
 from inspect import iscoroutinefunction
 
@@ -151,7 +151,7 @@ class WebSocketConnector(BaseConnector):
 
 class AbstractStateMachine(ABC):
 
-    def __init__(self, time_to_live: int = 60, logger=None, *args, **kwargs):
+    def __init__(self, time_to_live: Optional[int] = 60, logger=None, *args, **kwargs):
         """
         :param time_to_live: state machine time to live to finish progress
         """
@@ -166,7 +166,7 @@ class AbstractStateMachine(ABC):
         self.__coprotocols = []
 
     @property
-    def time_to_live(self) -> int:
+    def time_to_live(self) -> Optional[int]:
         return self.__time_to_live
 
     @property

@@ -41,7 +41,7 @@ class Document:
 class EncryptedDocument(Document):
 
     def __init__(
-            self, src: "EncryptedDocument" = None, target_verkeys: List[str] = None
+            self, src: "EncryptedDocument" = None, target_verkeys: List[str] = None, content: Any = None
     ):
         super().__init__()
         self.__target_verkeys = target_verkeys or []
@@ -50,6 +50,9 @@ class EncryptedDocument(Document):
         if src:
             self.content = src.content
             self.__encrypted = src.__encrypted
+        else:
+            if content is not None:
+                self.content = content
 
     @property
     def encrypted(self) -> bool:
@@ -66,6 +69,17 @@ class EncryptedDocument(Document):
     @property
     def target_verkeys(self) -> List[str]:
         return self.__target_verkeys
+
+    @property
+    def jwm(self) -> Optional[dict]:
+        if self.__encrypted:
+            if isinstance(self.__encrypted, bytes):
+                jwm = json.loads(self.content.decode())
+                return jwm
+            else:
+                return None
+        else:
+            return None
 
     async def encrypt(self, my_vk: str = None):
         if not self.__encrypted:

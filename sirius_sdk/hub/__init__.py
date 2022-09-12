@@ -20,7 +20,7 @@ from .core import _current_hub, init, context
 from .proxies import DIDProxy, CryptoProxy, MicroledgersProxy, PairwiseProxy, AnonCredsProxy, \
     CacheProxy, NonSecretsProxy
 from .coprotocols import CoProtocolThreadedP2P, CoProtocolP2PAnon, CoProtocolP2P, AbstractP2PCoProtocol, \
-    CoProtocolThreadedTheirs, open_communication
+    CoProtocolThreadedTheirs, open_communication, prepare_response
 
 DID: AbstractDID = DIDProxy()
 Crypto: APICrypto = CryptoProxy()

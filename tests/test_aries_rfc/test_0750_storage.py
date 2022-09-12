@@ -15,7 +15,9 @@ import pytest
 import sirius_sdk
 from sirius_sdk.encryption import create_keypair, bytes_to_b58
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
-from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import ConfidentialStoragePermissionDenied
+from sirius_sdk.agent.aries_rfc.feature_0750_storage.messages import BaseConfidentialStorageMessage
+from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import *
+from sirius_sdk.agent.aries_rfc.feature_0750_storage.state_machines import CallerEncryptedDataVault, CalledEncryptedDataVault
 from sirius_sdk.recipes.confidential_storage import SimpleDataVault
 
 from tests.helpers import calc_file_hash, calc_bytes_hash, calc_file_size, run_coroutines
@@ -634,6 +636,54 @@ async def test_fs_streams_encoding_copy(files_dir: str):
 
 
 @pytest.mark.asyncio
+async def test_streams_encoding_decoding_wrappers(files_dir: str):
+    # Layer-2
+    target_vk, target_sk = create_keypair(seed='00000000000000000000000000TARGET'.encode())
+    target_vk, target_sk = bytes_to_b58(target_vk), bytes_to_b58(target_sk)
+    # Layer-1
+    storage_vk, storage_sk = create_keypair(seed='0000000000000000000000000STORAGE'.encode())
+    storage_vk, storage_sk = bytes_to_b58(storage_vk), bytes_to_b58(storage_sk)
+    # File on Disk
+    test_data = b'data*' * 1024
+    storage_file = os.path.join(files_dir, 'big_img_encrypted_stream.jpeg.bin')
+    # Create write-stream on Layer-1
+    wo = FileSystemWriteOnlyStream(
+        storage_file, chunk_size=1024, enc=StreamEncryption().setup(target_verkeys=[storage_vk])
+    )
+    jwe_layer1 = wo.enc.jwe
+    await wo.create(truncate=True)
+    try:
+        # Wrap with stream abstraction on Layer-2
+        wrapper_to_write = WriteOnlyStreamEncodingWrapper(
+            dest=wo, enc=StreamEncryption().setup(target_verkeys=[target_vk])
+        )
+        jwe_layer2 = wrapper_to_write.enc.jwe
+        await wrapper_to_write.open()
+        try:
+            await wrapper_to_write.write(test_data)
+        finally:
+            await wrapper_to_write.close()
+        # Open Read stream on Layer-1
+        ro = FileSystemReadOnlyStream(
+            storage_file, chunks_num=wo.chunks_num,
+            enc=StreamDecryption.from_jwe(jwe_layer1).setup(storage_vk, storage_sk)
+        )
+        # Wrap with stream abstraction on Layer-2
+        wrapper_to_read = ReadOnlyStreamDecodingWrapper(
+            src=ro,
+            enc=StreamDecryption.from_jwe(jwe_layer2).setup(target_vk, target_sk)
+        )
+        await wrapper_to_read.open()
+        try:
+            actual_data = await wrapper_to_read.read()
+            assert actual_data == test_data
+        finally:
+            await wrapper_to_read.close()
+    finally:
+        os.remove(storage_file)
+
+
+@pytest.mark.asyncio
 async def test_readonly_stream_protocols(files_dir: str, config_c: dict, config_d: dict):
     """
     Agent-C is CALLER
@@ -1137,7 +1187,7 @@ async def test_recipe_simple_datavault_stream_operations(config_a: dict, config_
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
     os.mkdir(dir_under_test)
-    uri_under_test = f'stream_{uuid.uuid4().hex}.bin'
+    path_under_test = f'stream_{uuid.uuid4().hex}.bin'
     test_data = b'x' * 1024 * 5
     try:
         # Storage Hub side
@@ -1145,8 +1195,10 @@ async def test_recipe_simple_datavault_stream_operations(config_a: dict, config_
             auth = ConfidentialStorageAuthProvider()
             await auth.authorize(p2p)
             vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
             print('#1')
-            await vault.create_stream(uri_under_test)
+            doc = await vault.create_stream(path_under_test)
+            uri_under_test = doc.id
             print('#2')
             stream_to_write = await vault.writable(uri_under_test)
             await stream_to_write.open()
@@ -1170,6 +1222,7 @@ async def test_recipe_simple_datavault_stream_operations(config_a: dict, config_
         with open(file_uri, 'rb') as f:
             raw_content = f.read()
         assert raw_content != test_data
+        await vault.close()
     finally:
         shutil.rmtree(dir_under_test)
 
@@ -1179,7 +1232,7 @@ async def test_recipe_simple_datavault_docs_operations(config_a: dict, config_b:
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
     os.mkdir(dir_under_test)
-    uri_under_test = f'stream_{uuid.uuid4().hex}.bin'
+    path_under_test = f'stream_{uuid.uuid4().hex}.bin'
     test_data = b'Some user content'
     try:
         # Storage Hub side
@@ -1187,8 +1240,10 @@ async def test_recipe_simple_datavault_docs_operations(config_a: dict, config_b:
             auth = ConfidentialStorageAuthProvider()
             await auth.authorize(p2p)
             vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
             print('#1')
-            await vault.create_document(uri_under_test)
+            doc = await vault.create_document(path_under_test)
+            uri_under_test = doc.id
             print('#2')
             # Store non-encrypted doc
             doc = EncryptedDocument()
@@ -1217,6 +1272,7 @@ async def test_recipe_simple_datavault_docs_operations(config_a: dict, config_b:
             async with sirius_sdk.context(**config_b):
                 await loaded_enc_doc.content.decrypt()
                 assert loaded_enc_doc.content.content == test_data
+            await vault.close()
     finally:
         shutil.rmtree(dir_under_test)
 
@@ -1227,8 +1283,8 @@ async def test_recipe_simple_datavault_metadata_and_indexes(config_a: dict, conf
     p2p = await get_pairwise3(me=config_a, their=config_b)
     os.mkdir(dir_under_test)
     test_data = b'Some user content'
-    uri_under_test1 = f'document_{uuid.uuid4().hex}.bin'
-    uri_under_test2 = f'stream_{uuid.uuid4().hex}.bin'
+    path_under_test1 = f'document_{uuid.uuid4().hex}.bin'
+    path_under_test2 = f'stream_{uuid.uuid4().hex}.bin'
     attr1_val = 'attr1-' + uuid.uuid4().hex
     attr2_val = 'attr2-' + uuid.uuid4().hex
     try:
@@ -1237,8 +1293,11 @@ async def test_recipe_simple_datavault_metadata_and_indexes(config_a: dict, conf
             auth = ConfidentialStorageAuthProvider()
             await auth.authorize(p2p)
             vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
-            await vault.create_document(uri_under_test1, meta={'meta1': 'value1'}, attr1=attr1_val)
-            await vault.create_stream(uri_under_test2, meta={'contentType': 'video/mpeg'}, attr2=attr2_val)
+            await vault.open()
+            doc = await vault.create_document(path_under_test1, meta={'meta1': 'value1'}, attr1=attr1_val)
+            uri_under_test1 = doc.id
+            stream = await vault.create_stream(path_under_test2, meta={'contentType': 'video/mpeg'}, attr2=attr2_val)
+            uri_under_test2 = stream.id
             # check1
             load_for_doc = await vault.load(uri_under_test1)
             assert isinstance(load_for_doc, StructuredDocument)
@@ -1250,7 +1309,8 @@ async def test_recipe_simple_datavault_metadata_and_indexes(config_a: dict, conf
             # check2
             load_for_stream = await vault.load(uri_under_test2)
             assert isinstance(load_for_stream, StructuredDocument)
-            assert isinstance(load_for_stream.content, AbstractReadOnlyStream)
+            assert isinstance(load_for_stream.stream.readable(), AbstractReadOnlyStream)
+            assert isinstance(load_for_stream.stream.writable(), AbstractWriteOnlyStream)
             assert load_for_stream.meta['contentType'] == 'video/mpeg'
             assert 'created' in load_for_stream.meta
             assert 'chunks' in load_for_stream.meta and type(load_for_stream.meta['chunks']) is int
@@ -1273,6 +1333,7 @@ async def test_recipe_simple_datavault_metadata_and_indexes(config_a: dict, conf
             assert len(collection2) == 1
             collection3 = await indexes.filter(attr1=attr1_val, attr2=attr2_val)
             assert len(collection3) == 0
+            await vault.close()
     finally:
         shutil.rmtree(dir_under_test)
 
@@ -1282,8 +1343,8 @@ async def test_recipe_simple_datavault_update_metadata_and_attributes(config_a: 
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
     os.mkdir(dir_under_test)
-    uri_under_test_doc = f'document_{uuid.uuid4().hex}.bin'
-    uri_under_test_stream = f'stream_{uuid.uuid4().hex}.bin'
+    path_under_test_doc = f'document_{uuid.uuid4().hex}.bin'
+    path_under_test_stream = f'stream_{uuid.uuid4().hex}.bin'
     attr1_val = 'attr1'
     attr2_val = 'attr2'
     meta1 = 'meta1'
@@ -1294,9 +1355,12 @@ async def test_recipe_simple_datavault_update_metadata_and_attributes(config_a: 
             auth = ConfidentialStorageAuthProvider()
             await auth.authorize(p2p)
             vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
             # Create
-            await vault.create_document(uri_under_test_doc, meta={'meta1': meta1}, attr1=attr1_val)
-            await vault.create_stream(uri_under_test_stream, meta={'meta1': meta1}, attr1=attr1_val)
+            doc = await vault.create_document(path_under_test_doc, meta={'meta1': meta1}, attr1=attr1_val)
+            uri_under_test_doc = doc.id
+            stream = await vault.create_stream(path_under_test_stream, meta={'meta1': meta1}, attr1=attr1_val)
+            uri_under_test_stream = stream.id
             # Update
             await vault.update(uri_under_test_doc, meta={'meta2': meta2}, attr2=attr2_val)
             await vault.update(uri_under_test_stream, meta={'meta2': meta2, 'contentType': 'video/mpeg'}, attr2=attr2_val)
@@ -1316,6 +1380,7 @@ async def test_recipe_simple_datavault_update_metadata_and_attributes(config_a: 
             assert load_for_stream.urn
             assert load_for_stream.meta['contentType'] == 'video/mpeg'
             assert load_for_stream.indexed and load_for_doc.indexed[0].attributes == ['attr2']
+            await vault.close()
     finally:
         shutil.rmtree(dir_under_test)
 
@@ -1326,27 +1391,31 @@ async def test_recipe_simple_datavault_access_with_url_and_urn(config_a: dict, c
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
     os.mkdir(dir_under_test)
-    uri_under_test_doc = f'document_{uuid.uuid4().hex}.bin'
-    uri_under_test_stream = f'stream_{uuid.uuid4().hex}.bin'
+    path_under_test_doc = f'document_{uuid.uuid4().hex}.bin'
+    path_under_test_stream = f'stream_{uuid.uuid4().hex}.bin'
     try:
         # Storage Hub side
         async with sirius_sdk.context(**config_a):
             auth = ConfidentialStorageAuthProvider()
             await auth.authorize(p2p)
             vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
             # Create
-            created_doc = await vault.create_document(uri_under_test_doc)
+            created_doc = await vault.create_document(path_under_test_doc)
+            uri_under_test_doc = created_doc.id
             # Load with URI
             doc_via_uri = await vault.load(uri_under_test_doc)
             doc_via_urn = await vault.load(doc_via_uri.urn)
             assert doc_via_uri.id == doc_via_urn.id == created_doc.id
             assert doc_via_uri.urn == doc_via_urn.urn == created_doc.urn
             # Repeat ones for Stream
-            created_stream = await vault.create_document(uri_under_test_stream)
+            created_stream = await vault.create_document(path_under_test_stream)
+            uri_under_test_stream = created_stream.id
             stream_via_uri = await vault.load(uri_under_test_stream)
             stream_via_urn = await vault.load(stream_via_uri.urn)
             assert stream_via_uri.id == stream_via_urn.id == created_stream.id
             assert stream_via_uri.urn == stream_via_urn.urn == created_stream.urn
+            await vault.close()
     finally:
         shutil.rmtree(dir_under_test)
 
@@ -1393,7 +1462,7 @@ async def test_structured_document_attach(config_a: dict):
         packed = await sirius_sdk.Crypto.pack_message({"message": "Hello World!"}, recipient_verkeys=[target_vk])
         js = {
             "id": "urn:uuid:41289468-c42c-4b28-adb0-bf76044aec77",
-            "jwe": json.loads(packed.decode())
+            "jwm": json.loads(packed.decode())
         }
         sd.from_json(js)
         assert sd.id == 'urn:uuid:41289468-c42c-4b28-adb0-bf76044aec77'
@@ -1406,12 +1475,88 @@ async def test_structured_document_attach(config_a: dict):
 
 
 @pytest.mark.asyncio
+async def test_simple_datavault_critical_ops(config_a: dict, config_b: dict):
+    p2p = await get_pairwise3(me=config_a, their=config_b)
+    path = f'doc_{uuid.uuid4().hex}.bin'
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    os.mkdir(dir_under_test)
+    try:
+        async with sirius_sdk.context(**config_a):
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2p)
+            # Init and configure Vault
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
+            # Case-1: create doc twice
+            doc = await vault.create_document(path)
+            assert doc.id.startswith('file://')
+            uri = doc.id
+            # check uri has absolute nature
+            with pytest.raises(DataVaultCreateResourceError):
+                await vault.create_document(uri)
+            await vault.load(uri)
+            # Case-2: remove file physically but meta cached in storage
+            path_under_test = os.path.join(dir_under_test, vault.mounted_dir, path)
+            os.remove(path_under_test)
+            with pytest.raises(DataVaultResourceMissing):
+                await vault.load(uri)
+            await vault.create_document(uri)
+            await vault.load(uri)
+            # Case-3: remove
+            await vault.remove(uri)
+            assert os.path.isfile(path_under_test) is False
+            with pytest.raises(DataVaultResourceMissing):
+                await vault.load(uri)
+            # Case-4: Relative path
+            for uri in [f'/dir/subdir/doc_{uuid.uuid4().hex}.bin', f'dir/subdir/doc_{uuid.uuid4().hex}.bin']:
+                _ = await vault.create_document(uri)
+                assert uri in _.id
+            # Clear
+            await vault.close()
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_simple_datavault_multiple_contexts(config_a: dict, config_b: dict):
+    p2pa = await get_pairwise3(me=config_a, their=config_b)
+    p2pb = await get_pairwise3(me=config_b, their=config_a)
+    path = f'doc_{uuid.uuid4().hex}.bin'
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    os.mkdir(dir_under_test)
+    try:
+        async with sirius_sdk.context(**config_a):
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2pa)
+            # Init and configure Vault
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
+            # create doc
+            doc1 = await vault.create_document(path)
+        async with sirius_sdk.context(**config_b):
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2pb)
+            # Init and configure Vault
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
+            # create doc
+            doc2 = await vault.create_document(path)
+
+        assert doc1.id == doc2.id
+
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
 async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a: dict, config_b: dict):
     """Check encryption levels:
         - vault encrypt + controller don't encrypt on self side (trust to vault)
         - vault encrypt + controller encrypt data over vault config
         - vault don't encrypt + controller encrypt on self side (it can share encrypted data among pairwises)
         - vault don't encrypt + controller don't encrypt on self side
+
+    P.S. Controller is participant who control data semantic
     """
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
@@ -1425,7 +1570,7 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
     try:
         os.mkdir(dir_under_test)
         for case_vault_encrypt, case_controller_encrypt in [(False, False), (False, True), (True, False), (True, True)]:
-            uri_under_test = f'document_{uuid.uuid4().hex}.bin'
+            path_under_test = f'document_{uuid.uuid4().hex}.bin'
             async with sirius_sdk.context(**vault_config):
                 auth = ConfidentialStorageAuthProvider()
                 await auth.authorize(p2p)
@@ -1433,10 +1578,10 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
                 vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
                 if case_vault_encrypt is False:
                     vault.cfg.key_agreement = None
-
+                await vault.open()
                 # Test docs
-                structured_doc = await vault.create_document(uri_under_test)
-                structured_doc_file_path = os.path.join(dir_under_test, vault.mounted_dir, structured_doc.id)
+                structured_doc = await vault.create_document(path_under_test)
+                structured_doc_file_path = os.path.join(dir_under_test, vault.mounted_dir, path_under_test)
                 assert os.path.isfile(structured_doc_file_path)
                 if case_controller_encrypt:
                     doc = EncryptedDocument(target_verkeys=[controller_encrypt_key])
@@ -1455,25 +1600,21 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
                     with open(structured_doc_file_path, 'rb') as f:
                         actual_data = f.read()
                         assert actual_data == test_data
-
-                # Case 2
-                if case_vault_encrypt is True and case_controller_encrypt is False:
-                    # If vault is encrypted but controller don't encrypt, then vault side can read data
+                else:
+                    # If vault is encrypted OR controller does encrypt, then data is encrypted on Disk
                     with open(structured_doc_file_path, 'rb') as f:
                         actual_data = f.read()
                         # Data on disk is encrypted
                         assert actual_data != test_data
+
+                # Case 2
+                if case_vault_encrypt is True and case_controller_encrypt is False:
                     # Data if read in Vault context is decrypted
                     loaded_doc = await vault.load(structured_doc.id)
                     assert loaded_doc.content.content == test_data
 
                 # Case 3
                 if case_vault_encrypt is False and case_controller_encrypt is True:
-                    # If vault don't encrypted but controller encrypt and may share among other pairwises
-                    with open(structured_doc_file_path, 'rb') as f:
-                        actual_data = f.read()
-                        # Data on disk is encrypted
-                        assert actual_data != test_data
                     # Doc controller has access to document content
                     loaded_doc = await vault.load(structured_doc.id)
                     async with sirius_sdk.context(**controller_config):
@@ -1482,11 +1623,6 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
                         assert loaded_doc.content.encrypted is False
                 # Case 4
                 if case_vault_encrypt is True and case_controller_encrypt is True:
-                    # If both side encrypt data then only controller may read it
-                    with open(structured_doc_file_path, 'rb') as f:
-                        actual_data = f.read()
-                        # Data on disk is encrypted
-                        assert actual_data != test_data
                     # Vault side don/t have access to data
                     loaded_doc = await vault.load(structured_doc.id)
                     loaded_doc.content.encrypted = True
@@ -1498,6 +1634,8 @@ async def test_recipe_simple_datavault_encryption_layers_for_documents(config_a:
                         await loaded_doc.content.decrypt()
                         assert loaded_doc.content.content == test_data
                         assert loaded_doc.content.encrypted is False
+
+                await vault.close()
     finally:
         shutil.rmtree(dir_under_test)
 
@@ -1509,20 +1647,20 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
         - vault encrypt + controller encrypt data over vault config
         - vault don't encrypt + controller encrypt on self side (it can share encrypted data among pairwises)
         - vault don't encrypt + controller don't encrypt on self side
+
+    P.S. Controller is participant who control data semantic
     """
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
     vault_config = config_a
-    controller_config = config_b
     test_data = b'xxx' * 1024
-
-    async with sirius_sdk.context(**controller_config):
-        controller_encrypt_key = await sirius_sdk.Crypto.create_key()
+    controller_pk, controller_sk = create_keypair(seed='0000000000000000000000CONTROLLER'.encode())
+    controller_pk, controller_sk = bytes_to_b58(controller_pk), bytes_to_b58(controller_sk)
 
     try:
         os.mkdir(dir_under_test)
-        for case_vault_encrypt, case_controller_encrypt in [(False, False)]:
-            uri_under_test = f'document_{uuid.uuid4().hex}.bin'
+        for case_vault_encrypt, case_controller_encrypt in [(False, False), (False, True), (True, False), (True, True)]:
+            path_under_test = f'document_{uuid.uuid4().hex}.bin'
             async with sirius_sdk.context(**vault_config):
                 auth = ConfidentialStorageAuthProvider()
                 await auth.authorize(p2p)
@@ -1530,15 +1668,145 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
                 vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
                 if case_vault_encrypt is False:
                     vault.cfg.key_agreement = None
+                await vault.open()
 
                 # Test stream
-                structured_doc = await vault.create_stream(uri_under_test)
-                structured_doc_file_path = os.path.join(dir_under_test, vault.mounted_dir, structured_doc.id)
+                structured_doc = await vault.create_stream(path_under_test)
+                structured_doc_file_path = os.path.join(dir_under_test, vault.mounted_dir, path_under_test)
                 assert os.path.isfile(structured_doc_file_path)
-
+                stream_to_write_layer1 = await vault.writable(structured_doc.id)
                 if case_controller_encrypt:
-                    pass
+                    stream_to_write_layer2 = WriteOnlyStreamEncodingWrapper(
+                        dest=stream_to_write_layer1,
+                        enc=StreamEncryption().setup(target_verkeys=[controller_pk])
+                    )
+                    jwe_layer2 = stream_to_write_layer2.enc.jwe
                 else:
-                    pass
+                    # Ignore adv encoding layer
+                    stream_to_write_layer2 = stream_to_write_layer1
+                    jwe_layer2 = None
+                # Write Data to stream under test
+                await stream_to_write_layer2.open()
+                await stream_to_write_layer2.write(test_data)
+                await stream_to_write_layer2.close()
+
+                # Run Test cases
+
+                # Case 1
+                if case_vault_encrypt is False and case_controller_encrypt is False:
+                    # If both parties don't encrypt data so it is raw data stored on disk
+                    with open(structured_doc_file_path, 'rb') as f:
+                        actual_data = f.read()
+                        assert actual_data == test_data
+                else:
+                    # If vault is encrypted or controller is encrypt, then data is encrypted
+                    with open(structured_doc_file_path, 'rb') as f:
+                        actual_data = f.read()
+                        # Data on disk is encrypted
+                        assert actual_data != test_data
+                # Case 2
+                if case_vault_encrypt is True and case_controller_encrypt is False:
+                    # Data if read in Vault context is decrypted
+                    loaded_doc = await vault.load(structured_doc.id)
+                    stream_to_read_layer2 = loaded_doc.stream.readable()
+                    await stream_to_read_layer2.open()
+                    try:
+                        actual_data = await stream_to_read_layer2.read()
+                    finally:
+                        await stream_to_read_layer2.close()
+                    assert actual_data == test_data
+                # Case 3
+                if case_vault_encrypt is False and case_controller_encrypt is True:
+                    # Doc controller has access to document content
+                    loaded_doc = await vault.load(structured_doc.id)
+                    stream_to_read_layer2 = loaded_doc.stream.readable(
+                        jwe_layer2,
+                        keys=KeyPair(controller_pk, controller_sk)
+                    )
+                    await stream_to_read_layer2.open()
+                    try:
+                        actual_data = await stream_to_read_layer2.read()
+                    finally:
+                        await stream_to_read_layer2.close()
+                    assert actual_data == test_data
+                # Case 4
+                if case_vault_encrypt is True and case_controller_encrypt is True:
+                    # Vault side don/t have access to data
+                    loaded_doc = await vault.load(structured_doc.id)
+                    stream_to_read_layer2 = loaded_doc.stream.readable(
+                        jwe_layer2,
+                        keys=KeyPair(controller_pk, controller_sk)
+                    )
+                    await stream_to_read_layer2.open()
+                    try:
+                        actual_data = await stream_to_read_layer2.read()
+                    finally:
+                        await stream_to_read_layer2.close()
+                    assert actual_data == test_data
+
+                await vault.close()
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_data_vault_state_machines(config_a: dict, config_b: dict):
+    vault_cfg = config_a
+    controller_cfg = config_b
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
+    called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
+    os.mkdir(dir_under_test)
+    try:
+        auth = ConfidentialStorageAuthProvider()
+        await auth.authorize(called)
+        # Init and configure Vault
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+
+        async def run_vault():
+            sm = CalledEncryptedDataVault(called, proxy_to=[vault])
+            async with sirius_sdk.context(**vault_cfg):
+                async for e in (await sirius_sdk.subscribe()):
+                    assert e.pairwise.their.did == called.their.did
+                    assert isinstance(e.message, BaseConfidentialStorageMessage)
+                    request: BaseConfidentialStorageMessage = e.message
+                    print('')
+                    await sm.handle(request)
+                    print('')
+
+        async def run_controller():
+            async with sirius_sdk.context(**controller_cfg):
+                m = CallerEncryptedDataVault(caller)
+                print('List all vaults')
+                vaults = await m.list_vaults()
+                assert vaults
+                vault_id = vaults[0].id
+                print('Select Vault')
+                m.select(vault_id)
+                print('Open selected vault')
+                await m.open()
+                print('Create resources')
+                sd1 = await m.create_document(uri=f'my_document.bin', meta={'meta1': 'value-1'}, attr1='attr1')
+                assert 'my_document.bin' in sd1.id
+                assert sd1.urn.startswith('urn:uuid:')
+                assert sd1.meta['meta1'] == 'value-1'
+                assert sd1.indexed[0].attributes == ['attr1']
+                sd2 = await m.create_stream(uri=f'my_stream.bin', meta={'meta2': 'value-2'}, attr2='attr2')
+                assert 'my_stream.bin' in sd2.id
+                assert sd2.urn.startswith('urn:uuid:')
+                assert sd2.meta['meta2'] == 'value-2'
+                assert sd2.indexed[0].attributes == ['attr2']
+                print('Update resource metadata')
+                await m.update(sd1.id, meta={'meta-x': 'value-x'}, attrx='attrx')
+                loaded = await m.load(sd1.id)
+                assert loaded.meta['meta-x'] == 'value-x'
+                assert loaded.indexed[0].attributes == ['attrx']
+                print('')
+
+        await run_coroutines(
+            run_vault(),
+            run_controller(),
+            timeout=1000
+        )
     finally:
         shutil.rmtree(dir_under_test)

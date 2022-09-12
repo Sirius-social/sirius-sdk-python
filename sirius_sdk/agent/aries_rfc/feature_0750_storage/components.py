@@ -5,9 +5,11 @@ from abc import ABC, abstractmethod
 from typing import List, Union, Optional, Set
 
 import sirius_sdk
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, \
+    ReadOnlyStreamDecodingWrapper, WriteOnlyStreamEncodingWrapper, StreamEncryption, StreamDecryption
 from .documents import EncryptedDocument
 from .errors import ConfidentialStoragePermissionDenied
+from .encoding import JWE, KeyPair
 
 
 @dataclass
@@ -24,6 +26,9 @@ class HMAC:
         else:
             return False
 
+    def as_json(self) -> dict:
+        return {'id': self.id, 'type': self.type}
+
 
 class DataVaultStreamWrapper:
 
@@ -31,13 +36,20 @@ class DataVaultStreamWrapper:
         self.__readable = readable
         self.__writable = writable
 
-    @property
-    def readable(self) -> AbstractReadOnlyStream:
-        return self.__readable
+    def readable(self, jwe: Union[JWE, dict] = None, keys: KeyPair = None) -> AbstractReadOnlyStream:
+        if jwe is None:
+            return self.__readable
+        else:
+            enc = StreamDecryption.from_jwe(jwe)
+            if keys is not None:
+                enc.setup(vk=keys.pk, sk=keys.sk)
+            return ReadOnlyStreamDecodingWrapper(src=self.__readable, enc=enc)
 
-    @property
-    def writable(self) -> AbstractWriteOnlyStream:
-        return self.__writable
+    def writable(self, jwe: Union[JWE, dict] = None) -> AbstractWriteOnlyStream:
+        if jwe is None:
+            return self.__writable
+        else:
+            return WriteOnlyStreamEncodingWrapper(dest=self.__writable, enc=StreamEncryption.from_jwe(jwe))
 
 
 class StructuredDocument:
@@ -54,7 +66,9 @@ class StructuredDocument:
 
     def __init__(
             self, id_: str, meta: dict,
-            content: Union[AbstractReadOnlyStream, EncryptedDocument] = None, urn: str = None, indexed: List[Index] = None
+            urn: str = None, indexed: List[Index] = None,
+            content: EncryptedDocument = None,
+            stream: DataVaultStreamWrapper = None
     ):
         self.__id = id_
         self.__meta = dict(**meta)
@@ -62,6 +76,7 @@ class StructuredDocument:
         if isinstance(content, AbstractReadOnlyStream):
             self.__meta['chunks'] = content.chunks_num
         self.__content = content
+        self.__stream = stream
         self.__indexed: List[StructuredDocument.Index] = indexed or []
 
     @property
@@ -77,8 +92,12 @@ class StructuredDocument:
         return self.__meta
 
     @property
-    def content(self) -> Optional[Union[AbstractReadOnlyStream, EncryptedDocument]]:
+    def content(self) -> Optional[EncryptedDocument]:
         return self.__content
+
+    @property
+    def stream(self) -> Optional[DataVaultStreamWrapper]:
+        return self.__stream
 
     @property
     def indexed(self) -> List['Index']:
@@ -193,7 +212,7 @@ class VaultConfig:
                 return True
             else:
                 return False
-
+    id: str
     # The entity or cryptographic key that is in control of the data vault.
     # The value is required and MUST be a URI. Example: "did:example:123456789"
     controller: str
@@ -220,6 +239,7 @@ class VaultConfig:
 
     def as_json(self) -> dict:
         js = {
+            'id': self.id,
             'sequence': self.sequence,
             'controller': self.controller,
         }
@@ -243,6 +263,7 @@ class VaultConfig:
 
     def from_json(self, js: dict):
         js = dict(**js)
+        self.id = js.get('id', None)
         self.sequence = js.pop('sequence', 0)
         self.controller = js.pop('controller', None)
         self.invoker = js.pop('invoker', None)
@@ -258,7 +279,7 @@ class VaultConfig:
             self.key_agreement = None
         hmac = js.pop('hmac', {})
         hmac_id = hmac.get('id', None)
-        hmac_type = hmac_id.get('type', None)
+        hmac_type = hmac.get('type', None)
         if hmac_id or hmac_type:
             self.hmac = HMAC(
                 hmac_id, hmac_type
@@ -268,6 +289,12 @@ class VaultConfig:
         # Copy others
         for fld, value in js.items():
             self.__setattr__(fld, value)
+
+    @staticmethod
+    def create_from_json(js: dict) -> 'VaultConfig':
+        inst = VaultConfig(id='id', controller='')
+        inst.from_json(js)
+        return inst
 
 
 class ConfidentialStorageRawByteStorage(ABC):
@@ -299,6 +326,10 @@ class ConfidentialStorageRawByteStorage(ABC):
     async def writeable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError
 
+    @abstractmethod
+    async def exists(self, uri: str) -> bool:
+        raise NotImplementedError
+
 
 class EncryptedDataVault:
     """Layer B: Encrypted Vault Storage
@@ -306,11 +337,12 @@ class EncryptedDataVault:
     see details: https://identity.foundation/confidential-storage/#ecosystem-overview
     """
 
-    def __init__(self, auth: ConfidentialStorageAuthProvider, cfg: VaultConfig = None):
-        if not auth.authorized:
+    def __init__(self, auth: ConfidentialStorageAuthProvider = None, cfg: VaultConfig = None):
+        if auth is not None and auth.authorized is False:
             raise ConfidentialStoragePermissionDenied(f'Not authorized access')
         self.__auth = auth
-        if cfg is None:
+        self._cfg = cfg
+        if cfg is None and auth is not None and auth.authorized:
             their_did = auth.entity.their.did
             my_did = auth.entity.me.did
             my_vk = auth.entity.me.verkey
@@ -321,15 +353,17 @@ class EncryptedDataVault:
             if ':' not in my_vk:
                 my_vk = f'did:key:{my_vk}'
             cfg = VaultConfig(
+                id=f'did:edvs:{auth.entity.their.did}',
                 sequence=0,
                 controller=my_did,
                 delegator=[their_did],
                 key_agreement=VaultConfig.KeyAgreement(
                     id=my_vk,
                     type='X25519KeyAgreementKey2019'
-                )
+                ),
+                reference_id='default'
             )
-        self.__cfg = cfg
+        self._cfg = cfg
 
     @property
     def auth(self) -> ConfidentialStorageAuthProvider:
@@ -337,13 +371,21 @@ class EncryptedDataVault:
 
     @property
     def cfg(self) -> VaultConfig:
-        return self.__cfg
+        return self._cfg
 
     class Indexes:
 
         @abstractmethod
         async def filter(self, **attributes) -> List[StructuredDocument]:
             raise NotImplementedError
+
+    @abstractmethod
+    async def open(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def close(self):
+        raise NotImplementedError
 
     @abstractmethod
     async def indexes(self) -> Indexes:
@@ -355,6 +397,10 @@ class EncryptedDataVault:
 
     @abstractmethod
     async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def remove(self, uri: str):
         raise NotImplementedError
 
     @abstractmethod
@@ -376,3 +422,5 @@ class EncryptedDataVault:
     @abstractmethod
     async def writable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError
+
+

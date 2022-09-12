@@ -17,6 +17,15 @@ class ConfidentialStorageEncType(Enum):
 
 
 @dataclass
+class KeyPair:
+    # Public Key
+    pk: str
+
+    # SecretKey
+    sk: str
+    
+
+@dataclass
 class EncHeader:
     kid: str
     sender: str = None
