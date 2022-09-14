@@ -1447,16 +1447,15 @@ async def test_structured_document_attach(config_a: dict):
             }
         }
         sd.from_json(js)
-        assert sd.id == 'urn:uuid:41289468-c42c-4b28-adb0-bf76044aec77'
+        assert sd.id == 'https://example.com/encrypted-data-vaults/zMbxmSDn2Xzz?hl=zb47JhaKJ3hJ5Jkw8oan35jK23289Hp'
+        assert sd.urn == 'urn:uuid:41289468-c42c-4b28-adb0-bf76044aec77'
         assert sd.sequence == 0
         assert sd.meta.created == '2019-06-19'
         assert sd.meta.content_type == 'video/mpeg'
         assert sd.meta.chunks == 16
         assert sd.stream.id == 'https://example.com/encrypted-data-vaults/zMbxmSDn2Xzz?hl=zb47JhaKJ3hJ5Jkw8oan35jK23289Hp'
         assert sd.document.encrypted is False
-        assert sd.document.content == {
-            "message": "Hello World!"
-        }
+        assert sd.document.content == "Hello World!"
 
         target_vk = await sirius_sdk.Crypto.create_key()
         packed = await sirius_sdk.Crypto.pack_message({"message": "Hello World!"}, recipient_verkeys=[target_vk])
@@ -1750,7 +1749,7 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
 
 
 @pytest.mark.asyncio
-async def test_data_vault_state_machines(config_a: dict, config_b: dict):
+async def test_data_vault_state_machines_for_docs(config_a: dict, config_b: dict):
     vault_cfg = config_a
     controller_cfg = config_b
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
@@ -1791,22 +1790,118 @@ async def test_data_vault_state_machines(config_a: dict, config_b: dict):
                 assert sd1.urn.startswith('urn:uuid:')
                 assert sd1.meta['meta1'] == 'value-1'
                 assert sd1.indexed[0].attributes == ['attr1']
+                print('Update resource metadata')
+                await m.update(sd1.id, meta={'meta-x': 'value-x'}, attrx='attrx')
+                loaded = await m.load(sd1.id)
+                assert loaded.meta['meta-x'] == 'value-x'
+                assert loaded.indexed[0].attributes == ['attrx']
+                assert loaded.id == sd1.id
+                assert loaded.urn == sd1.urn
+                print('Chek document save/load/encrypt/decrypt operations')
+                # save/load non-encrypted doc
+                doc = EncryptedDocument()
+                doc.content = 'Test message'
+                await m.save_document(sd1.id, doc)
+                loaded2 = await m.load(sd1.id)
+                assert loaded2.doc.content == 'Test message'
+                assert loaded2.doc.encrypted is False
+                # save/load encrypted doc
+                target_vk = await sirius_sdk.Crypto.create_key()
+                enc = EncryptedDocument(target_verkeys=[target_vk])
+                enc.content = b'Test message'
+                await enc.encrypt()
+                print('')
+                await m.save_document(sd1.id, enc)
+                loaded3 = await m.load(sd1.id)
+                assert loaded3.doc.encrypted is True
+                await loaded3.doc.decrypt()
+                assert loaded3.doc.content == b'Test message'
+                # Finish
+                await vault.close()
+
+        results = await run_coroutines(
+            run_vault(),
+            run_controller(),
+            timeout=5
+        )
+        assert results
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_data_vault_state_machines_for_streams(config_a: dict, config_b: dict):
+    vault_cfg = config_a
+    controller_cfg = config_b
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
+    called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
+    os.mkdir(dir_under_test)
+    try:
+        auth = ConfidentialStorageAuthProvider()
+        await auth.authorize(called)
+        # Init and configure Vault
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+
+        async def run_vault():
+            sm = CalledEncryptedDataVault(called, proxy_to=[vault])
+            async with sirius_sdk.context(**vault_cfg):
+                async for e in (await sirius_sdk.subscribe()):
+                    assert e.pairwise.their.did == called.their.did
+                    assert isinstance(e.message, BaseConfidentialStorageMessage)
+                    request: BaseConfidentialStorageMessage = e.message
+                    print('')
+                    await sm.handle(request)
+                    print('')
+
+        async def run_controller():
+            async with sirius_sdk.context(**controller_cfg):
+                m = CallerEncryptedDataVault(caller)
+                print('List all vaults')
+                vaults = await m.list_vaults()
+                assert vaults
+                vault_id = vaults[0].id
+                print('Select Vault')
+                m.select(vault_id)
+                print('Open selected vault')
+                await m.open()
+                print('Create resources')
                 sd2 = await m.create_stream(uri=f'my_stream.bin', meta={'meta2': 'value-2'}, attr2='attr2')
                 assert 'my_stream.bin' in sd2.id
                 assert sd2.urn.startswith('urn:uuid:')
                 assert sd2.meta['meta2'] == 'value-2'
                 assert sd2.indexed[0].attributes == ['attr2']
                 print('Update resource metadata')
-                await m.update(sd1.id, meta={'meta-x': 'value-x'}, attrx='attrx')
-                loaded = await m.load(sd1.id)
+                await m.update(sd2.id, meta={'meta-x': 'value-x'}, attrx='attrx')
+                loaded = await m.load(sd2.id)
                 assert loaded.meta['meta-x'] == 'value-x'
                 assert loaded.indexed[0].attributes == ['attrx']
-                print('')
+                assert loaded.id == sd2.id
+                assert loaded.urn == sd2.urn
+                # Open stream and write data
+                test_data = b'test-data'
+                writable = await m.writable(sd2.id)
+                await writable.open()
+                await writable.write(test_data)
+                await writable.close()
+                # Open for reading
+                readable = await m.readable(sd2.id)
+                await readable.open()
+                actual_data = await readable.read()
+                await readable.close()
+                # Check writen is equal to readen bytes
+                assert actual_data == test_data
 
-        await run_coroutines(
+                assert 0, 'TODO encrypted'
+
+                # Finish
+                await vault.close()
+
+        results = await run_coroutines(
             run_vault(),
             run_controller(),
-            timeout=1000
+            timeout=5
         )
+        assert results
     finally:
         shutil.rmtree(dir_under_test)

@@ -96,6 +96,10 @@ class StructuredDocument:
         return self.__content
 
     @property
+    def doc(self) -> Optional[EncryptedDocument]:
+        return self.__content
+
+    @property
     def stream(self) -> Optional[DataVaultStreamWrapper]:
         return self.__stream
 

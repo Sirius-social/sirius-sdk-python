@@ -5,6 +5,8 @@ from sirius_sdk.messaging import Message
 
 class BaseConfidentialStorageError(RuntimeError):
 
+    PROBLEM_CODE = 'confidential_storage_error'
+
     def __init__(self, message, *args):
         super().__init__(message, *args)
 
@@ -14,6 +16,8 @@ class BaseConfidentialStorageError(RuntimeError):
 
 
 class ConfidentialStorageUnexpectedMessageType(BaseConfidentialStorageError):
+
+    PROBLEM_CODE = 'invalid_message_type'
 
     def __init__(self, message: Union[str, Message], *args, **kwargs):
         if isinstance(message, Message):
@@ -28,52 +32,52 @@ class ConfidentialStorageUnexpectedMessageType(BaseConfidentialStorageError):
 
 
 class ConfidentialStorageInvalidRequest(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'invalid_request'
 
 
 class StreamEOF(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'eof'
 
 
 class EncryptionError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'encryption_error'
 
 
 class StreamInitializationError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'initialization_error'
 
 
 class StreamSeekableError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'stream_is_not_seekable'
 
 
 class DocumentFormatError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'document_format_error'
 
 
 class StreamFormatError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'stream_format_error'
 
 
 class ConfidentialStorageTimeoutOccurred(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'timeout_occurred'
 
 
 class ConfidentialStoragePermissionDenied(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'permission_denied'
 
 
 class DataVaultCreateResourceError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'resource_error'
 
 
 class DataVaultResourceMissing(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'resource_missing'
 
 
 class DataVaultSessionError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'session_error'
 
 
 class DataVaultStateError(BaseConfidentialStorageError):
-    pass
+    PROBLEM_CODE = 'state_error'
