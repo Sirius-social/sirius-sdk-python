@@ -81,3 +81,18 @@ class DataVaultSessionError(BaseConfidentialStorageError):
 
 class DataVaultStateError(BaseConfidentialStorageError):
     PROBLEM_CODE = 'state_error'
+
+
+class DataVaultOSError(BaseConfidentialStorageError):
+    PROBLEM_CODE = 'os_error'
+
+    def __init__(self, message: Union[OSError, str], *args):
+        if isinstance(message, OSError):
+            err_msg = str(message)
+            for arg in message.args:
+                if isinstance(arg, str):
+                    err_msg = arg
+                    break
+        else:
+            err_msg = message
+        super().__init__(err_msg, *args)

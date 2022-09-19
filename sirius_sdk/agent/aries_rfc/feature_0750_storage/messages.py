@@ -373,6 +373,23 @@ class DataVaultLoadResource(BaseDataVaultOperation):
     NAME = 'data-vault-load-resource'
 
 
+class DataVaultRemoveResource(BaseDataVaultOperation):
+    NAME = 'data-vault-remove-resource'
+
+
+class DataVaultList(BaseDataVaultOperation):
+    NAME = 'data-vault-list'
+
+    def __init__(self, filters: dict = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if filters is not None:
+            self['filters'] = filters
+
+    @property
+    def filters(self) -> dict:
+        return self.get('filters', {})
+
+
 class DataVaultBindStreamForReading(BaseDataVaultOperation):
     NAME = 'data-vault-bind-stream-reading'
 

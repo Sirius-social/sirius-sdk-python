@@ -106,6 +106,11 @@ class StreamEncryption(BaseStreamEncryption):
     def from_jwe(cls, jwe: Union[JWE, dict]) -> "StreamEncryption":
         inst = StreamEncryption()
         inst.jwe = jwe
+        if inst._cek is None and inst.recipients is not None:
+            target_verkeys = [item.get('header', {}).get('kid', None) for item in inst.recipients]
+            target_verkeys = [key for key in target_verkeys if key is not None]
+            if target_verkeys:
+                inst.setup(target_verkeys)
         return inst
 
 

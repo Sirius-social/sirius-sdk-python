@@ -11,11 +11,13 @@ from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
 
-from .components import EncryptedDataVault, VaultConfig
+from .components import EncryptedDataVault, DataVaultStreamWrapper
 from .messages import *
-from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption
+from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, StreamEncryption, \
+    StreamDecryption, ReadOnlyStreamDecodingWrapper, WriteOnlyStreamEncodingWrapper
 from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument
 from .errors import *
+from .encoding import JWE, KeyPair
 
 
 def problem_report_from_exception(e: BaseConfidentialStorageError) -> ConfidentialStorageMessageProblemReport:
@@ -57,6 +59,8 @@ def exception_from_problem_report(
         return DataVaultSessionError(report.explain)
     elif report.problem_code == DataVaultStateError.PROBLEM_CODE:
         return DataVaultStateError(report.explain)
+    elif report.problem_code == DataVaultOSError.PROBLEM_CODE:
+        return DataVaultOSError(report.explain)
     else:
         return BaseConfidentialStorageError(report.explain)
 
@@ -282,6 +286,10 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
     @property
     def thid(self) -> str:
         return self.__thid
+
+    @property
+    def proxy_to(self) -> Optional[AbstractReadOnlyStream]:
+        return self.__proxy_to
 
     @property
     def stream_is_open(self) -> bool:
@@ -627,6 +635,10 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         return self.__thid
 
     @property
+    def proxy_to(self) -> Optional[AbstractWriteOnlyStream]:
+        return self.__proxy_to
+
+    @property
     def stream_is_open(self) -> bool:
         return self.__stream_is_open
 
@@ -753,7 +765,33 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         await sirius_sdk.send_to(response_, self.caller)
 
 
-class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
+class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, EncryptedDataVault.Indexes):
+
+    class CallerStreamWrapper(DataVaultStreamWrapper):
+
+        def __init__(self, api: EncryptedDataVault, id_: str):
+            self.__api = api
+            self.__id = id_
+            super().__init__(readable=None, writable=None)
+
+        async def readable(self, jwe: Union[JWE, dict] = None, keys: KeyPair = None) -> AbstractReadOnlyStream:
+            if self._readable is None:
+                self._readable = await self.__api.readable(self.__id)
+            if jwe is None:
+                return self._readable
+            else:
+                enc = StreamDecryption.from_jwe(jwe)
+                if keys is not None:
+                    enc.setup(vk=keys.pk, sk=keys.sk)
+                return ReadOnlyStreamDecodingWrapper(src=self._readable, enc=enc)
+
+        async def writable(self, jwe: Union[JWE, dict] = None) -> AbstractWriteOnlyStream:
+            if self._writable is None:
+                self._writable = await self.__api.writable(self.__id)
+            if jwe is None:
+                return self._writable
+            else:
+                return WriteOnlyStreamEncodingWrapper(dest=self._writable, enc=StreamEncryption.from_jwe(jwe))
 
     def __init__(
             self, called: Pairwise, read_timeout: int = 30,
@@ -805,6 +843,7 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
         await self._rpc(request=DataVaultOpen(vault=self.__current_vault))
 
     async def close(self):
+        await self._rpc(request=DataVaultClose())
         await self._close_coprotocol()
 
     async def list_vaults(self) -> List[VaultConfig]:
@@ -817,8 +856,23 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
         else:
             raise RuntimeError(f'Unexpected response type: {resp.__class__.__name__}')
 
+    async def filter(self, **attributes) -> List[StructuredDocument]:
+        resp = await self._rpc(
+            request=DataVaultList(
+                filters=dict(**attributes) if attributes else None
+            )
+        )
+        if isinstance(resp, StructuredDocumentMessage):
+            docs = []
+            for attach in resp.documents:
+                doc = self.__extract_structured_doc(attach)
+                docs.append(doc)
+            return docs
+        else:
+            raise ConfidentialStorageUnexpectedMessageType(resp)
+
     async def indexes(self) -> EncryptedDataVault.Indexes:
-        pass
+        return self
 
     async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
         resp = await self._rpc(
@@ -838,12 +892,16 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
         if isinstance(resp, StructuredDocumentMessage):
             attach = resp.documents[0]
             doc = self.__extract_structured_doc(attach)
+            if doc.doc is None:
+                doc.doc = EncryptedDocument(content=b'')
             return doc
         else:
             raise ConfidentialStorageUnexpectedMessageType(resp)
 
     async def remove(self, uri: str):
-        pass
+        await self._rpc(
+            request=DataVaultRemoveResource(uri=uri)
+        )
 
     async def update(self, uri: str, meta: dict = None, **attributes):
         await self._rpc(
@@ -958,8 +1016,7 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
             if close_on_exit:
                 await self._close_coprotocol()
 
-    @staticmethod
-    def __extract_structured_doc(attach: StructuredDocumentAttach) -> StructuredDocument:
+    def __extract_structured_doc(self, attach: StructuredDocumentAttach) -> StructuredDocument:
         doc = StructuredDocument(
             id_=attach.id,
             urn=attach.urn,
@@ -972,8 +1029,10 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault):
                 )
                 for ind in attach.indexed
             ],
-            content=attach.document
+            content=attach.document,
         )
+        if attach.stream is not None:
+            doc.stream = self.CallerStreamWrapper(api=self, id_=attach.stream.id)
         return doc
 
 
@@ -990,8 +1049,8 @@ class CalledEncryptedDataVault(AbstractStateMachine):
         self.__proxy_to = proxy_to
         self.__caller = caller
         self.__sessions: Dict[str, EncryptedDataVault] = {}
-        self.__readable: Dict[str, CalledReadOnlyStreamProtocol] = {}
-        self.__writeable: Dict[str, CalledWriteOnlyStreamProtocol] = {}
+        self.__read_sessions: Dict[str, Dict[str, CalledReadOnlyStreamProtocol]] = {}
+        self.__write_sessions: Dict[str, Dict[str, CalledWriteOnlyStreamProtocol]] = {}
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
 
     @property
@@ -1040,6 +1099,18 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                     # Request to close
                     vault = self.__sessions.get(request.thread.thid, None)
                     if vault is not None:
+                        read_sessions = self.__read_sessions.get(request.thread.thid, {})
+                        for proto in read_sessions.values():
+                            await proto.proxy_to.close()
+                            await proto.close_coprotocol()
+                        if read_sessions:
+                            del self.__read_sessions[request.thread.thid]
+                        write_sessions = self.__write_sessions.get(request.thread.thid, {})
+                        for proto in write_sessions.values():
+                            await proto.proxy_to.close()
+                            await proto.close_coprotocol()
+                        if write_sessions:
+                            del self.__write_sessions[request.thread.thid]
                         await vault.close()
                         del self.__sessions[request.thread.thid]
                     await self.__send_response(request, DataVaultOperationAck())
@@ -1091,6 +1162,12 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                         ]
                     )
                     await self.__send_response(request, response)
+                elif isinstance(request, DataVaultRemoveResource):
+                    vault = self.__get_vault(request.thread.thid)
+                    if not request.uri:
+                        raise ConfidentialStorageInvalidRequest('You should set "uri" attribute')
+                    await vault.remove(request.uri)
+                    await self.__send_response(request, DataVaultOperationAck())
                 elif isinstance(request, DataVaultSaveDocument):
                     vault = self.__get_vault(request.thread.thid)
                     if not request.uri:
@@ -1099,6 +1176,18 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                         raise ConfidentialStorageInvalidRequest('You should attach document with "doc~attach"')
                     await vault.save_document(uri=request.uri, doc=request.document)
                     await self.__send_response(request, DataVaultOperationAck())
+                elif isinstance(request, DataVaultList):
+                    vault = self.__get_vault(request.thread.thid)
+                    attributes = request.filters
+                    indexes = await vault.indexes()
+                    structured_documents = await indexes.filter(**attributes)
+                    response = StructuredDocumentMessage(
+                        documents=[
+                            StructuredDocumentAttach.create_from(src=doc, sequence=i)
+                            for i, doc in enumerate(structured_documents)
+                        ]
+                    )
+                    await self.__send_response(request, response)
                 elif isinstance(request, DataVaultBindStreamForWriting) or isinstance(request, DataVaultBindStreamForReading):
                     vault = self.__get_vault(request.thread.thid)
                     if not request.uri:
@@ -1110,13 +1199,17 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                         proto = CalledWriteOnlyStreamProtocol(
                             caller=self.caller, thid=request.co_binding_id, proxy_to=stream
                         )
-                        self.__writeable[request.co_binding_id] = proto
+                        write_sessions = self.__write_sessions.get(thread.thid, {})
+                        write_sessions[request.co_binding_id] = proto
+                        self.__write_sessions[thread.thid] = write_sessions
                     else:
                         stream = await vault.readable(uri=request.uri)
                         proto = CalledReadOnlyStreamProtocol(
                             caller=self.caller, thid=request.co_binding_id, proxy_to=stream
                         )
-                        self.__readable[request.co_binding_id] = proto
+                        read_sessions = self.__read_sessions.get(thread.thid, {})
+                        read_sessions[request.co_binding_id] = proto
+                        self.__read_sessions[thread.thid] = read_sessions
                     await self.__send_response(request, DataVaultOperationAck())
                 else:
                     raise ConfidentialStorageUnexpectedMessageType(request)
@@ -1127,10 +1220,14 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                     raise ConfidentialStorageInvalidRequest(
                         'Stream operation request should have "~thread.thid" attribute to bind sessions'
                     )
-                proto = self.__writeable.get(thread.thid, None)
+                if thread.pthid is None:
+                    raise ConfidentialStorageInvalidRequest(
+                        'Stream operation request should have "~thread.pthid" attribute to bind sessions'
+                    )
+                proto = self.__write_sessions.get(thread.pthid, {}).get(thread.thid, None)
                 if proto is not None:
                     await proto.handle(request)
-                proto = self.__readable.get(thread.thid, None)
+                proto = self.__read_sessions.get(thread.pthid, {}).get(thread.thid, None)
                 if proto is not None:
                     await proto.handle(request)
             else:
@@ -1138,6 +1235,10 @@ class CalledEncryptedDataVault(AbstractStateMachine):
         except BaseConfidentialStorageError as e:
             report = problem_report_from_exception(e)
             # Don't raise any error: give caller to make decision
+            await self.__send_response(request, report)
+        except OSError as e:
+            exc = DataVaultOSError(e)
+            report = problem_report_from_exception(exc)
             await self.__send_response(request, report)
 
     def __get_vault(self, thid: str) -> EncryptedDataVault:

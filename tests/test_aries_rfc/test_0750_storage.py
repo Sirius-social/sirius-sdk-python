@@ -13,6 +13,7 @@ import aiofiles
 import pytest
 
 import sirius_sdk
+from sirius_sdk.errors.indy_exceptions import WalletItemAlreadyExists
 from sirius_sdk.encryption import create_keypair, bytes_to_b58
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.messages import BaseConfidentialStorageMessage
@@ -636,7 +637,7 @@ async def test_fs_streams_encoding_copy(files_dir: str):
 
 
 @pytest.mark.asyncio
-async def test_streams_encoding_decoding_wrappers(files_dir: str):
+async def test_streams_encoding_decoding_wrappers(files_dir: str, config_a: dict):
     # Layer-2
     target_vk, target_sk = create_keypair(seed='00000000000000000000000000TARGET'.encode())
     target_vk, target_sk = bytes_to_b58(target_vk), bytes_to_b58(target_sk)
@@ -654,8 +655,11 @@ async def test_streams_encoding_decoding_wrappers(files_dir: str):
     await wo.create(truncate=True)
     try:
         # Wrap with stream abstraction on Layer-2
+        enc = StreamEncryption().setup(target_verkeys=[target_vk])
+        jwe = enc.jwe
+        enc_restored = StreamEncryption.from_jwe(jwe)
         wrapper_to_write = WriteOnlyStreamEncodingWrapper(
-            dest=wo, enc=StreamEncryption().setup(target_verkeys=[target_vk])
+            dest=wo, enc=enc_restored
         )
         jwe_layer2 = wrapper_to_write.enc.jwe
         await wrapper_to_write.open()
@@ -679,6 +683,22 @@ async def test_streams_encoding_decoding_wrappers(files_dir: str):
             assert actual_data == test_data
         finally:
             await wrapper_to_read.close()
+        # Wrap with stream on Layer-2 via sirius_sdk.Crypto
+        async with sirius_sdk.context(**config_a):
+            try:
+                await sirius_sdk.Crypto.create_key(seed='00000000000000000000000000TARGET')
+            except WalletItemAlreadyExists:
+                pass
+            wrapper_to_read = ReadOnlyStreamDecodingWrapper(
+                src=ro,
+                enc=StreamDecryption.from_jwe(jwe_layer2)
+            )
+            await wrapper_to_read.open()
+            try:
+                actual_data = await wrapper_to_read.read()
+                assert actual_data == test_data
+            finally:
+                await wrapper_to_read.close()
     finally:
         os.remove(storage_file)
 
@@ -1309,8 +1329,10 @@ async def test_recipe_simple_datavault_metadata_and_indexes(config_a: dict, conf
             # check2
             load_for_stream = await vault.load(uri_under_test2)
             assert isinstance(load_for_stream, StructuredDocument)
-            assert isinstance(load_for_stream.stream.readable(), AbstractReadOnlyStream)
-            assert isinstance(load_for_stream.stream.writable(), AbstractWriteOnlyStream)
+            ro = await load_for_stream.stream.readable()
+            assert isinstance(ro, AbstractReadOnlyStream)
+            wo = await load_for_stream.stream.writable()
+            assert isinstance(wo, AbstractWriteOnlyStream)
             assert load_for_stream.meta['contentType'] == 'video/mpeg'
             assert 'created' in load_for_stream.meta
             assert 'chunks' in load_for_stream.meta and type(load_for_stream.meta['chunks']) is int
@@ -1707,7 +1729,7 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
                 if case_vault_encrypt is True and case_controller_encrypt is False:
                     # Data if read in Vault context is decrypted
                     loaded_doc = await vault.load(structured_doc.id)
-                    stream_to_read_layer2 = loaded_doc.stream.readable()
+                    stream_to_read_layer2 = await loaded_doc.stream.readable()
                     await stream_to_read_layer2.open()
                     try:
                         actual_data = await stream_to_read_layer2.read()
@@ -1718,7 +1740,7 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
                 if case_vault_encrypt is False and case_controller_encrypt is True:
                     # Doc controller has access to document content
                     loaded_doc = await vault.load(structured_doc.id)
-                    stream_to_read_layer2 = loaded_doc.stream.readable(
+                    stream_to_read_layer2 = await loaded_doc.stream.readable(
                         jwe_layer2,
                         keys=KeyPair(controller_pk, controller_sk)
                     )
@@ -1732,7 +1754,7 @@ async def test_recipe_simple_datavault_encryption_layers_for_streams(config_a: d
                 if case_vault_encrypt is True and case_controller_encrypt is True:
                     # Vault side don/t have access to data
                     loaded_doc = await vault.load(structured_doc.id)
-                    stream_to_read_layer2 = loaded_doc.stream.readable(
+                    stream_to_read_layer2 = await loaded_doc.stream.readable(
                         jwe_layer2,
                         keys=KeyPair(controller_pk, controller_sk)
                     )
@@ -1787,6 +1809,7 @@ async def test_data_vault_state_machines_for_docs(config_a: dict, config_b: dict
                 print('Create resources')
                 sd1 = await m.create_document(uri=f'my_document.bin', meta={'meta1': 'value-1'}, attr1='attr1')
                 assert 'my_document.bin' in sd1.id
+                assert sd1.doc is not None and sd1.doc.content == b'' and sd1.doc.encrypted is False
                 assert sd1.urn.startswith('urn:uuid:')
                 assert sd1.meta['meta1'] == 'value-1'
                 assert sd1.indexed[0].attributes == ['attr1']
@@ -1817,7 +1840,7 @@ async def test_data_vault_state_machines_for_docs(config_a: dict, config_b: dict
                 await loaded3.doc.decrypt()
                 assert loaded3.doc.content == b'Test message'
                 # Finish
-                await vault.close()
+                await m.close()
 
         results = await run_coroutines(
             run_vault(),
@@ -1891,11 +1914,100 @@ async def test_data_vault_state_machines_for_streams(config_a: dict, config_b: d
                 await readable.close()
                 # Check writen is equal to readen bytes
                 assert actual_data == test_data
-
-                assert 0, 'TODO encrypted'
-
+                # Try again for encrypted
+                sd_enc = await m.create_stream(uri=f'my_stream_encoded.bin', meta={'meta2': 'value-2'}, attr2='attr2')
+                assert sd_enc.stream is not None
+                sd_enc = await m.load(sd_enc.id)
+                assert sd_enc.stream is not None
+                target_vk = await sirius_sdk.Crypto.create_key()
+                enc = StreamEncryption().setup(target_verkeys=[target_vk])
+                writable_enc = await sd_enc.stream.writable(enc.jwe)
+                # !!!! Wrapper encoder JWE will be refreshed !!!!
+                wrapper_jwe = writable_enc.enc.jwe
+                # !!!!!!!!!!
+                await writable_enc.open()
+                await writable_enc.write(test_data)
+                await writable_enc.close()
+                readable_enc = await sd_enc.stream.readable(wrapper_jwe)
+                await readable_enc.open()
+                actual_data = await readable_enc.read()
+                await readable_enc.close()
+                assert actual_data == test_data
                 # Finish
-                await vault.close()
+                await m.close()
+
+        results = await run_coroutines(
+            run_vault(),
+            run_controller(),
+            timeout=5
+        )
+        assert results
+        assert vault.is_open is False
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_data_vault_state_machines_remove_and_indexes(config_a: dict, config_b: dict):
+    vault_cfg = config_a
+    controller_cfg = config_b
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
+    called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
+    os.mkdir(dir_under_test)
+    try:
+        auth = ConfidentialStorageAuthProvider()
+        await auth.authorize(called)
+        # Init and configure Vault
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+
+        async def run_vault():
+            sm = CalledEncryptedDataVault(called, proxy_to=[vault])
+            async with sirius_sdk.context(**vault_cfg):
+                async for e in (await sirius_sdk.subscribe()):
+                    assert e.pairwise.their.did == called.their.did
+                    assert isinstance(e.message, BaseConfidentialStorageMessage)
+                    request: BaseConfidentialStorageMessage = e.message
+                    print('')
+                    await sm.handle(request)
+                    print('')
+
+        async def run_controller():
+            async with sirius_sdk.context(**controller_cfg):
+                m = CallerEncryptedDataVault(caller)
+                print('List all vaults')
+                vaults = await m.list_vaults()
+                assert vaults
+                vault_id = vaults[0].id
+                print('Select Vault')
+                m.select(vault_id)
+                print('Open selected vault')
+                await m.open()
+                print('Create resources')
+                sd1 = await m.create_document('my_document.bin', meta={}, attr1='attr1')
+                sd2 = await m.create_stream('my_stream.bin', meta={}, attr1='attr1', attr2='attr2')
+                print('Index')
+                index = await m.indexes()
+                docs1 = await index.filter(attr1='attr1')
+                assert len(docs1) == 2
+                docs2 = await index.filter(attr1='attr1', attr2='attr2')
+                assert len(docs2) == 1
+                print('Remove one of resources')
+                await m.remove(sd1.id)
+                docs3 = await index.filter(attr1='attr1')
+                assert len(docs3) == 1
+                print('Open stream and try to remove it')
+                stream = await sd2.stream.readable()
+                print('#1')
+                await stream.open()
+                print('#2')
+                with pytest.raises(DataVaultOSError):
+                    await m.remove(sd2.id)
+                print('#3')
+                await stream.close()
+                await m.remove(sd2.id)
+                # Finish
+                await m.close()
 
         results = await run_coroutines(
             run_vault(),

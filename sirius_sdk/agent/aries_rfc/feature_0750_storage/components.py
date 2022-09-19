@@ -33,23 +33,23 @@ class HMAC:
 class DataVaultStreamWrapper:
 
     def __init__(self, readable: AbstractReadOnlyStream = None, writable: AbstractWriteOnlyStream = None):
-        self.__readable = readable
-        self.__writable = writable
+        self._readable = readable
+        self._writable = writable
 
-    def readable(self, jwe: Union[JWE, dict] = None, keys: KeyPair = None) -> AbstractReadOnlyStream:
+    async def readable(self, jwe: Union[JWE, dict] = None, keys: KeyPair = None) -> AbstractReadOnlyStream:
         if jwe is None:
-            return self.__readable
+            return self._readable
         else:
             enc = StreamDecryption.from_jwe(jwe)
             if keys is not None:
                 enc.setup(vk=keys.pk, sk=keys.sk)
-            return ReadOnlyStreamDecodingWrapper(src=self.__readable, enc=enc)
+            return ReadOnlyStreamDecodingWrapper(src=self._readable, enc=enc)
 
-    def writable(self, jwe: Union[JWE, dict] = None) -> AbstractWriteOnlyStream:
+    async def writable(self, jwe: Union[JWE, dict] = None) -> AbstractWriteOnlyStream:
         if jwe is None:
-            return self.__writable
+            return self._writable
         else:
-            return WriteOnlyStreamEncodingWrapper(dest=self.__writable, enc=StreamEncryption.from_jwe(jwe))
+            return WriteOnlyStreamEncodingWrapper(dest=self._writable, enc=StreamEncryption.from_jwe(jwe))
 
 
 class StructuredDocument:
@@ -99,9 +99,17 @@ class StructuredDocument:
     def doc(self) -> Optional[EncryptedDocument]:
         return self.__content
 
+    @doc.setter
+    def doc(self, value: Optional[EncryptedDocument]):
+        self.__content = value
+
     @property
     def stream(self) -> Optional[DataVaultStreamWrapper]:
         return self.__stream
+
+    @stream.setter
+    def stream(self, value: Optional[DataVaultStreamWrapper]):
+        self.__stream = value
 
     @property
     def indexed(self) -> List['Index']:
