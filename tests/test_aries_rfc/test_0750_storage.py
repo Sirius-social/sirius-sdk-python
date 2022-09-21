@@ -16,7 +16,7 @@ import sirius_sdk
 from sirius_sdk.errors.indy_exceptions import WalletItemAlreadyExists
 from sirius_sdk.encryption import create_keypair, bytes_to_b58
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import *
-from sirius_sdk.agent.aries_rfc.feature_0750_storage.messages import BaseConfidentialStorageMessage
+from sirius_sdk.agent.aries_rfc.feature_0750_storage.messages import BaseConfidentialStorageMessage, StreamOperation
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import *
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.state_machines import CallerEncryptedDataVault, CalledEncryptedDataVault
 from sirius_sdk.recipes.confidential_storage import SimpleDataVault
@@ -851,6 +851,66 @@ async def test_readonly_stream_delays(files_dir: str, config_c: dict, config_d: 
 
 
 @pytest.mark.asyncio
+async def test_readonly_stream_protocol_persistance(files_dir: str, config_c: dict, config_d: dict):
+    """Check readonly stream persistent mechanism
+        Agent-C is CALLER
+        Agent-D is CALLED
+        """
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-readonly-protocol-' + uuid.uuid4().hex
+    persist_id = 'persist_' + uuid.uuid4().hex
+    file_under_test = os.path.join(files_dir, 'big_img.jpeg')
+    file_under_test_md5 = calc_file_hash(file_under_test)
+    ro_chunks_num = 10
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            co = await sirius_sdk.spawn_coprotocol()
+            await co.subscribe(testing_thid)
+            try:
+                while True:
+                    # Pull message
+                    e = await co.get_message()
+                    # Every time create empty state machine instance
+                    state_machine = CalledReadOnlyStreamProtocol(
+                        called_p2p,
+                        thid=testing_thid,
+                        persistent_id=persist_id,
+                        # create new stream instance (with empty state)
+                        proxy_to=FileSystemReadOnlyStream(path=file_under_test, chunks_num=ro_chunks_num)
+                    )
+                    # load state
+                    await state_machine.load()
+                    await state_machine.handle(e.message)
+                    if state_machine.edited:
+                        # save state if need
+                        await state_machine.save()
+                    if e.message.operation == StreamOperation.OperationCode.CLOSE:
+                        await state_machine.abort()
+                        return
+            finally:
+                await co.abort()
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            ro = CallerReadOnlyStreamProtocol(
+                called=caller_p2p, uri=file_under_test, read_timeout=3, retry_count=3,
+                thid=testing_thid
+            )
+            # open
+            await ro.open()
+            # checks read data md5
+            read_data = await ro.read()
+            assert calc_bytes_hash(read_data) == file_under_test_md5
+            # close
+            await ro.close()
+
+    results = await run_coroutines(called(), caller(), timeout=15)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
 async def test_writeonly_stream_protocols(config_c: dict, config_d: dict):
     """
     Agent-C is CALLER
@@ -902,6 +962,70 @@ async def test_writeonly_stream_protocols(config_c: dict, config_d: dict):
                 assert new_no == no + 1
                 assert sz == len(chunk)
                 assert wo.current_chunk == new_no
+            # check MD5
+            md5 = calc_file_hash(file_under_test)
+            assert etalon_md5 == md5
+            # close
+            await wo.close()
+            assert wo.is_open is False
+
+    results = await run_coroutines(called(), caller(), timeout=5)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_writeonly_stream_protocol_persistance(config_c: dict, config_d: dict):
+    """Check writeonly stream persistent mechanism
+    Agent-C is CALLER
+    Agent-D is CALLED
+    """
+
+    caller_p2p = await get_pairwise3(me=config_c, their=config_d)
+    called_p2p = await get_pairwise3(me=config_d, their=config_c)
+    testing_thid = 'test-writeonly-protocol-' + uuid.uuid4().hex
+    file_under_test = os.path.join(tempfile.tempdir, f'{uuid.uuid4().hex}.bin')
+    etalon_data = b'x' * 1024 * 3
+    persist_id = uuid.uuid4().hex
+    etalon_md5 = calc_bytes_hash(etalon_data)
+    print('')
+
+    async def called():
+        async with sirius_sdk.context(**config_d):
+            stream = FileSystemWriteOnlyStream(path=file_under_test)
+            await stream.create()
+            co = await sirius_sdk.spawn_coprotocol()
+            await co.subscribe(testing_thid)
+            try:
+                while True:
+                    # Pull message
+                    e = await co.get_message()
+                    # Every time create empty state machine instance
+                    state_machine = CalledWriteOnlyStreamProtocol(
+                        called_p2p,
+                        thid=testing_thid,
+                        persistent_id=persist_id,
+                        # create new stream instance (with empty state)
+                        proxy_to=FileSystemWriteOnlyStream(path=file_under_test)
+                    )
+                    # load state
+                    await state_machine.load()
+                    await state_machine.handle(e.message)
+                    if state_machine.edited:
+                        # save state if need
+                        await state_machine.save()
+                    if e.message.operation == StreamOperation.OperationCode.CLOSE:
+                        await state_machine.abort()
+                        return
+            finally:
+                await co.abort()
+                os.remove(file_under_test)
+
+    async def caller():
+        async with sirius_sdk.context(**config_c):
+            wo = CallerWriteOnlyStreamProtocol(called=caller_p2p, uri=file_under_test, thid=testing_thid)
+            # open
+            await wo.open()
+            await wo.write(etalon_data)
             # check MD5
             md5 = calc_file_hash(file_under_test)
             assert etalon_md5 == md5
@@ -1996,16 +2120,66 @@ async def test_data_vault_state_machines_remove_and_indexes(config_a: dict, conf
                 await m.remove(sd1.id)
                 docs3 = await index.filter(attr1='attr1')
                 assert len(docs3) == 1
-                print('Open stream and try to remove it')
-                stream = await sd2.stream.readable()
-                print('#1')
-                await stream.open()
-                print('#2')
+                # Finish
+                await m.close()
+
+        results = await run_coroutines(
+            run_vault(),
+            run_controller(),
+            timeout=5
+        )
+        assert results
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_data_vault_state_machines_raise_errors(config_a: dict, config_b: dict):
+    vault_cfg = config_a
+    controller_cfg = config_b
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
+    called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
+    os.mkdir(dir_under_test)
+    try:
+        auth = ConfidentialStorageAuthProvider()
+        await auth.authorize(called)
+        # Init and configure Vault
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+
+        async def run_vault():
+            sm = CalledEncryptedDataVault(called, proxy_to=[vault])
+            async with sirius_sdk.context(**vault_cfg):
+                async for e in (await sirius_sdk.subscribe()):
+                    assert e.pairwise.their.did == called.their.did
+                    assert isinstance(e.message, BaseConfidentialStorageMessage)
+                    request: BaseConfidentialStorageMessage = e.message
+                    print('')
+                    await sm.handle(request)
+                    print('')
+
+        async def run_controller():
+            async with sirius_sdk.context(**controller_cfg):
+                m = CallerEncryptedDataVault(caller)
+                print('List all vaults')
+                vaults = await m.list_vaults()
+                assert vaults
+                vault_id = vaults[0].id
+                print('Select Vault')
+                m.select(vault_id)
+                print('Open selected vault')
+                await m.open()
+                print('#1 Create resource twice')
+                await m.create_document('my_document.bin')
+                with pytest.raises(DataVaultCreateResourceError):
+                    await m.create_document('my_document.bin')
+                print('#2 operate with missing resource')
+                with pytest.raises(DataVaultResourceMissing):
+                    await m.update('file:///missing_document.bin', meta={'meta': 'val'})
+                print('#3 os error')
                 with pytest.raises(DataVaultOSError):
-                    await m.remove(sd2.id)
-                print('#3')
-                await stream.close()
-                await m.remove(sd2.id)
+                    forbidden_file_name = '$%<>":'
+                    await m.create_document(f'file:///{forbidden_file_name}.bin')
                 # Finish
                 await m.close()
 

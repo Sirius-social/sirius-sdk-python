@@ -6,7 +6,7 @@ import contextlib
 from typing import Optional, Union, List
 
 import sirius_sdk
-from sirius_sdk.base import AbstractStateMachine
+from sirius_sdk.base import AbstractStateMachine, PersistentMixin
 from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
 from sirius_sdk.errors.exceptions import StateMachineAborted, OperationAbortedManually, StateMachineTerminatedWithError
@@ -18,6 +18,7 @@ from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStream
 from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument
 from .errors import *
 from .encoding import JWE, KeyPair
+from .utils import ensure_persist_record_exists, ensure_persist_record_missing, update_persist_record
 
 
 def problem_report_from_exception(e: BaseConfidentialStorageError) -> ConfidentialStorageMessageProblemReport:
@@ -251,7 +252,7 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
         )
 
 
-class CalledReadOnlyStreamProtocol(AbstractStateMachine):
+class CalledReadOnlyStreamProtocol(PersistentMixin, AbstractStateMachine):
     """ReadOnly Stream protocol for Called entity, Called entity most probably operate on Vault side
        Acts as proxy to physical stream implementation
 
@@ -261,13 +262,14 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
 
     def __init__(
             self, caller: Pairwise, thid: str = None, proxy_to: AbstractReadOnlyStream = None,
-            time_to_live: int = None, logger=None, *args, **kwargs
+            persistent_id: str = None, time_to_live: int = None, logger=None, *args, **kwargs
     ):
         """Setup stream proxy environment
 
         :param caller: Caller of stream resource operations
         :param thid (optional): co-protocol thread-id
         :param proxy_to (optional): stream to proxy op calls
+        :param persistent_id (optional): unique ID to store state to recover states on failures and restarts
         :param time_to_live (optional): time the state-machine is alive,
         :param logger (optional): state-machine logger
         """
@@ -275,7 +277,9 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
         self.__caller: Pairwise = caller
         self.__thid = thid
         self.__proxy_to = proxy_to
-        self.__stream_is_open = False
+        self.__persistent_id = persistent_id
+        self.__persist_state = {}
+        self.__storage_rec_exists = False
         self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
 
@@ -293,11 +297,11 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
 
     @property
     def stream_is_open(self) -> bool:
-        return self.__stream_is_open
+        return self.__persist_state.get('is_open', False)
 
     @stream_is_open.setter
     def stream_is_open(self, value: bool):
-        self.__stream_is_open = value
+        self.__persist_state['is_open'] = value
 
     async def run_forever(self, proxy_to: AbstractReadOnlyStream = None, exit_on_close: bool = True):
         """Proxy requests in loop
@@ -353,6 +357,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                     self.stream_is_open = True
                 elif request.operation == StreamOperation.OperationCode.CLOSE:
                     await proxy_to.close()
+                    await self.__ensure_storage_record_missing()
                 elif request.operation == StreamOperation.OperationCode.SEEK_TO_CHUNK:
                     no = request.params.get('no')
                     new_no = await proxy_to.seek_to_chunk(no)
@@ -368,6 +373,7 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
                 report = problem_report_from_exception(e)
                 # Don't raise any error: give caller to make decision
                 await self.__send_response(request, report)
+                await self.__ensure_storage_record_missing()
 
     async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
         if self.__coprotocol is None:
@@ -384,6 +390,11 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
             await self.__coprotocol.clean()
             self._unregister_for_aborting(self.__coprotocol)
             self.__coprotocol = None
+        await self.__ensure_storage_record_missing()
+
+    async def abort(self):
+        await self.__ensure_storage_record_missing()
+        await super().abort()
 
     @contextlib.asynccontextmanager
     async def coprotocol(self, close_on_exit: bool = False):
@@ -398,6 +409,34 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
             if close_on_exit:
                 await self.close_coprotocol()
 
+    #############################
+    # Persistent methods
+    #############################
+    async def load(self):
+        if self.__proxy_to is not None and self.__persistent_id is not None:
+            new_states = await self.__ensure_storage_record_exists()
+            if new_states and new_states != self.__persist_state:
+                self.__persist_state = new_states
+                if self.__persist_state['is_open'] is False and self.__proxy_to.is_open is True:
+                    await self.__proxy_to.close()
+                if self.__persist_state['is_open'] is True and self.__proxy_to.is_open is False:
+                    await self.__proxy_to.open()
+                if self.__proxy_to.is_open and self.__persist_state['current_chunk'] != self.__proxy_to.current_chunk:
+                    await self.__proxy_to.seek_to_chunk(self.__persist_state['current_chunk'])
+
+    async def save(self):
+        if self.__proxy_to is not None and self.__persistent_id is not None:
+            self.__persist_state = {'is_open': self.__proxy_to.is_open, 'current_chunk': self.__proxy_to.current_chunk}
+            await update_persist_record(self.__persistent_id, self.__persist_state)
+
+    @property
+    def edited(self) -> bool:
+        if self.__proxy_to is not None:
+            return self.__persist_state.get('is_open', None) != self.__proxy_to.is_open or \
+                   self.__persist_state.get('current_chunk', None) != self.__proxy_to.current_chunk
+        else:
+            return False
+
     async def __send_response(
             self,
             request_: StreamOperation,
@@ -405,6 +444,19 @@ class CalledReadOnlyStreamProtocol(AbstractStateMachine):
     ):
         sirius_sdk.prepare_response(request_, response_)
         await sirius_sdk.send_to(response_, self.caller)
+
+    async def __ensure_storage_record_exists(self) -> Optional[dict]:
+        if self.__persistent_id is not None:
+            states = await ensure_persist_record_exists(self.__persistent_id, self.__persist_state)
+            self.__storage_rec_exists = True
+            return states
+        else:
+            return None
+
+    async def __ensure_storage_record_missing(self):
+        if self.__storage_rec_exists:
+            await ensure_persist_record_missing(self.__persistent_id)
+            self.__storage_rec_exists = False
 
 
 class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStream):
@@ -597,7 +649,7 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
         )
 
 
-class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
+class CalledWriteOnlyStreamProtocol(PersistentMixin, AbstractStateMachine):
     """
         Called entity on WriteOnly Stream side, Called entity most probably operate on Vault side
         Acts as proxy to physical stream implementation
@@ -608,7 +660,8 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
 
     def __init__(
             self, caller: Pairwise, thid: str = None, time_to_live: int = None,
-            proxy_to: AbstractWriteOnlyStream = None, logger=None, *args, **kwargs
+            proxy_to: AbstractWriteOnlyStream = None, persistent_id: str = None,
+            logger=None, *args, **kwargs
     ):
         """Setup stream proxy environment
 
@@ -616,13 +669,16 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
         :param thid (optional): co-protocol thread-id
         :param time_to_live (optional): time the state-machine is alive,
         :param proxy_to(optional): stream to proxy operations
+        :param persistent_id (optional): unique ID to store state to recover states on failures and restarts
         :param logger (optional): state-machine logger
         """
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__caller: Pairwise = caller
         self.__thid = thid
-        self.__stream_is_open = False
         self.__proxy_to = proxy_to
+        self.__persistent_id = persistent_id
+        self.__storage_rec_exists = False
+        self.__persist_state = {}
         self.__coprotocol: Optional[CoProtocolThreadedP2P] = None
         self._problem_report: Optional[ConfidentialStorageMessageProblemReport] = None
 
@@ -640,11 +696,11 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
 
     @property
     def stream_is_open(self) -> bool:
-        return self.__stream_is_open
+        return self.__persist_state.get('is_open', False)
 
     @stream_is_open.setter
     def stream_is_open(self, value: bool):
-        self.__stream_is_open = value
+        self.__persist_state['is_open'] = value
 
     async def run_forever(self, proxy_to: AbstractWriteOnlyStream = None, exit_on_close: bool = True):
         """Proxy requests in loop
@@ -701,6 +757,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                     self.stream_is_open = True
                 elif request.operation == StreamOperation.OperationCode.CLOSE:
                     await proxy_to.close()
+                    await self.__ensure_storage_record_missing()
                 elif request.operation == StreamOperation.OperationCode.SEEK_TO_CHUNK:
                     no = request.params.get('no')
                     new_no = await proxy_to.seek_to_chunk(no)
@@ -726,6 +783,7 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
                 report = problem_report_from_exception(e)
                 # Don't raise any error: give caller to make decision
                 await self.__send_response(request, report)
+                await self.__ensure_storage_record_missing()
 
     async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
         if self.__coprotocol is None:
@@ -742,6 +800,12 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
             await self.__coprotocol.clean()
             self._unregister_for_aborting(self.__coprotocol)
             self.__coprotocol = None
+        if self.__persistent_id:
+            await self.__ensure_storage_record_missing()
+
+    async def abort(self):
+        await self.__ensure_storage_record_missing()
+        await super().abort()
 
     @contextlib.asynccontextmanager
     async def coprotocol(self, close_on_exit: bool = False):
@@ -756,6 +820,34 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
             if close_on_exit:
                 await self.close_coprotocol()
 
+    #############################
+    # Persistent methods
+    #############################
+    async def load(self):
+        if self.__proxy_to is not None and self.__persistent_id is not None:
+            new_states = await self.__ensure_storage_record_exists()
+            if new_states and new_states != self.__persist_state:
+                self.__persist_state = new_states
+                if self.__persist_state['is_open'] is False and self.__proxy_to.is_open is True:
+                    await self.__proxy_to.close()
+                if self.__persist_state['is_open'] is True and self.__proxy_to.is_open is False:
+                    await self.__proxy_to.open()
+                if self.__proxy_to.is_open and self.__persist_state['current_chunk'] != self.__proxy_to.current_chunk:
+                    await self.__proxy_to.seek_to_chunk(self.__persist_state['current_chunk'])
+
+    async def save(self):
+        if self.__proxy_to is not None and self.__persistent_id is not None:
+            self.__persist_state = {'is_open': self.__proxy_to.is_open, 'current_chunk': self.__proxy_to.current_chunk}
+            await update_persist_record(self.__persistent_id, self.__persist_state)
+
+    @property
+    def edited(self) -> bool:
+        if self.__proxy_to is not None:
+            return self.__persist_state.get('is_open', None) != self.__proxy_to.is_open or \
+                   self.__persist_state.get('current_chunk', None) != self.__proxy_to.current_chunk
+        else:
+            return False
+
     async def __send_response(
             self,
             request_: StreamOperation,
@@ -763,6 +855,19 @@ class CalledWriteOnlyStreamProtocol(AbstractStateMachine):
     ):
         sirius_sdk.prepare_response(request_, response_)
         await sirius_sdk.send_to(response_, self.caller)
+
+    async def __ensure_storage_record_exists(self) -> Optional[dict]:
+        if self.__persistent_id is not None:
+            states = await ensure_persist_record_exists(self.__persistent_id, self.__persist_state)
+            self.__storage_rec_exists = True
+            return states
+        else:
+            return None
+
+    async def __ensure_storage_record_missing(self):
+        if self.__storage_rec_exists:
+            await ensure_persist_record_missing(self.__persistent_id)
+            self.__storage_rec_exists = False
 
 
 class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, EncryptedDataVault.Indexes):
