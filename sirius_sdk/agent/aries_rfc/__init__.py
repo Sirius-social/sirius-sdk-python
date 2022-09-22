@@ -13,5 +13,6 @@ from .feature_0160_connection_protocol import *
 from .feature_0211_mediator_coordination_protocol import *
 from .feature_0482_coprotocol import *
 from .feature_0753_bus import *
+from .feature_0750_storage import *
 from .base import AttachesMixin
 from .mixins import *

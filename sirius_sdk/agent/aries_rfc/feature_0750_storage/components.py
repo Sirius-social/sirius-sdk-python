@@ -1,10 +1,9 @@
 from enum import Enum
 from dataclasses import dataclass
-from functools import wraps
 from abc import ABC, abstractmethod
 from typing import List, Union, Optional, Set
 
-import sirius_sdk
+from sirius_sdk.abstract.p2p import Pairwise
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, \
     ReadOnlyStreamDecodingWrapper, WriteOnlyStreamEncodingWrapper, StreamEncryption, StreamDecryption
 from .documents import EncryptedDocument
@@ -137,14 +136,14 @@ class ConfidentialStorageAuthProvider:
         self.__authorized = False
 
     @property
-    def entity(self) -> Optional[sirius_sdk.Pairwise]:
+    def entity(self) -> Optional[Pairwise]:
         return self.__entity
 
     @property
     def authorized(self) -> bool:
         return self.__authorized
 
-    async def authorize(self, entity: sirius_sdk.Pairwise) -> bool:
+    async def authorize(self, entity: Pairwise) -> bool:
         """Authorize participant
 
         In DESCENDANTS may invoke adv. proof verify procedures...

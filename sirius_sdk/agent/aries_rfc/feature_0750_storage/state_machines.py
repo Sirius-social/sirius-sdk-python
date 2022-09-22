@@ -173,9 +173,9 @@ class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream)
     async def eof(self) -> bool:
         return self._current_chunk >= self._chunks_num
 
-    async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+    async def open_coprotocol(self) -> CoProtocolThreadedP2P:
         if self.__coprotocol is None:
-            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+            self.__coprotocol = CoProtocolThreadedP2P(
                 thid=self.thid,
                 pthid=self.pthid,
                 to=self.called,
@@ -375,9 +375,9 @@ class CalledReadOnlyStreamProtocol(PersistentMixin, AbstractStateMachine):
                 await self.__send_response(request, report)
                 await self.__ensure_storage_record_missing()
 
-    async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+    async def open_coprotocol(self) -> CoProtocolThreadedP2P:
         if self.__coprotocol is None:
-            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+            self.__coprotocol = CoProtocolThreadedP2P(
                 thid=self.__thid,
                 to=self.caller,
                 time_to_live=self.time_to_live
@@ -573,9 +573,9 @@ class CallerWriteOnlyStreamProtocol(AbstractStateMachine, AbstractWriteOnlyStrea
         self._current_chunk = state.get('current_chunk', self.current_chunk)
         self._chunks_num = state.get('chunks_num', self.chunks_num)
 
-    async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+    async def open_coprotocol(self) -> CoProtocolThreadedP2P:
         if self.__coprotocol is None:
-            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+            self.__coprotocol = CoProtocolThreadedP2P(
                 thid=self.thid,
                 pthid=self.pthid,
                 to=self.called,
@@ -785,9 +785,9 @@ class CalledWriteOnlyStreamProtocol(PersistentMixin, AbstractStateMachine):
                 await self.__send_response(request, report)
                 await self.__ensure_storage_record_missing()
 
-    async def open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+    async def open_coprotocol(self) -> CoProtocolThreadedP2P:
         if self.__coprotocol is None:
-            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+            self.__coprotocol = CoProtocolThreadedP2P(
                 thid=self.__thid,
                 to=self.caller,
                 time_to_live=self.time_to_live
@@ -1092,9 +1092,9 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, Encrypt
                     err_message = 'Caller write operation timeout occurred!'
                     raise ConfidentialStorageTimeoutOccurred(err_message)
 
-    async def _open_coprotocol(self) -> sirius_sdk.CoProtocolThreadedP2P:
+    async def _open_coprotocol(self) -> CoProtocolThreadedP2P:
         if self.__coprotocol is None:
-            self.__coprotocol = sirius_sdk.CoProtocolThreadedP2P(
+            self.__coprotocol = CoProtocolThreadedP2P(
                 thid=self.__thid,
                 to=self.__called,
                 time_to_live=self.time_to_live
