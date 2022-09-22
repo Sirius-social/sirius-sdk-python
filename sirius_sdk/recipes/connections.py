@@ -87,7 +87,7 @@ class InvitationManager:
 
         :param invitation: Invitation instance
         :param timeout: time until
-        :return:
+        :return: P2P
         """
         co = await sirius_sdk.spawn_coprotocol()
         await co.subscribe_ext(
