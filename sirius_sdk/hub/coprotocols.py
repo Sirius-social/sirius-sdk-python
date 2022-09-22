@@ -295,7 +295,10 @@ class CoProtocolP2PAnon(AbstractP2PCoProtocol):
         if not protocols:
             raise SiriusContextError('You must set protocols list. It is empty for now!')
         super().__init__(protocols=protocols, time_to_live=time_to_live)
-        self._setup(their_verkey=endpoint.verkey, endpoint=endpoint.address, my_verkey=my_verkey)
+        self._setup(
+            their_verkey=endpoint.verkey, endpoint=endpoint.address,
+            my_verkey=my_verkey, routing_keys=endpoint.routing_keys
+        )
 
 
 class CoProtocolP2P(AbstractP2PCoProtocol):

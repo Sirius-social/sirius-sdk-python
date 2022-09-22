@@ -1,4 +1,6 @@
+import asyncio
 import json
+import uuid
 from urllib.parse import urlparse, urlunparse
 
 import pytest
@@ -306,3 +308,36 @@ async def test_did_doc_extra_fields(test_suite: ServerTestSuite):
         assert pairwise.their.did_doc is not None
         assert pairwise.their.did_doc.get('creator', {}) == {'@id': 'uuid-xxx-yyy'}
         assert pairwise.their.did_doc.get('extra', None) == 'Any'
+
+
+@pytest.mark.asyncio
+async def test_recipes(config_a: dict, config_b: dict):
+    inviter_cfg = config_a
+    invitee_cfg = config_b
+
+    async with sirius_sdk.context(**inviter_cfg):
+        did_inviter, vk_inviter = await sirius_sdk.DID.create_and_store_my_did()
+        manager = sirius_sdk.recipes.InvitationManager(
+            me=sirius_sdk.Pairwise.Me(did_inviter, vk_inviter),
+            my_label='Inviter'
+        )
+        invitation = await manager.make_invitation()
+
+    async def inviter_routine():
+        async with sirius_sdk.context(**inviter_cfg):
+            p2p = await manager.wait_connection(invitation)
+            assert p2p.me.verkey == vk_inviter
+
+    async def invitee_routine():
+        await asyncio.sleep(0.1)
+        async with sirius_sdk.context(**invitee_cfg):
+            did_invitee, vk_invitee = await sirius_sdk.DID.create_and_store_my_did()
+            p2p = await sirius_sdk.recipes.accept_invitation(
+                url=invitation.invitation_url, me=sirius_sdk.Pairwise.Me(did_invitee, vk_invitee), my_label='Invitee'
+            )
+            assert p2p.me.verkey == vk_invitee
+            assert p2p.their.verkey == vk_inviter
+
+    await run_coroutines(
+        inviter_routine(), invitee_routine(), timeout=100
+    )
