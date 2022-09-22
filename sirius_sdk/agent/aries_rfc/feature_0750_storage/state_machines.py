@@ -1,4 +1,5 @@
 import base64
+import datetime
 import json
 import logging
 import uuid
@@ -18,7 +19,7 @@ from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStream
 from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument
 from .errors import *
 from .encoding import JWE, KeyPair
-from .utils import ensure_persist_record_exists, ensure_persist_record_missing, update_persist_record
+from .utils import *
 
 
 def problem_report_from_exception(e: BaseConfidentialStorageError) -> ConfidentialStorageMessageProblemReport:
@@ -64,6 +65,32 @@ def exception_from_problem_report(
         return DataVaultOSError(report.explain)
     else:
         return BaseConfidentialStorageError(report.explain)
+
+
+class DocumentMeta(dict):
+
+    def __init__(self, created: Union[str, datetime.datetime] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if created is not None:
+            if isinstance(created, datetime.datetime):
+                self['created'] = datetime_to_utc_str(created)
+            else:
+                self['created'] = created
+
+
+class StreamMeta(DocumentMeta):
+
+    def __init__(
+            self, created: Union[str, datetime.datetime] = None,
+            chunks: int = None,
+            content_type: str = None,  # "video/mpeg", "image/png"
+            *args, **kwargs
+    ):
+        super().__init__(created, *args, **kwargs)
+        if chunks is not None:
+            self['chunks'] = chunks
+        if content_type is not None:
+            self['contentType'] = content_type
 
 
 class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream):
@@ -979,7 +1006,7 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, Encrypt
     async def indexes(self) -> EncryptedDataVault.Indexes:
         return self
 
-    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
+    async def create_stream(self, uri: str, meta: Union[dict, StreamMeta] = None, chunk_size: int = None, **attributes) -> StructuredDocument:
         resp = await self._rpc(
             request=DataVaultCreateStream(uri=uri, meta=meta, chunk_size=chunk_size, attributes=attributes)
         )
@@ -990,7 +1017,7 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, Encrypt
         else:
             raise ConfidentialStorageUnexpectedMessageType(resp)
 
-    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+    async def create_document(self, uri: str, meta: Union[dict, DocumentMeta] = None, **attributes) -> StructuredDocument:
         resp = await self._rpc(
             request=DataVaultCreateDocument(uri=uri, meta=meta, attributes=attributes)
         )
@@ -1008,7 +1035,7 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, Encrypt
             request=DataVaultRemoveResource(uri=uri)
         )
 
-    async def update(self, uri: str, meta: dict = None, **attributes):
+    async def update(self, uri: str, meta: Union[dict, StreamMeta, DocumentMeta] = None, **attributes):
         await self._rpc(
             request=DataVaultUpdateResource(uri=uri, meta=meta, attributes=attributes)
         )
@@ -1143,6 +1170,9 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, Encrypt
 
 class CalledEncryptedDataVault(AbstractStateMachine):
 
+    STREAM_CATEGORY_READER = 'reader'
+    STREAM_CATEGORY_WRITER = 'writer'
+
     def __init__(self, caller: Pairwise, proxy_to: List[EncryptedDataVault], logger=None, *args, **kwargs):
         """Setup proxy environment
 
@@ -1205,15 +1235,25 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                     vault = self.__sessions.get(request.thread.thid, None)
                     if vault is not None:
                         read_sessions = self.__read_sessions.get(request.thread.thid, {})
-                        for proto in read_sessions.values():
+                        for thid, proto in read_sessions.items():
                             await proto.proxy_to.close()
                             await proto.close_coprotocol()
+                            # Clean storage
+                            persist_id_uri, _ = self.__build_persist_ids(
+                                thid=request.thread.thid, co_binding_id=thid, category=self.STREAM_CATEGORY_READER
+                            )
+                            await ensure_persist_record_missing(persist_id_uri)
                         if read_sessions:
                             del self.__read_sessions[request.thread.thid]
                         write_sessions = self.__write_sessions.get(request.thread.thid, {})
-                        for proto in write_sessions.values():
+                        for thid, proto in write_sessions.items():
                             await proto.proxy_to.close()
                             await proto.close_coprotocol()
+                            # Clean storage
+                            persist_id_uri, _ = self.__build_persist_ids(
+                                thid=request.thread.thid, co_binding_id=thid, category=self.STREAM_CATEGORY_WRITER
+                            )
+                            await ensure_persist_record_missing(persist_id_uri)
                         if write_sessions:
                             del self.__write_sessions[request.thread.thid]
                         await vault.close()
@@ -1300,21 +1340,27 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                     if not request.co_binding_id:
                         raise ConfidentialStorageInvalidRequest('You should set "co_binding_id" attribute to bind thread')
                     if isinstance(request, DataVaultBindStreamForWriting):
-                        stream = await vault.writable(uri=request.uri)
-                        proto = CalledWriteOnlyStreamProtocol(
-                            caller=self.caller, thid=request.co_binding_id, proxy_to=stream
-                        )
-                        write_sessions = self.__write_sessions.get(thread.thid, {})
-                        write_sessions[request.co_binding_id] = proto
-                        self.__write_sessions[thread.thid] = write_sessions
+                        category = self.STREAM_CATEGORY_WRITER
+                        # stream = await vault.writable(uri=request.uri)
+                        # proto = CalledWriteOnlyStreamProtocol(
+                        #     caller=self.caller, thid=request.co_binding_id, proxy_to=stream
+                        # )
+                        # write_sessions = self.__write_sessions.get(thread.thid, {})
+                        # write_sessions[request.co_binding_id] = proto
+                        # self.__write_sessions[thread.thid] = write_sessions
                     else:
-                        stream = await vault.readable(uri=request.uri)
-                        proto = CalledReadOnlyStreamProtocol(
-                            caller=self.caller, thid=request.co_binding_id, proxy_to=stream
-                        )
-                        read_sessions = self.__read_sessions.get(thread.thid, {})
-                        read_sessions[request.co_binding_id] = proto
-                        self.__read_sessions[thread.thid] = read_sessions
+                        category = self.STREAM_CATEGORY_READER
+                        # stream = await vault.readable(uri=request.uri)
+                        # proto = CalledReadOnlyStreamProtocol(
+                        #     caller=self.caller, thid=request.co_binding_id, proxy_to=stream
+                        # )
+                        # read_sessions = self.__read_sessions.get(thread.thid, {})
+                        # read_sessions[request.co_binding_id] = proto
+                        # self.__read_sessions[thread.thid] = read_sessions
+                    persist_id_uri, _ = self.__build_persist_ids(
+                        thid=request.thread.thid, co_binding_id=request.co_binding_id, category=category
+                    )
+                    await store_persist_record_value(persist_id_uri, request.uri)
                     await self.__send_response(request, DataVaultOperationAck())
                 else:
                     raise ConfidentialStorageUnexpectedMessageType(request)
@@ -1329,12 +1375,17 @@ class CalledEncryptedDataVault(AbstractStateMachine):
                     raise ConfidentialStorageInvalidRequest(
                         'Stream operation request should have "~thread.pthid" attribute to bind sessions'
                     )
-                proto = self.__write_sessions.get(thread.pthid, {}).get(thread.thid, None)
+                proto = await self.__load_stream(request.thread)
                 if proto is not None:
                     await proto.handle(request)
-                proto = self.__read_sessions.get(thread.pthid, {}).get(thread.thid, None)
-                if proto is not None:
-                    await proto.handle(request)
+                    if proto.edited:
+                        await proto.save()
+                # proto = self.__write_sessions.get(thread.pthid, {}).get(thread.thid, None)
+                # if proto is not None:
+                #     await proto.handle(request)
+                # proto = self.__read_sessions.get(thread.pthid, {}).get(thread.thid, None)
+                # if proto is not None:
+                #     await proto.handle(request)
             else:
                 raise ConfidentialStorageUnexpectedMessageType(request)
         except BaseConfidentialStorageError as e:
@@ -1351,6 +1402,53 @@ class CalledEncryptedDataVault(AbstractStateMachine):
         if vault is None:
             raise ConfidentialStorageInvalidRequest(f'Not found vault bind for session thread: {thid}')
         return vault
+
+    async def __load_stream(
+            self, thread: BaseDataVaultOperation.Thread,
+    ) -> Optional[Union[CalledWriteOnlyStreamProtocol, CalledReadOnlyStreamProtocol]]:
+        reading_proto = self.__read_sessions.get(thread.pthid, {}).get(thread.thid, None)
+        if reading_proto is not None:
+            return reading_proto
+        writing_proto = self.__write_sessions.get(thread.pthid, {}).get(thread.thid, None)
+        if writing_proto is not None:
+            return writing_proto
+        # If no one is found then try to load states
+        vault = self.__get_vault(thread.pthid)
+        for category in [self.STREAM_CATEGORY_READER, self.STREAM_CATEGORY_WRITER]:
+            persist_id_uri, persist_id_proto = self.__build_persist_ids(
+                thid=thread.pthid, co_binding_id=thread.thid, category=category
+            )
+            uri = await load_persist_record_value(persist_id_uri)
+            if uri is not None:
+                # Restore states
+                if category == self.STREAM_CATEGORY_WRITER:
+                    stream = await vault.writable(uri)
+                    proto = CalledWriteOnlyStreamProtocol(
+                        caller=self.caller, thid=thread.thid, proxy_to=stream, persistent_id=persist_id_proto
+                    )
+                    await proto.load()
+                    write_sessions = self.__write_sessions.get(thread.pthid, {})
+                    write_sessions[thread.thid] = proto
+                    self.__write_sessions[thread.pthid] = write_sessions
+                    return proto
+                elif category == self.STREAM_CATEGORY_READER:
+                    stream = await vault.readable(uri)
+                    proto = CalledReadOnlyStreamProtocol(
+                        caller=self.caller, thid=thread.thid, proxy_to=stream, persistent_id=persist_id_proto
+                    )
+                    await proto.load()
+                    read_sessions = self.__read_sessions.get(thread.pthid, {})
+                    read_sessions[thread.thid] = proto
+                    self.__read_sessions[thread.pthid] = read_sessions
+                    return proto
+        return None
+
+    @staticmethod
+    def __build_persist_ids(thid: str, co_binding_id: str, category: str) -> (str, str):
+        common_prefix = f'{thid}/{co_binding_id}/{category}'
+        persist_id_for_uri = f'{common_prefix}:uri'
+        persist_id_for_proto = f'{common_prefix}:proto'
+        return persist_id_for_uri, persist_id_for_proto
 
     async def __send_response(
             self,

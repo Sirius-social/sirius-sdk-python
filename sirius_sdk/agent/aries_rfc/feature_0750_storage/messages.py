@@ -10,6 +10,7 @@ from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessag
     VALID_DOC_URI, AriesProblemReport
 from .documents import EncryptedDocument
 from .components import StructuredDocument, HMAC, VaultConfig
+from .utils import datetime_to_utc_str
 
 
 class BaseConfidentialStorageMessage(AriesProtocolMessage, metaclass=RegisterMessage):
@@ -40,8 +41,7 @@ class StructuredDocumentAttach:
             super().__init__(**kwargs)
             if created is not None:
                 if isinstance(created, datetime.datetime):
-                    utc = created.astimezone(datetime.timezone.utc)
-                    self['created'] = utc.isoformat(sep=' ') + 'Z'
+                    self['created'] = datetime_to_utc_str(created)
                 else:
                     self['created'] = created
             if content_type is not None:

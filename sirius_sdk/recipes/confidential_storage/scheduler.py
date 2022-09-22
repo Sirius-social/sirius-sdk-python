@@ -3,7 +3,7 @@ from typing import List
 import sirius_sdk
 
 
-async def schedule(p2p: sirius_sdk.Pairwise, vaults: List[sirius_sdk.aries_rfc.EncryptedDataVault]):
+async def schedule_vaults(p2p: sirius_sdk.Pairwise, vaults: List[sirius_sdk.aries_rfc.EncryptedDataVault]):
     co = await sirius_sdk.spawn_coprotocol()
     await co.subscribe_ext(
         sender_vk=[p2p.their.verkey],

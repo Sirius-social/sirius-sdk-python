@@ -11,7 +11,8 @@ from .messages import StructuredDocumentAttach, DataVaultQueryList, DataVaultRes
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
-    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault
+    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault, \
+    DocumentMeta, StreamMeta
 
 
 __all__ = [
@@ -24,5 +25,6 @@ __all__ = [
     "ConfidentialStorageAuthProvider", "EncryptedDataVault", "FileSystemRawByteStorage",
     "Document", "EncryptedDocument", "VaultConfig", "ConfidentialStorageRawByteStorage", "StructuredDocument",
     "StructuredDocumentAttach", "ReadOnlyStreamDecodingWrapper", "WriteOnlyStreamEncodingWrapper",
-    "JWE", "KeyPair", "CallerEncryptedDataVault", "CalledEncryptedDataVault", "DataVaultQueryList", "DataVaultResponseList"
+    "JWE", "KeyPair", "CallerEncryptedDataVault", "CalledEncryptedDataVault", "DataVaultQueryList",
+    "DataVaultResponseList", "DocumentMeta", "StreamMeta"
 ]

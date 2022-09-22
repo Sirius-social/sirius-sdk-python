@@ -2178,8 +2178,66 @@ async def test_data_vault_state_machines_raise_errors(config_a: dict, config_b: 
                     await m.update('file:///missing_document.bin', meta={'meta': 'val'})
                 print('#3 os error')
                 with pytest.raises(DataVaultOSError):
-                    forbidden_file_name = '$%<>":*\n'
+                    forbidden_file_name = '$%<>":*?'
                     await m.create_document(f'file:///{forbidden_file_name}.bin')
+                # Finish
+                await m.close()
+
+        results = await run_coroutines(
+            run_vault(),
+            run_controller(),
+            timeout=5
+        )
+        assert results
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_data_vault_recipe_scheduler(config_a: dict, config_b: dict):
+    vault_cfg = config_a
+    controller_cfg = config_b
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
+    called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
+    test_data = b'Test Data'
+    os.mkdir(dir_under_test)
+    try:
+        auth = ConfidentialStorageAuthProvider()
+        await auth.authorize(called)
+        # Init and configure Vault
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+
+        async def run_vault():
+            async with sirius_sdk.context(**vault_cfg):
+                await sirius_sdk.recipes.schedule_vaults(p2p=called, vaults=[vault])
+
+        async def run_controller():
+            async with sirius_sdk.context(**controller_cfg):
+                m = CallerEncryptedDataVault(caller)
+                print('List all vaults')
+                vaults = await m.list_vaults()
+                assert vaults
+                vault_id = vaults[0].id
+                print('Select Vault')
+                m.select(vault_id)
+                print('Open selected vault')
+                await m.open()
+                # operate with stream
+                sd = await m.create_stream('my_stream.bin', meta=StreamMeta(content_type="video/mpeg"))
+                wo = await sd.stream.writable()
+                await wo.open()
+                try:
+                    await wo.write(test_data)
+                finally:
+                    await wo.close()
+                ro = await sd.stream.readable()
+                await ro.open()
+                try:
+                    actual_data = await ro.read()
+                finally:
+                    await ro.close()
+                assert actual_data == test_data
                 # Finish
                 await m.close()
 
