@@ -2176,10 +2176,6 @@ async def test_data_vault_state_machines_raise_errors(config_a: dict, config_b: 
                 print('#2 operate with missing resource')
                 with pytest.raises(DataVaultResourceMissing):
                     await m.update('file:///missing_document.bin', meta={'meta': 'val'})
-                print('#3 os error')
-                with pytest.raises(DataVaultOSError):
-                    forbidden_file_name = '$%<>":*?'
-                    await m.create_document(f'file:///{forbidden_file_name}.bin')
                 # Finish
                 await m.close()
 
