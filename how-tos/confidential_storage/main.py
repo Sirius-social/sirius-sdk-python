@@ -22,6 +22,27 @@ async def run():
     )
     print("!" * 32)
     print(f'Connection with "{p2p.their.label}" was established successfully')
+    # Authorize with High level of permission
+    auth = sirius_sdk.aries_rfc.ConfidentialStorageAuthProvider()
+    await auth.authorize(entity=p2p)
+    # For example we will provide 2 types of Vaults: encrypted and non-encrypted
+    encrypted_mount_to = os.path.join(os.curdir, '.encrypted')
+    non_enc_mount_to = os.path.join(os.curdir, '.non_encrypted')
+    os.makedirs(encrypted_mount_to)
+    os.makedirs(non_enc_mount_to)
+    # Create Vaults
+    vaults = {
+        'encrypted': sirius_sdk.recipes.confidential_storage.SimpleDataVault(
+            mounted_dir=encrypted_mount_to, auth=auth
+        ),
+        'non_encrypted': sirius_sdk.recipes.confidential_storage.SimpleDataVault(
+            mounted_dir=non_enc_mount_to, auth=auth
+        )
+    }
+    # Run scheduler
+    await sirius_sdk.recipes.confidential_storage.schedule_vaults(
+        p2p=p2p, vaults=list(vaults.values())
+    )
 
 
 if __name__ == '__main__':
