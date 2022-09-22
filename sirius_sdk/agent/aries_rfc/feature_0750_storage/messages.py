@@ -10,6 +10,7 @@ from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessag
     VALID_DOC_URI, AriesProblemReport
 from .documents import EncryptedDocument
 from .components import StructuredDocument, HMAC, VaultConfig
+from .utils import datetime_to_utc_str
 
 
 class BaseConfidentialStorageMessage(AriesProtocolMessage, metaclass=RegisterMessage):
@@ -40,8 +41,7 @@ class StructuredDocumentAttach:
             super().__init__(**kwargs)
             if created is not None:
                 if isinstance(created, datetime.datetime):
-                    utc = created.astimezone(datetime.timezone.utc)
-                    self['created'] = utc.isoformat(sep=' ') + 'Z'
+                    self['created'] = datetime_to_utc_str(created)
                 else:
                     self['created'] = created
             if content_type is not None:
@@ -155,7 +155,7 @@ class StructuredDocumentAttach:
         return inst
 
     @property
-    def document(self) -> EncryptedDocument:
+    def document(self) -> Optional[EncryptedDocument]:
         if self._cached is not None:
             return self._cached
         if self._content is not None:
@@ -173,6 +173,8 @@ class StructuredDocumentAttach:
             doc.encrypted = True
             self._cached = doc
             return doc
+        else:
+            return None
 
     @document.setter
     def document(self, doc: EncryptedDocument):
@@ -215,6 +217,8 @@ class StructuredDocumentAttach:
         # Id restored from sub-attrs
         self.id = js.get('content', {}).get('id') or js.get('stream', {}).get('id')
         self.urn = js.get('id', None)
+        if not self.id:
+            self.id = self.urn
         self.sequence = js.get('sequence', None)
         self.meta = self.Meta(**js['meta']) if 'meta' in js else None
         self.stream = self.Stream(**js['stream']) if 'stream' in js else None
@@ -369,25 +373,96 @@ class DataVaultLoadResource(BaseDataVaultOperation):
     NAME = 'data-vault-load-resource'
 
 
+class DataVaultRemoveResource(BaseDataVaultOperation):
+    NAME = 'data-vault-remove-resource'
+
+
+class DataVaultList(BaseDataVaultOperation):
+    NAME = 'data-vault-list'
+
+    def __init__(self, filters: dict = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if filters is not None:
+            self['filters'] = filters
+
+    @property
+    def filters(self) -> dict:
+        return self.get('filters', {})
+
+
+class DataVaultBindStreamForReading(BaseDataVaultOperation):
+    NAME = 'data-vault-bind-stream-reading'
+
+    def __init__(self, uri: str, co_binding_id: str = None, *args, **kwargs):
+        super().__init__(uri=uri, *args, **kwargs)
+        if co_binding_id is not None:
+            self['co_binding_id'] = co_binding_id
+
+    @property
+    def co_binding_id(self) -> Optional[str]:
+        return self.get('co_binding_id', None)
+
+
+class DataVaultBindStreamForWriting(BaseDataVaultOperation):
+    NAME = 'data-vault-bind-stream-writing'
+
+    def __init__(self, uri: str, co_binding_id: str = None, *args, **kwargs):
+        super().__init__(uri=uri, *args, **kwargs)
+        if co_binding_id is not None:
+            self['co_binding_id'] = co_binding_id
+
+    @property
+    def co_binding_id(self) -> Optional[str]:
+        return self.get('co_binding_id', None)
+
+
 class DataVaultSaveDocument(BaseDataVaultOperation):
     NAME = 'data-vault-save-document'
 
-    def __init__(self, document: StructuredDocumentAttach = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if document is not None:
-            doc_attach = {'@id': f'doc-0', 'data': document.as_json()}
-            self['doc~attach'] = [doc_attach]
-
     @property
-    def document(self) -> Optional[StructuredDocumentAttach]:
-        attaches = self.get('doc~attach', [])
-        if attaches:
-            attach = attaches[0]
-            doc = StructuredDocumentAttach()
-            doc.from_json(attach['data'])
+    def document(self) -> Optional[EncryptedDocument]:
+        attachment = self.get('~attach', [])
+        if isinstance(attachment, list):
+            attachment = attachment[0]
+        if 'content' in attachment:
+            content = attachment['content']
+            if 'message' in content:
+                return EncryptedDocument(content=content['message'])
+            else:
+                return EncryptedDocument(content=content)
+        elif 'jwm' in attachment:
+            jwm = attachment['jwm']
+            doc = EncryptedDocument(content=json.dumps(jwm).encode())
+            doc.encrypted = True
             return doc
         else:
             return None
+
+    @document.setter
+    def document(self, value: EncryptedDocument):
+        if value.encrypted:
+            if isinstance(value.content, bytes):
+                jwm = json.loads(value.content.decode())
+            elif isinstance(value.content, str):
+                jwm = json.loads(value.content)
+            else:
+                jwm = value.content
+            self['~attach'] = {
+                'jwm': jwm
+            }
+        else:
+            if isinstance(value.content, bytes):
+                content = value.content.decode()
+            else:
+                content = value.content
+            if isinstance(content, str):
+                self['~attach'] = {
+                    'content': {'message': content}
+                }
+            else:
+                self['~attach'] = {
+                    'content': content
+                }
 
 
 class DataVaultOperationAck(Ack):
@@ -408,7 +483,10 @@ class StructuredDocumentMessage(BaseConfidentialStorageMessage):
     @property
     def documents(self) -> List[StructuredDocumentAttach]:
         collection = []
-        for attach in self.get('doc~attach', []):
+        doc_attachments = self.get('doc~attach', {})
+        if isinstance(doc_attachments, dict):
+            doc_attachments = [doc_attachments]
+        for attach in doc_attachments:
             doc = StructuredDocumentAttach()
             doc.from_json(attach['data'])
             collection.append(doc)

@@ -7,11 +7,12 @@ from .errors import BaseConfidentialStorageError, StreamEOF, EncryptionError, St
     StreamFormatError, ConfidentialStorageTimeoutOccurred
 from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage, \
     VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument, DataVaultStreamWrapper
-from .messages import StructuredDocumentAttach, DataVaultQueryList, DataVaultResponseList
+from .messages import StructuredDocumentAttach, DataVaultQueryList, DataVaultResponseList, BaseConfidentialStorageMessage
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
-    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault
+    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault, \
+    DocumentMeta, StreamMeta
 
 
 __all__ = [
@@ -20,9 +21,10 @@ __all__ = [
     "CallerWriteOnlyStreamProtocol", "CalledWriteOnlyStreamProtocol", "Document", "EncryptedDocument",
     "BaseConfidentialStorageError", "StreamEOF", "EncryptionError", "StreamInitializationError",
     "StreamSeekableError", "StreamFormatError", "ConfidentialStorageTimeoutOccurred", "ConfidentialStorageEncType",
-    "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream", "DataVaultStreamWrapper",
+    "FileSystemReadOnlyStream", "FileSystemWriteOnlyStream", "DataVaultStreamWrapper", "BaseConfidentialStorageMessage",
     "ConfidentialStorageAuthProvider", "EncryptedDataVault", "FileSystemRawByteStorage",
     "Document", "EncryptedDocument", "VaultConfig", "ConfidentialStorageRawByteStorage", "StructuredDocument",
     "StructuredDocumentAttach", "ReadOnlyStreamDecodingWrapper", "WriteOnlyStreamEncodingWrapper",
-    "JWE", "KeyPair", "CallerEncryptedDataVault", "CalledEncryptedDataVault", "DataVaultQueryList", "DataVaultResponseList"
+    "JWE", "KeyPair", "CallerEncryptedDataVault", "CalledEncryptedDataVault", "DataVaultQueryList",
+    "DataVaultResponseList", "DocumentMeta", "StreamMeta"
 ]

@@ -2,7 +2,6 @@ import json
 from typing import List, Any, Optional
 
 import sirius_sdk
-from sirius_sdk import APICrypto
 
 from .encoding import parse_protected
 from .streams import AbstractWriteOnlyStream, AbstractReadOnlyStream
@@ -25,7 +24,10 @@ class Document:
 
     async def save(self, stream: AbstractWriteOnlyStream):
         await stream.truncate()
-        await stream.write(self.__content)
+        if isinstance(self.__content, str):
+            await stream.write(self.__content.encode())
+        else:
+            await stream.write(self.__content)
 
     async def load(self, stream: AbstractReadOnlyStream):
         await stream.seek_to_chunk(0)
@@ -73,7 +75,7 @@ class EncryptedDocument(Document):
     @property
     def jwm(self) -> Optional[dict]:
         if self.__encrypted:
-            if isinstance(self.__encrypted, bytes):
+            if isinstance(self.content, bytes):
                 jwm = json.loads(self.content.decode())
                 return jwm
             else:

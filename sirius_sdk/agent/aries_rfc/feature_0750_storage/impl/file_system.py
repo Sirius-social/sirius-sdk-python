@@ -58,7 +58,10 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
         await self.__fd.seek(0, io.SEEK_SET)
         if self.enc:
             await self.__load_enc_chunks()
-            self.__chunk_size = self.__chunk_offsets[0][0]
+            if self.__chunk_offsets:
+                self.__chunk_size = self.__chunk_offsets[0][0]
+            else:
+                self.__chunk_size = 0
         else:
             self.__chunk_size = math.ceil(self.__size / self.chunks_num)
         self._seekable = True

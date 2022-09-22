@@ -193,3 +193,24 @@ class AbstractStateMachine(ABC):
 
     def _unregister_for_aborting(self, co):
         self.__coprotocols = [item for item in self.__coprotocols if id(item) != id(co)]
+
+
+class PersistentMixin:
+
+    @abstractmethod
+    async def load(self):
+        """Load states from external persistent storage"""
+        raise NotImplemented
+
+    @abstractmethod
+    async def save(self):
+        """Save states to external persistent storage"""
+        raise NotImplemented
+
+    @property
+    @abstractmethod
+    def edited(self) -> bool:
+        """Indicate instance state was changed and woult be need to save"""
+        raise NotImplemented
+
+
