@@ -15,12 +15,13 @@ sirius_sdk.init(**CFG)
 
 async def run():
     my_did, my_vk = await sirius_sdk.DID.create_and_store_my_did()
-    print("=====================================================")
+    print("=" * 32)
     inv_url = input('Pass invitation URL here: ')
     p2p = await sirius_sdk.recipes.accept_invitation(
         url=inv_url, me=sirius_sdk.Pairwise.Me(my_did, my_vk), my_label='Confidential Storage Provider'
     )
-    print("=====================================================")
+    print("!" * 32)
+    print(f'Connection with "{p2p.their.label}" was established successfully')
 
 
 if __name__ == '__main__':
