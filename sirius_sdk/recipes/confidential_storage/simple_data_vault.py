@@ -103,7 +103,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
 
     async def update(self, uri: str, meta: dict = None, **attributes):
         self.__check_is_open()
-        self.auth.validate(can_write=True)
+        self.auth.validate(can_update=True)
         uri = self.__normalize_uri(uri)
         info = await self.__load_resource_info(uri)
         if info is None:
@@ -116,8 +116,8 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         new_tags = self.__clean_income_attributes(**attributes)
         # save old reserved attrs: rewrite new ones
         new_tags.update({k: v for k, v in tags.items() if k in self.RESERVED_ATTRIBS})
-        await sirius_sdk.NonSecrets.update_wallet_record_value(type_=self.STORAGE_TYPE, id_=uri, value=json.dumps(new_meta))
-        await sirius_sdk.NonSecrets.update_wallet_record_tags(type_=self.STORAGE_TYPE, id_=uri, tags=new_tags)
+        await sirius_sdk.NonSecrets.update_wallet_record_value(type_=self._storage_type, id_=uri, value=json.dumps(new_meta))
+        await sirius_sdk.NonSecrets.update_wallet_record_tags(type_=self._storage_type, id_=uri, tags=new_tags)
         self.__clean_caches()
 
     async def load(self, uri: str) -> StructuredDocument:
@@ -186,7 +186,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             await doc.save(stream)
             tags.update({self.ATTR_CHUNKS_NUM: str(stream.chunks_num)})
             await sirius_sdk.NonSecrets.update_wallet_record_tags(
-                type_=self.STORAGE_TYPE, id_=uri, tags=tags
+                type_=self._storage_type, id_=uri, tags=tags
             )
         finally:
             await stream.close()
@@ -223,7 +223,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
                 # Update stream metadata on close
                 tags_.update({self.ATTR_CHUNKS_NUM: str(s_.chunks_num)})
                 await sirius_sdk.NonSecrets.update_wallet_record_tags(
-                    type_=self.STORAGE_TYPE, id_=uri_, tags=tags_
+                    type_=self._storage_type, id_=uri_, tags=tags_
                 )
 
             stream.on_closed = __on_close__(uri, info['tags'], stream)
@@ -234,7 +234,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         opts = sirius_sdk.NonSecretsRetrieveRecordOptions()
         opts.check_all()
         limit = 10000
-        kwargs = dict(type_=self.STORAGE_TYPE, query=dict(**attributes), options=opts)
+        kwargs = dict(type_=self._storage_type, query=dict(**attributes), options=opts)
         collection, total = await sirius_sdk.NonSecrets.wallet_search(**kwargs, limit=limit)
         if total > limit:
             collection, _ = await sirius_sdk.NonSecrets.wallet_search(**kwargs, limit=total)
@@ -271,19 +271,24 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         opts.check_all()
         try:
             rec = await sirius_sdk.NonSecrets.get_wallet_record(
-                type_=self.STORAGE_TYPE, id_=uri, options=opts
+                type_=self._storage_type, id_=uri, options=opts
             )
         except:
             rec = None
         if rec is None:
             recs, _ = await sirius_sdk.NonSecrets.wallet_search(
-                type_=self.STORAGE_TYPE, query={self.ATTR_URN: uri}, options=opts, limit=1
+                type_=self._storage_type, query={self.ATTR_URN: uri}, options=opts, limit=1
             )
             if recs:
                 rec = recs[0]
         if rec:
             self.__cached_info = (uri, rec)
         return rec
+
+    @property
+    def _storage_type(self) -> str:
+        my_id = self.cfg.id or self.cfg.reference_id
+        return f'{self.STORAGE_TYPE}:{my_id}'
 
     @staticmethod
     def __normalize_uri(uri: str):
@@ -337,12 +342,12 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         if is_stream is True:
             tags[self.ATTR_CHUNKS_NUM] = '0'
         await sirius_sdk.NonSecrets.add_wallet_record(
-            type_=self.STORAGE_TYPE, id_=uri, value=json.dumps(meta), tags=tags
+            type_=self._storage_type, id_=uri, value=json.dumps(meta), tags=tags
         )
         try:
             await storage.create(uri)
         except BaseConfidentialStorageError:
-            await sirius_sdk.NonSecrets.delete_wallet_record(type_=self.STORAGE_TYPE, id_=uri)
+            await sirius_sdk.NonSecrets.delete_wallet_record(type_=self._storage_type, id_=uri)
             raise
 
     async def __remove_resource(self, uri: str, only_infos: bool = True):
@@ -352,7 +357,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             await storage.remove(uri)
         info = await self.__load_resource_info(uri)
         if info:
-            await sirius_sdk.NonSecrets.delete_wallet_record(type_=self.STORAGE_TYPE, id_=uri)
+            await sirius_sdk.NonSecrets.delete_wallet_record(type_=self._storage_type, id_=uri)
         self.__clean_caches()
 
     def __clean_caches(self):
