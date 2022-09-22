@@ -241,7 +241,8 @@ class Invitee(BaseConnectionStateMachine):
         connection_key = invitation.recipient_keys[0]
         inviter_endpoint = TheirEndpoint(
             endpoint=invitation.endpoint,
-            verkey=connection_key
+            verkey=connection_key,
+            routing_keys=invitation.routing_keys
         )
         # Allocate transport channel between self and theirs by verkeys factor
         async with self.coprotocol(endpoint=inviter_endpoint) as co:
@@ -253,7 +254,8 @@ class Invitee(BaseConnectionStateMachine):
                     verkey=self.me.verkey,
                     endpoint=self.my_endpoint.address,
                     doc_uri=doc_uri,
-                    did_doc_extra=did_doc
+                    did_doc_extra=did_doc,
+                    routing_keys=self.my_endpoint.routing_keys
                 )
 
                 await self.log(progress=50, message='Step-1: send connection request to Inviter', payload=dict(request))
