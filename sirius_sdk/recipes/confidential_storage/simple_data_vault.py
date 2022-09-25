@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import os.path
 import uuid
@@ -9,7 +10,8 @@ from typing import List, Optional, Tuple, Any
 import sirius_sdk
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import EncryptedDataVault, StructuredDocument, \
     ConfidentialStorageAuthProvider, VaultConfig, ConfidentialStorageRawByteStorage, FileSystemRawByteStorage, \
-    StreamEncryption, AbstractWriteOnlyStream, AbstractReadOnlyStream, EncryptedDocument, DataVaultStreamWrapper
+    StreamEncryption, AbstractWriteOnlyStream, AbstractReadOnlyStream, EncryptedDocument, DataVaultStreamWrapper, \
+    StreamDecryption
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import *
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.encoding import ConfidentialStorageEncType
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.impl.file_system import FileSystemWriteOnlyStream
@@ -241,24 +243,40 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         ret = []
         if collection is None:
             collection = []
+        missing_resources = []
         for item in collection:
-            doc = await self.load(uri=item['id'])
-            ret.append(doc)
+            try:
+                doc = await self.load(uri=item['id'])
+            except DataVaultResourceMissing:
+                missing_resources.append(item['id'])
+            else:
+                ret.append(doc)
+        for uri in missing_resources:
+            await self.__remove_resource(uri, only_infos=True)
         return ret
 
     async def _mounted(self) -> ConfidentialStorageRawByteStorage:
         if self.__storage is None:
             if self.cfg.key_agreement is None:
                 encryption = None
+                decryption = None
             else:
                 if not self.cfg.key_agreement.type.startswith('X25519'):
                     raise EncryptionError(f'Unsupported key agreement type: "{self.cfg.key_agreement.type}"')
-                encryption = StreamEncryption(type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019)
-                if self.cfg.key_agreement.id.startswith('did:key:'):
-                    target_verkey = self.cfg.key_agreement.id.split(':')[-1]
-                else:
-                    target_verkey = self.cfg.key_agreement.id
-                encryption.setup(target_verkeys=[target_verkey])
+                storage_id = hashlib.md5(self.__mounted_dir.encode()).hexdigest()
+                # Try to load encryption settings
+                encryption = await self.__load_storage_encryption(storage_id)
+                if encryption is None:
+                    # Initialize encryption settings
+                    encryption = StreamEncryption(type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019)
+                    if self.cfg.key_agreement.id.startswith('did:key:'):
+                        target_verkey = self.cfg.key_agreement.id.split(':')[-1]
+                    else:
+                        target_verkey = self.cfg.key_agreement.id
+                    encryption.setup(target_verkeys=[target_verkey])
+                    await self.__init_storage_encryption(storage_id, encryption)
+                pass
+            #
             self.__storage = FileSystemRawByteStorage(encryption=encryption)
             await self.__storage.mount(self.__mounted_dir)
         return self.__storage
@@ -318,6 +336,33 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
     def __check_is_open(self):
         if not self.__is_open:
             raise DataVaultStateError('You should open Vault at first!')
+
+    async def __load_storage_encryption(self, storage_id: str) -> Optional[StreamEncryption]:
+        storage_type = f'{self._storage_type}/storage'
+        opts = sirius_sdk.NonSecretsRetrieveRecordOptions(retrieve_value=True)
+        try:
+            rec = await sirius_sdk.NonSecrets.get_wallet_record(
+                type_=storage_type, id_=storage_id, options=opts
+            )
+            js = json.loads(rec['value'])
+            cek = sirius_sdk.encryption.b58_to_bytes(js['cek'])
+            jwe = js['jwe']
+            enc = StreamEncryption.from_jwe(jwe, cek)
+            return enc
+        except:
+            return None
+
+    async def __init_storage_encryption(self, storage_id: str, enc: StreamEncryption):
+        storage_type = f'{self._storage_type}/storage'
+        if enc.cek is None:
+            raise EncryptionError('CEK is empty while storage initialization')
+        try:
+            js = {'cek': sirius_sdk.encryption.bytes_to_b58(enc.cek), 'jwe': enc.jwe.as_json()}
+            await sirius_sdk.NonSecrets.add_wallet_record(
+                type_=storage_type, id_=storage_id, value=json.dumps(js)
+            )
+        except:
+            raise DataVaultStateError('Error while initialize storage encryption')
 
     async def __create_resource(self, uri: str, is_stream: bool, meta: dict = None, chunk_size: int = None, **attributes):
         self.auth.validate(can_create=True)

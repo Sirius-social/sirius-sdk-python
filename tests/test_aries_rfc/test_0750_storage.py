@@ -324,6 +324,67 @@ async def test_fs_streams_encoding_with_jwe(files_dir: str):
 
 
 @pytest.mark.asyncio
+async def test_fs_storage(files_dir: str, config_a: dict):
+    uri_under_test = 'document.bin'
+    test_data = b'Test-Data'
+    path = os.path.join(files_dir, uri_under_test)
+    stored_jwe = None
+    stored_cek = None
+    if os.path.isfile(path):
+        os.remove(path)
+    try:
+        async with sirius_sdk.context(**config_a):
+            vk = await sirius_sdk.Crypto.create_key()
+            enc1 = StreamEncryption()
+            enc1.setup(target_verkeys=[vk])
+            stored_jwe = enc1.jwe
+            stored_cek = enc1.cek
+            storage = FileSystemRawByteStorage(enc1)
+            await storage.mount(files_dir)
+            await storage.create(uri_under_test)
+            wo = await storage.writeable(uri_under_test)
+            await wo.open()
+            await wo.write(test_data)
+            await wo.close()
+            ro = await storage.readable(uri_under_test, chunks_num=wo.chunks_num)
+            await ro.open()
+            try:
+                actual_data = await ro.read()
+            except Exception as e:
+                raise e
+            await ro.close()
+            assert actual_data == test_data
+            # RE-Create storage for same JWE
+            enc2 = StreamEncryption.from_jwe(stored_jwe, stored_cek)
+            storage = FileSystemRawByteStorage(enc2)
+            await storage.mount(files_dir)
+            ro = await storage.readable(uri_under_test, chunks_num=wo.chunks_num)
+            await ro.open()
+            actual_data = await ro.read()
+            await ro.close()
+            assert actual_data == test_data
+            wo = await storage.writeable(uri_under_test)
+            await wo.open()
+            await wo.truncate()
+            try:
+                await wo.write(test_data)
+            except Exception as e:
+                raise e
+            await wo.close()
+            ro = await storage.readable(uri_under_test, chunks_num=wo.chunks_num)
+            await ro.open()
+            try:
+                actual_data = await ro.read()
+            except Exception as e:
+                raise
+            await ro.close()
+            assert actual_data == test_data
+    finally:
+        if os.path.isfile(path):
+            os.remove(path)
+
+
+@pytest.mark.asyncio
 async def test_fs_streams_truncate_for_encoding():
     chunks = [b'chunk1', b'chunk2', b'chunk3']
     actual_chunks_num = len(chunks)
@@ -1658,6 +1719,35 @@ async def test_simple_datavault_critical_ops(config_a: dict, config_b: dict):
                 assert uri in _.id
             # Clear
             await vault.close()
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_simple_datavault_reopen(config_a: dict, config_b: dict):
+    p2p = await get_pairwise3(me=config_a, their=config_b)
+    path = f'doc_{uuid.uuid4().hex}.bin'
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    os.mkdir(dir_under_test)
+    try:
+        async with sirius_sdk.context(**config_a):
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2p)
+            # Init and configure Vault
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            await vault.open()
+            # Case-1: create doc twice
+            sd = await vault.create_document(path)
+            doc = EncryptedDocument(content=b'Test content')
+            await vault.save_document(sd.id, doc)
+            loaded = await vault.load(sd.id)
+            assert loaded.doc.content == b'Test content'
+            # Clear
+            await vault.close()
+            # Reopen
+            await vault.open()
+            loaded = await vault.load(sd.id)
+            assert loaded.doc.content == b'Test content'
     finally:
         shutil.rmtree(dir_under_test)
 

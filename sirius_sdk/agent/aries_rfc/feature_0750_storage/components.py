@@ -215,7 +215,7 @@ class VaultConfig:
         # to generate a key encryption key for the receiver.
         id: str
         # The type of key agreement key. The value is required and MUST be or map to a URI.
-        type: str
+        type: str = 'X25519KeyAgreementKey2019'
 
         @property
         def is_filled(self) -> bool:
