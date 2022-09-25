@@ -311,7 +311,7 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
 class FileSystemRawByteStorage(ConfidentialStorageRawByteStorage):
 
     def __init__(self, encryption: BaseStreamEncryption = None):
-        super(FileSystemRawByteStorage, self).__init__(encryption)
+        super().__init__(encryption)
         self.__mount_dir: Optional[str] = None
 
     async def mount(self, path: str):

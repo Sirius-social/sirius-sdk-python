@@ -103,9 +103,10 @@ class StreamEncryption(BaseStreamEncryption):
         return self
 
     @classmethod
-    def from_jwe(cls, jwe: Union[JWE, dict]) -> "StreamEncryption":
+    def from_jwe(cls, jwe: Union[JWE, dict], cek: bytes = None) -> "StreamEncryption":
         inst = StreamEncryption()
         inst.jwe = jwe
+        inst._cek = cek
         if inst._cek is None and inst.recipients is not None:
             target_verkeys = [item.get('header', {}).get('kid', None) for item in inst.recipients]
             target_verkeys = [key for key in target_verkeys if key is not None]
@@ -205,15 +206,16 @@ class AbstractStream(ABC):
             if self.enc.type == ConfidentialStorageEncType.UNKNOWN:
                 return chunk
             elif self.enc.type == ConfidentialStorageEncType.X25519KeyAgreementKey2019:
-                mlen = len(chunk)
-                prefix = struct.pack("i", mlen)
-                nonce_bytes = b58_to_bytes(self.enc.nonce)
-                aad = self._build_aad(self.enc.recipients)
-                encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
-                    chunk, aad=aad, nonce=nonce_bytes, key=self.enc.cek
-                )
-                payload = prefix + encoded
-                return payload
+                if self.enc.cek:
+                    mlen = len(chunk)
+                    prefix = struct.pack("i", mlen)
+                    nonce_bytes = b58_to_bytes(self.enc.nonce)
+                    aad = self._build_aad(self.enc.recipients)
+                    encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
+                        chunk, aad=aad, nonce=nonce_bytes, key=self.enc.cek
+                    )
+                    payload = prefix + encoded
+                    return payload
             else:
                 raise EncryptionError('Unknown Encryption Type')
         else:
@@ -250,7 +252,13 @@ class AbstractStream(ABC):
                     )
                     jwe = json.dumps(packed_message).encode()
                     unpacked = await sirius_sdk.Crypto.unpack_message(jwe)
-                    decrypted = unpacked['message'].encode()
+                    decrypted_msg = unpacked['message']
+                    if isinstance(decrypted_msg, str):
+                        decrypted = decrypted_msg.encode()
+                    elif isinstance(decrypted_msg, dict):
+                        decrypted = json.dumps(decrypted_msg).encode()
+                    else:
+                        decrypted = decrypted_msg
                 return decrypted
             else:
                 raise EncryptionError('Unknown Encryption Type')
