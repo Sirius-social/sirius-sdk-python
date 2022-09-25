@@ -44,7 +44,7 @@ class Hub:
         self.__allocate_mediator = False
 
         self.__storage: Optional[AbstractKeyValueStorage] = config.overrides.storage
-        if self.__storage is None:
+        if self.__storage is None and not config.cloud_opts.is_filled:
             logging.warning(
                 'Storage will be set to InMemory-Storage as default, it will outcome issues in production environments'
             )
