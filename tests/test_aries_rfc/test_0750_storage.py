@@ -2210,6 +2210,10 @@ async def test_data_vault_state_machines_remove_and_indexes(config_a: dict, conf
                 await m.remove(sd1.id)
                 docs3 = await index.filter(attr1='attr1')
                 assert len(docs3) == 1
+                # Remove by uid
+                await m.remove(sd2.urn)
+                docs4 = await index.filter(attr1='attr1')
+                assert len(docs4) == 0
                 # Finish
                 await m.close()
 

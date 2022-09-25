@@ -100,7 +100,9 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         )
 
     async def remove(self, uri: str):
-        uri = self.__normalize_uri(uri)
+        info = await self.__load_resource_info(uri)
+        if info:
+            uri = info['id']
         await self.__remove_resource(uri, only_infos=False)
 
     async def update(self, uri: str, meta: dict = None, **attributes):
