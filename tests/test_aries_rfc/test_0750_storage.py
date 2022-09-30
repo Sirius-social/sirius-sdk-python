@@ -438,8 +438,23 @@ async def test_fs_streams_decoding_from_wallet1(config_c: dict):
     enc = StreamEncryption(nonce=bytes_to_b58(b'0'*12)).setup(target_verkeys=[vk])
     dec = StreamDecryption(recipients=enc.recipients, nonce=enc.nonce)
 
+    # 1. Test enc/dec
     assert dec.cek is None
 
+    async with sirius_sdk.context(**config_c):
+        w = FileSystemWriteOnlyStream(path='', chunk_size=1, enc=enc)
+        r = FileSystemReadOnlyStream(path='', chunks_num=1, enc=dec)
+        encoded = await w.encrypt(chunk)
+        decoded = await r.decrypt(encoded)
+        assert decoded == chunk
+
+    # 2. Test with JWE
+    jwe = enc.jwe
+    js = jwe.as_json()
+    restored_jwe = JWE()
+    restored_jwe.from_json(js)
+    dec = StreamDecryption.from_jwe(restored_jwe)
+    assert dec.cek is None
     async with sirius_sdk.context(**config_c):
         w = FileSystemWriteOnlyStream(path='', chunk_size=1, enc=enc)
         r = FileSystemReadOnlyStream(path='', chunks_num=1, enc=dec)
@@ -2322,6 +2337,68 @@ async def test_data_vault_recipe_scheduler(config_a: dict, config_b: dict):
                 finally:
                     await wo.close()
                 ro = await sd.stream.readable()
+                await ro.open()
+                try:
+                    actual_data = await ro.read()
+                finally:
+                    await ro.close()
+                assert actual_data == test_data
+                # Finish
+                await m.close()
+
+        results = await run_coroutines(
+            run_vault(),
+            run_controller(),
+            timeout=5
+        )
+        assert results
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
+async def test_data_vault_multilevel_encoding_streams(config_a: dict, config_b: dict):
+    vault_cfg = config_a
+    controller_cfg = config_b
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
+    called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
+    test_data = b'Test Data'
+    os.mkdir(dir_under_test)
+    try:
+        auth = ConfidentialStorageAuthProvider()
+        await auth.authorize(called)
+        # Init and configure Vault
+        vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+        assert vault.cfg.key_agreement is not None
+
+        async def run_vault():
+            async with sirius_sdk.context(**vault_cfg):
+                await sirius_sdk.recipes.schedule_vaults(p2p=called, vaults=[vault])
+
+        async def run_controller():
+            async with sirius_sdk.context(**controller_cfg):
+                m = CallerEncryptedDataVault(caller)
+                print('List all vaults')
+                vaults = await m.list_vaults()
+                assert vaults
+                vault_id = vaults[0].id
+                print('Select Vault')
+                m.select(vault_id)
+                print('Open selected vault')
+                await m.open()
+                # operate with stream
+                sd = await m.create_stream('my_stream.bin', meta=StreamMeta(content_type="video/mpeg"))
+                # Init encoding
+                enc_key = await sirius_sdk.Crypto.create_key()
+                encoding = StreamEncryption().setup(target_verkeys=[enc_key])
+                wo = await sd.stream.writable(encoding.jwe, encoding.cek)
+                await wo.open()
+                try:
+                    await wo.write(test_data)
+                finally:
+                    await wo.close()
+                ro = await sd.stream.readable(encoding.jwe)
                 await ro.open()
                 try:
                     actual_data = await ro.read()
