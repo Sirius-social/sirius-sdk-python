@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import List, Union, Optional, Set
 
 from sirius_sdk.abstract.p2p import Pairwise
+from sirius_sdk.encryption.ed25519 import ensure_is_bytes
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, \
     ReadOnlyStreamDecodingWrapper, WriteOnlyStreamEncodingWrapper, StreamEncryption, StreamDecryption
 from .documents import EncryptedDocument
@@ -72,11 +73,13 @@ class DataVaultStreamWrapper:
                 enc.setup(vk=keys.pk, sk=keys.sk)
             return ReadOnlyStreamDecodingWrapper(src=self._readable, enc=enc)
 
-    async def writable(self, jwe: Union[JWE, dict] = None) -> AbstractWriteOnlyStream:
+    async def writable(self, jwe: Union[JWE, dict] = None, cek: Union[bytes, str] = None) -> AbstractWriteOnlyStream:
         if jwe is None:
             return self._writable
         else:
-            return WriteOnlyStreamEncodingWrapper(dest=self._writable, enc=StreamEncryption.from_jwe(jwe))
+            if isinstance(cek, str):
+                cek = ensure_is_bytes(cek)
+            return WriteOnlyStreamEncodingWrapper(dest=self._writable, enc=StreamEncryption.from_jwe(jwe, cek))
 
 
 class StructuredDocument:

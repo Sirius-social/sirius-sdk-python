@@ -3,6 +3,7 @@ import logging
 import uuid
 import contextlib
 
+from sirius_sdk.encryption.ed25519 import ensure_is_bytes
 from sirius_sdk.base import AbstractStateMachine, PersistentMixin
 from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
@@ -887,13 +888,15 @@ class CallerEncryptedDataVault(AbstractStateMachine, EncryptedDataVault, Encrypt
                     enc.setup(vk=keys.pk, sk=keys.sk)
                 return ReadOnlyStreamDecodingWrapper(src=self._readable, enc=enc)
 
-        async def writable(self, jwe: Union[JWE, dict] = None) -> AbstractWriteOnlyStream:
+        async def writable(self, jwe: Union[JWE, dict] = None, cek: Union[bytes, str] = None) -> AbstractWriteOnlyStream:
             if self._writable is None:
                 self._writable = await self.__api.writable(self.__id)
             if jwe is None:
                 return self._writable
             else:
-                return WriteOnlyStreamEncodingWrapper(dest=self._writable, enc=StreamEncryption.from_jwe(jwe))
+                if isinstance(cek, str):
+                    cek = ensure_is_bytes(cek)
+                return WriteOnlyStreamEncodingWrapper(dest=self._writable, enc=StreamEncryption.from_jwe(jwe, cek))
 
     def __init__(
             self, called: Pairwise, read_timeout: int = 30,
