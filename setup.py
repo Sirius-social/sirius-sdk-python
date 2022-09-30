@@ -10,7 +10,7 @@ with open(os.path.join(HERE, "README.rst")) as fid:
 
 setup(
     name="sirius-sdk",
-    version="2.1.1",  # + os.getenv('BUILD_NUMBER'),
+    version="2.1.2",  # + os.getenv('BUILD_NUMBER'),
     description="SDK for developing Smart-Contracts in Self-sovereign-identity world.",
     long_description=README,
     long_description_content_type="text/x-rst",
