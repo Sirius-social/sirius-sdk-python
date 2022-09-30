@@ -1,12 +1,8 @@
 import base64
-import datetime
-import json
 import logging
 import uuid
 import contextlib
-from typing import Optional, Union, List
 
-import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine, PersistentMixin
 from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolThreadedP2P
@@ -16,7 +12,7 @@ from .components import EncryptedDataVault, DataVaultStreamWrapper
 from .messages import *
 from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStreamEncryption, StreamEncryption, \
     StreamDecryption, ReadOnlyStreamDecodingWrapper, WriteOnlyStreamEncodingWrapper
-from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument
+from . import ConfidentialStorageEncType, EncryptedDocument, StructuredDocument, DocumentMeta, StreamMeta
 from .errors import *
 from .encoding import JWE, KeyPair
 from .utils import *
@@ -65,32 +61,6 @@ def exception_from_problem_report(
         return DataVaultOSError(report.explain)
     else:
         return BaseConfidentialStorageError(report.explain)
-
-
-class DocumentMeta(dict):
-
-    def __init__(self, created: Union[str, datetime.datetime] = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if created is not None:
-            if isinstance(created, datetime.datetime):
-                self['created'] = datetime_to_utc_str(created)
-            else:
-                self['created'] = created
-
-
-class StreamMeta(DocumentMeta):
-
-    def __init__(
-            self, created: Union[str, datetime.datetime] = None,
-            chunks: int = None,
-            content_type: str = None,  # "video/mpeg", "image/png"
-            *args, **kwargs
-    ):
-        super().__init__(created, *args, **kwargs)
-        if chunks is not None:
-            self['chunks'] = chunks
-        if content_type is not None:
-            self['contentType'] = content_type
 
 
 class CallerReadOnlyStreamProtocol(AbstractStateMachine, AbstractReadOnlyStream):

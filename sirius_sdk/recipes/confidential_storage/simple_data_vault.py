@@ -11,7 +11,7 @@ import sirius_sdk
 from sirius_sdk.agent.aries_rfc.feature_0750_storage import EncryptedDataVault, StructuredDocument, \
     ConfidentialStorageAuthProvider, VaultConfig, ConfidentialStorageRawByteStorage, FileSystemRawByteStorage, \
     StreamEncryption, AbstractWriteOnlyStream, AbstractReadOnlyStream, EncryptedDocument, DataVaultStreamWrapper, \
-    StreamDecryption
+    StreamDecryption, StreamMeta, DocumentMeta
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.errors import *
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.encoding import ConfidentialStorageEncType
 from sirius_sdk.agent.aries_rfc.feature_0750_storage.impl.file_system import FileSystemWriteOnlyStream
@@ -68,7 +68,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         self.auth.validate(can_read=True)
         return self
 
-    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
+    async def create_stream(self, uri: str, meta:  Union[dict, StreamMeta] = None, chunk_size: int = None, **attributes) -> StructuredDocument:
         self.__check_is_open()
         uri = self.__normalize_uri(uri)
         await self.__create_resource(uri, is_stream=True, meta=meta, chunk_size=chunk_size, **attributes)
@@ -83,7 +83,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             stream=DataVaultStreamWrapper()
         )
 
-    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+    async def create_document(self, uri: str, meta: Union[dict, DocumentMeta] = None, **attributes) -> StructuredDocument:
         self.__check_is_open()
         uri = self.__normalize_uri(uri)
         await self.__create_resource(uri, is_stream=False, meta=meta, **attributes)
@@ -105,7 +105,7 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             uri = info['id']
         await self.__remove_resource(uri, only_infos=False)
 
-    async def update(self, uri: str, meta: dict = None, **attributes):
+    async def update(self, uri: str, meta: Union[dict, DocumentMeta, StreamMeta] = None, **attributes):
         self.__check_is_open()
         self.auth.validate(can_update=True)
         uri = self.__normalize_uri(uri)
