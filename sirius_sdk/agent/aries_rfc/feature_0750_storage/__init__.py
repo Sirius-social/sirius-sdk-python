@@ -6,14 +6,12 @@ from .encoding import ConfidentialStorageEncType, JWE, KeyPair
 from .errors import BaseConfidentialStorageError, StreamEOF, EncryptionError, StreamInitializationError, StreamSeekableError, \
     StreamFormatError, ConfidentialStorageTimeoutOccurred
 from .components import ConfidentialStorageAuthProvider, EncryptedDataVault, ConfidentialStorageRawByteStorage, \
-    VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument, DataVaultStreamWrapper
+    VaultConfig, ConfidentialStorageRawByteStorage, StructuredDocument, DataVaultStreamWrapper, DocumentMeta, StreamMeta
 from .messages import StructuredDocumentAttach, DataVaultQueryList, DataVaultResponseList, BaseConfidentialStorageMessage
 from .documents import Document, EncryptedDocument
 from .impl.file_system import FileSystemReadOnlyStream, FileSystemWriteOnlyStream, FileSystemRawByteStorage
 from .state_machines import CalledReadOnlyStreamProtocol, CallerReadOnlyStreamProtocol, \
-    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault, \
-    DocumentMeta, StreamMeta
-
+    CallerWriteOnlyStreamProtocol, CalledWriteOnlyStreamProtocol, CallerEncryptedDataVault, CalledEncryptedDataVault
 
 __all__ = [
     "BaseStreamEncryption", "StreamEncryption", "StreamDecryption", "AbstractReadOnlyStream",

@@ -79,9 +79,9 @@ class JWE:
                 EncRecipient(
                     encrypted_key=recip['encrypted_key'],
                     header=EncHeader(
-                        kid=recip['encrypted_key']['header']['kid'],
-                        sender=recip['encrypted_key']['header'].get('sender', None),
-                        iv=recip['encrypted_key']['header'].get('iv', None)
+                        kid=recip['header']['kid'],
+                        sender=recip['header'].get('sender', None),
+                        iv=recip['header'].get('iv', None)
                     )
                 )
                 for recip in js['recipients']

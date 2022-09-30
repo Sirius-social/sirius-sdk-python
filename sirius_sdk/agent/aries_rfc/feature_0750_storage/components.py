@@ -1,3 +1,4 @@
+import datetime
 from enum import Enum
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -9,6 +10,7 @@ from .streams import AbstractReadOnlyStream, AbstractWriteOnlyStream, BaseStream
 from .documents import EncryptedDocument
 from .errors import ConfidentialStoragePermissionDenied
 from .encoding import JWE, KeyPair
+from .utils import datetime_to_utc_str
 
 
 @dataclass
@@ -27,6 +29,32 @@ class HMAC:
 
     def as_json(self) -> dict:
         return {'id': self.id, 'type': self.type}
+
+
+class DocumentMeta(dict):
+
+    def __init__(self, created: Union[str, datetime.datetime] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if created is not None:
+            if isinstance(created, datetime.datetime):
+                self['created'] = datetime_to_utc_str(created)
+            else:
+                self['created'] = created
+
+
+class StreamMeta(DocumentMeta):
+
+    def __init__(
+            self, created: Union[str, datetime.datetime] = None,
+            chunks: int = None,
+            content_type: str = None,  # "video/mpeg", "image/png"
+            *args, **kwargs
+    ):
+        super().__init__(created, *args, **kwargs)
+        if chunks is not None:
+            self['chunks'] = chunks
+        if content_type is not None:
+            self['contentType'] = content_type
 
 
 class DataVaultStreamWrapper:
@@ -403,11 +431,11 @@ class EncryptedDataVault:
         raise NotImplementedError
 
     @abstractmethod
-    async def create_stream(self, uri: str, meta: dict = None, chunk_size: int = None, **attributes) -> StructuredDocument:
+    async def create_stream(self, uri: str, meta: Union[dict, StreamMeta] = None, chunk_size: int = None, **attributes) -> StructuredDocument:
         raise NotImplementedError
 
     @abstractmethod
-    async def create_document(self, uri: str, meta: dict = None, **attributes) -> StructuredDocument:
+    async def create_document(self, uri: str, meta: Union[dict, DocumentMeta] = None, **attributes) -> StructuredDocument:
         raise NotImplementedError
 
     @abstractmethod
@@ -415,7 +443,7 @@ class EncryptedDataVault:
         raise NotImplementedError
 
     @abstractmethod
-    async def update(self, uri: str, meta: dict = None, **attributes):
+    async def update(self, uri: str, meta: Union[dict, DocumentMeta, StreamMeta] = None, **attributes):
         raise NotImplementedError
 
     @abstractmethod
@@ -433,5 +461,3 @@ class EncryptedDataVault:
     @abstractmethod
     async def writable(self, uri: str) -> AbstractWriteOnlyStream:
         raise NotImplementedError
-
-
