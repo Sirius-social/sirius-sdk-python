@@ -80,7 +80,10 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         return StructuredDocument(
             id_=uri, meta=meta, content=None, urn=urn,
             indexed=[StructuredDocument.Index(sequence=0, attributes=list(attrib_as_dict.keys()))],
-            stream=DataVaultStreamWrapper()
+            stream=DataVaultStreamWrapper(
+                readable=await self.readable(uri) if self.auth.can_read else None,
+                writable=await self.writable(uri) if self.auth.can_write else None
+            )
         )
 
     async def create_document(self, uri: str, meta: Union[dict, DocumentMeta] = None, **attributes) -> StructuredDocument:
@@ -261,7 +264,6 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
         if self.__storage is None:
             if self.cfg.key_agreement is None:
                 encryption = None
-                decryption = None
             else:
                 if not self.cfg.key_agreement.type.startswith('X25519'):
                     raise EncryptionError(f'Unsupported key agreement type: "{self.cfg.key_agreement.type}"')
