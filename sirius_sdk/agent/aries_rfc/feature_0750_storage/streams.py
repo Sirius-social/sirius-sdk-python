@@ -1,3 +1,6 @@
+import base64
+import collections
+import hashlib
 import io
 import json
 import struct
@@ -9,11 +12,25 @@ import nacl.utils
 import nacl.bindings
 
 import sirius_sdk
+from sirius_sdk.errors.indy_exceptions import IndyError
 from sirius_sdk.encryption import b58_to_bytes, bytes_to_b58, bytes_to_b64
 from sirius_sdk.encryption.ed25519 import prepare_pack_recipient_keys, locate_pack_recipient_key
 
 from .encoding import ConfidentialStorageEncType, JWE, EncRecipient, EncHeader
 from .errors import EncryptionError, StreamInitializationError
+
+
+class DecryptionChunkTooSmall(RuntimeError):
+
+    def __init__(self, message: str, expected_bytes: int, *args):
+        super().__init__(message, *args)
+        self.expected_bytes = expected_bytes
+
+
+class DecryptionChunkTooLarge(RuntimeError):
+
+    def __init__(self, message: str, *args):
+        super().__init__(message, *args)
 
 
 class BaseStreamEncryption:
@@ -204,44 +221,49 @@ class AbstractStream(ABC):
     async def encrypt(self, chunk: bytes) -> bytes:
         if self.enc:
             if self.enc.type == ConfidentialStorageEncType.UNKNOWN:
-                return chunk
+                encrypted = chunk
             elif self.enc.type == ConfidentialStorageEncType.X25519KeyAgreementKey2019:
                 if self.enc.cek:
-                    mlen = len(chunk)
+                    ciphertext = base64.b64encode(chunk)
+                    mlen = len(ciphertext)
                     prefix = struct.pack("i", mlen)
                     nonce_bytes = b58_to_bytes(self.enc.nonce)
                     aad = self._build_aad(self.enc.recipients)
                     encoded = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
-                        chunk, aad=aad, nonce=nonce_bytes, key=self.enc.cek
+                        ciphertext, aad=aad, nonce=nonce_bytes, key=self.enc.cek
                     )
-                    payload = prefix + encoded
-                    return payload
+                    encrypted = prefix + encoded
+                else:
+                    raise EncryptionError('Empty key')
             else:
                 raise EncryptionError('Unknown Encryption Type')
+            ####################
+            return encrypted
         else:
             return chunk
 
-    async def decrypt(self, chunk: bytes) -> bytes:
+    async def decrypt(self, payload: bytes) -> bytes:
         if self.enc:
             if self.enc.type == ConfidentialStorageEncType.UNKNOWN:
-                return chunk
+                return payload
             elif self.enc.type == ConfidentialStorageEncType.X25519KeyAgreementKey2019:
                 nonce_bytes = b58_to_bytes(self.enc.nonce)
-                prefix = chunk[:4]
-                payload = chunk[4:]
+                prefix = payload[:4]
+                encoded = payload[4:]
                 mlen = struct.unpack("i", prefix)[0]
                 if self.enc.cek:
                     aad = self._build_aad(self.enc.recipients)
                     # Use manually configured encryption settings: [public-key, secret-key]
-                    decrypted = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
-                        ciphertext=payload, aad=aad, nonce=nonce_bytes, key=self.enc.cek
+                    ciphertext = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
+                        ciphertext=encoded, aad=aad, nonce=nonce_bytes, key=self.enc.cek
                     )
+                    decrypted = base64.b64decode(ciphertext)
                 else:
                     # Use Wallet to decrypt with previously configured SDK
                     recips = self._build_recips(self.enc.recipients)
                     recips_b64 = bytes_to_b64(json.dumps(recips).encode("ascii"), urlsafe=True)
-                    ciphertext = payload[:mlen]
-                    tag = payload[mlen:]
+                    ciphertext = encoded[:mlen]
+                    tag = encoded[mlen:]
                     packed_message = OrderedDict(
                         [
                             ("protected", recips_b64),
@@ -250,20 +272,53 @@ class AbstractStream(ABC):
                             ("tag", bytes_to_b64(tag, urlsafe=True)),
                         ]
                     )
-                    jwe = json.dumps(packed_message).encode()
-                    unpacked = await sirius_sdk.Crypto.unpack_message(jwe)
-                    decrypted_msg = unpacked['message']
-                    if isinstance(decrypted_msg, str):
-                        decrypted = decrypted_msg.encode()
-                    elif isinstance(decrypted_msg, dict):
-                        decrypted = json.dumps(decrypted_msg).encode()
+                    jwm = json.dumps(packed_message).encode()
+                    try:
+                        unpacked = await sirius_sdk.Crypto.unpack_message(jwm)
+                    except Exception as e:
+                        if isinstance(e, IndyError):
+                            raise EncryptionError(e.message)
+                        else:
+                            raise EncryptionError(e.args)
+                    unpacked_msg = unpacked['message']
+                    if isinstance(unpacked_msg, str):
+                        ciphertext = unpacked_msg.encode()
+                    elif isinstance(unpacked_msg, dict):
+                        ciphertext = json.dumps(unpacked_msg).encode()
                     else:
-                        decrypted = decrypted_msg
+                        ciphertext = unpacked_msg
+                    decrypted = base64.b64decode(ciphertext)
                 return decrypted
             else:
                 raise EncryptionError('Unknown Encryption Type')
         else:
+            return payload
+
+    def pack_chunk(self, chunk: bytes) -> bytes:
+        if self.enc is None:
             return chunk
+        else:
+            total_len = len(chunk)
+            payload = struct.pack("i", total_len) + chunk
+            return payload
+
+    def unpack_chunk(self, payload: bytes) -> bytes:
+        if self.enc is None:
+            return payload
+        else:
+            if len(payload) < 4:
+                raise DecryptionChunkTooSmall(f'Expected payload size prefix', expected_bytes=4)
+            prefix = payload[:4]
+            total_len = struct.unpack("i", prefix)[0]
+            chunk = payload[4:]
+            if len(chunk) < total_len:
+                raise DecryptionChunkTooSmall(
+                    f'Expected chunk size {total_len}, Actual: {len(chunk)}', expected_bytes=total_len
+                )
+            elif len(chunk) > total_len:
+                raise DecryptionChunkTooLarge(f'Expected payload size {total_len}, Actual: {len(chunk)}')
+            else:
+                return chunk
 
     def _build_recips(self, recipients: dict) -> dict:
         if self.enc.type == ConfidentialStorageEncType.X25519KeyAgreementKey2019:
@@ -427,6 +482,10 @@ class ReadOnlyStreamDecodingWrapper(AbstractReadOnlyStream):
             raise RuntimeError('You should setup encoding')
         super().__init__(path=src.path, chunks_num=src.chunks_num, enc=enc)
         self.__src = src
+        self.__buffer = b''
+        self.__queue = collections.deque()
+        self.__expected_bytes = None
+        self.__current_no = 0
 
     @property
     def is_open(self) -> bool:
@@ -444,16 +503,38 @@ class ReadOnlyStreamDecodingWrapper(AbstractReadOnlyStream):
     def current_chunk(self) -> int:
         return self.__src.current_chunk
 
+    async def read_chunked(self, src: "AbstractReadOnlyStream" = None):
+        src_cached = self.__src
+        try:
+            if src is not None:
+                self.__src = src
+            await self.seek_to_chunk(0)
+            while not await self.eof():
+                _, raw = await self.read_chunk()
+                yield raw
+        finally:
+            self.__src = src_cached
+
     async def read_chunk(self, no: int = None) -> (int, bytes):
-        no, chunk = await self.__src.read_chunk(no)
-        if self.enc is not None:
-            decoded = await self.decrypt(chunk)
+        if self.enc is None:
+            no, chunk = await self.__src.read_chunk(no)
+            return no, chunk
         else:
-            decoded = chunk
-        return no, decoded
+            if len(self.__queue) > 0:
+                decrypted = self.__queue.popleft()
+                return True, decrypted
+            while not await self.__src.eof():
+                no, raw = await self.__src.read_chunk(no)
+                ok, decrypted = await self._unpack_chunk(raw)
+                if ok:
+                    self.__current_no = no
+                    return no, decrypted
 
     async def eof(self) -> bool:
-        return await self.__src.eof()
+        if len(self.__queue) > 0:
+            return False
+        else:
+            return await self.__src.eof()
 
     async def open(self):
         await self.__src.open()
@@ -463,7 +544,52 @@ class ReadOnlyStreamDecodingWrapper(AbstractReadOnlyStream):
 
     async def seek_to_chunk(self, no: int) -> int:
         no = await self.__src.seek_to_chunk(no)
+        self.__current_no = no
         return no
+
+    @staticmethod
+    def _extract_payload_len(raw: bytes) -> Optional[int]:
+        if len(raw) >= 4:
+            prefix = raw[:4]
+            pld_len = struct.unpack("i", prefix)[0]
+            return pld_len
+        else:
+            return None
+
+    async def _unpack_chunk(self, raw: bytes) -> (bool, bytes):
+        if len(self.__queue) > 0:
+            chunk = self.__queue.popleft()
+            return True, chunk
+        else:
+            # Header
+            if self.__expected_bytes is None:
+                if len(raw) >= 4:
+                    prefix = raw[:4]
+                    self.__expected_bytes = struct.unpack("i", prefix)[0]
+                    self.__buffer += raw[4:]
+                else:
+                    self.__buffer += raw
+                    return False, None
+            else:
+                self.__buffer += raw
+            # Body
+            while (self.__expected_bytes is not None) and (self.__expected_bytes <= len(self.__buffer)):
+                encrypted = self.__buffer[:self.__expected_bytes]
+                decrypted = await self.decrypt(encrypted)
+                self.__queue.append(decrypted)
+                self.__buffer = self.__buffer[self.__expected_bytes:]
+                if len(self.__buffer) >= 4:
+                    prefix = self.__buffer[:4]
+                    self.__expected_bytes = struct.unpack("i", prefix)[0]
+                    self.__buffer = self.__buffer[4:]
+                else:
+                    self.__expected_bytes = None
+            # Return
+            if len(self.__queue) > 0:
+                chunk = self.__queue.popleft()
+                return True, chunk
+            else:
+                return False, None
 
 
 class WriteOnlyStreamEncodingWrapper(AbstractWriteOnlyStream):
@@ -492,7 +618,7 @@ class WriteOnlyStreamEncodingWrapper(AbstractWriteOnlyStream):
 
     async def write_chunk(self, chunk: bytes, no: int = None) -> (int, int):
         if self.enc is not None:
-            encoded = await self.encrypt(chunk)
+            encoded = self.pack_chunk(await self.encrypt(chunk))
         else:
             encoded = chunk
         no, sz = await self.__src.write_chunk(encoded, no)

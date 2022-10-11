@@ -265,20 +265,23 @@ class SimpleDataVault(EncryptedDataVault, EncryptedDataVault.Indexes):
             if self.cfg.key_agreement is None:
                 encryption = None
             else:
-                if not self.cfg.key_agreement.type.startswith('X25519'):
-                    raise EncryptionError(f'Unsupported key agreement type: "{self.cfg.key_agreement.type}"')
-                storage_id = hashlib.md5(self.__mounted_dir.encode()).hexdigest()
-                # Try to load encryption settings
-                encryption = await self.__load_storage_encryption(storage_id)
-                if encryption is None:
-                    # Initialize encryption settings
-                    encryption = StreamEncryption(type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019)
-                    if self.cfg.key_agreement.id.startswith('did:key:'):
-                        target_verkey = self.cfg.key_agreement.id.split(':')[-1]
-                    else:
-                        target_verkey = self.cfg.key_agreement.id
-                    encryption.setup(target_verkeys=[target_verkey])
-                    await self.__init_storage_encryption(storage_id, encryption)
+                if self.cfg.key_agreement.type == ConfidentialStorageEncType.UNKNOWN.value:
+                    encryption = StreamEncryption(type_=ConfidentialStorageEncType.UNKNOWN)
+                else:
+                    if not self.cfg.key_agreement.type.startswith('X25519'):
+                        raise EncryptionError(f'Unsupported key agreement type: "{self.cfg.key_agreement.type}"')
+                    storage_id = hashlib.md5(self.__mounted_dir.encode()).hexdigest()
+                    # Try to load encryption settings
+                    encryption = await self.__load_storage_encryption(storage_id)
+                    if encryption is None:
+                        # Initialize encryption settings
+                        encryption = StreamEncryption(type_=ConfidentialStorageEncType.X25519KeyAgreementKey2019)
+                        if self.cfg.key_agreement.id.startswith('did:key:'):
+                            target_verkey = self.cfg.key_agreement.id.split(':')[-1]
+                        else:
+                            target_verkey = self.cfg.key_agreement.id
+                        encryption.setup(target_verkeys=[target_verkey])
+                        await self.__init_storage_encryption(storage_id, encryption)
                 pass
             #
             self.__storage = FileSystemRawByteStorage(encryption=encryption)
