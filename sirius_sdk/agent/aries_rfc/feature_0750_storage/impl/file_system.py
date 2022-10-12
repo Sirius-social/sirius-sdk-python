@@ -111,12 +111,13 @@ class FileSystemReadOnlyStream(AbstractReadOnlyStream):
             sz_to_read = info[0]
             seek_to = info[1]
             await self.__fd.seek(seek_to)
-            encrypted = await self.__fd.read(sz_to_read)
-            if len(encrypted) != sz_to_read:
+            chunk = await self.__fd.read(sz_to_read)
+            if len(chunk) != sz_to_read:
                 raise StreamFormatError('Unexpected encoded file structure')
             # Decode bytes stream
+            encrypted = self.unpack_chunk(chunk)
             decrypted = await self.decrypt(encrypted)
-            file_pos += len(encrypted)
+            file_pos += len(chunk)
             self._current_chunk += 1
             return self._current_chunk, decrypted
         else:
@@ -242,10 +243,11 @@ class FileSystemWriteOnlyStream(AbstractWriteOnlyStream):
         if self.enc:
             # encode
             encoded = await self.encrypt(chunk)
+            chunk = self.pack_chunk(encoded)
             # Write Chunk Header with actual encoded bytes size
-            sz = len(encoded)
+            sz = len(chunk)
             offset1 = await self.__fd.write(struct.pack("i", sz))
-            offset2 = await self.__fd.write(encoded)
+            offset2 = await self.__fd.write(chunk)
             offset = offset1 + offset2
             if no is not None and no < len(self.__chunk_offsets):
                 self.__chunk_offsets[no] = (sz, self.__file_pos)

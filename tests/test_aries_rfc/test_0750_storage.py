@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 import math
 import os
@@ -426,14 +427,18 @@ async def test_fs_streams_truncate_for_encoding():
 
 
 @pytest.mark.asyncio
-async def test_fs_streams_decoding_from_wallet1(config_c: dict):
+async def test_fs_streams_decoding_from_wallet1(files_dir: str, config_c: dict):
+    file_under_test = os.path.join(files_dir, 'big_img.jpeg')
 
     async with sirius_sdk.context(**config_c):
         seed = uuid.uuid4().hex[:32]
         vk = await sirius_sdk.Crypto.create_key(seed=seed)
 
     # Non-ASCII symbols
-    chunk = "hello aåbäcö".encode()
+    # chunk = "hello aåbäcö".encode()
+    with open(file_under_test, 'rb') as f:
+        chunk = f.read()
+        chunk = chunk[:100]
 
     enc = StreamEncryption(nonce=bytes_to_b58(b'0'*12)).setup(target_verkeys=[vk])
     dec = StreamDecryption(recipients=enc.recipients, nonce=enc.nonce)
@@ -1448,6 +1453,73 @@ async def test_recipe_simple_datavault_stream_operations(config_a: dict, config_
 
 
 @pytest.mark.asyncio
+async def test_recipe_simple_datavault_chunks_consistency_for_encoding_streams(files_dir: str, config_a: dict, config_b: dict):
+    """If vault does not apply an encryption on self side then data will be stored without chunk offset metadata
+      Stream instance should work around and restore chunk implicitly
+    """
+    dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
+    p2p = await get_pairwise3(me=config_a, their=config_b)
+    os.mkdir(dir_under_test)
+    path_under_test = f'stream_{uuid.uuid4().hex}.bin'
+    chunk_size = 10*1024
+    file_under_test = os.path.join(files_dir, 'big_img.jpeg')
+    expected_chunks = []
+    with open(file_under_test, 'rb') as f:
+        buffer = io.BytesIO(f.read())
+    while True:
+        chunk = buffer.read(chunk_size)
+        if chunk:
+            expected_chunks.append(chunk)
+        else:
+            break
+    try:
+        async with sirius_sdk.context(**config_a):
+            # Encryption metadata
+            target_vk = await sirius_sdk.Crypto.create_key()
+            enc = sirius_sdk.aries_rfc.StreamEncryption().setup(target_verkeys=[p2p.me.verkey])
+            jwe = enc.jwe
+            cek = enc.cek
+            # Vault init
+            auth = ConfidentialStorageAuthProvider()
+            await auth.authorize(p2p)
+            vault = SimpleDataVault(mounted_dir=dir_under_test, auth=auth)
+            # vault.cfg.key_agreement.type = ConfidentialStorageEncType.UNKNOWN.value
+            vault.cfg.key_agreement = None
+            # Operations
+            await vault.open()
+            print('#1')
+            # Write chunks to stream
+            sd = await vault.create_stream(path_under_test)
+            wo = await sd.stream.writable(jwe, cek)
+            await wo.open()
+            try:
+                for chunk in expected_chunks:
+                    await wo.write_chunk(chunk)
+            finally:
+                await wo.close()
+            # REad chunks from stream
+            print('#2')
+            sd = await vault.load(sd.id)
+            ro = await sd.stream.readable(jwe)
+            await ro.open()
+            try:
+                actual_chunks = []
+                async for chunk in ro.read_chunked():
+                    actual_chunks.append(chunk)
+            finally:
+                await ro.close()
+            # Checks
+            print('#3')
+            assert len(actual_chunks) == len(expected_chunks)
+            for i, expected in enumerate(expected_chunks):
+                actual = actual_chunks[i]
+                assert expected == actual
+        await vault.close()
+    finally:
+        shutil.rmtree(dir_under_test)
+
+
+@pytest.mark.asyncio
 async def test_recipe_simple_datavault_docs_operations(config_a: dict, config_b: dict):
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     p2p = await get_pairwise3(me=config_a, their=config_b)
@@ -2363,7 +2435,7 @@ async def test_data_vault_multilevel_encoding_streams(config_a: dict, config_b: 
     dir_under_test = os.path.join(tempfile.tempdir, f'test_vaults_{uuid.uuid4().hex}')
     caller = await get_pairwise3(me=controller_cfg, their=vault_cfg)
     called = await get_pairwise3(me=vault_cfg, their=controller_cfg)
-    test_data = b'Test Data'
+    test_data = b'Test Data' * 1024
     os.mkdir(dir_under_test)
     try:
         auth = ConfidentialStorageAuthProvider()
@@ -2392,16 +2464,28 @@ async def test_data_vault_multilevel_encoding_streams(config_a: dict, config_b: 
                 # Init encoding
                 enc_key = await sirius_sdk.Crypto.create_key()
                 encoding = StreamEncryption().setup(target_verkeys=[enc_key])
-                wo = await sd.stream.writable(encoding.jwe, encoding.cek)
+                jwe = encoding.jwe
+                cek = encoding.cek
+                jwe_json = jwe.as_json()
+                wo = await sd.stream.writable(jwe, cek)
                 await wo.open()
                 try:
                     await wo.write(test_data)
                 finally:
                     await wo.close()
-                ro = await sd.stream.readable(encoding.jwe)
+                # Reopen protocol
+                await m.close()
+                await m.open()
+                # Test reading
+                jwe = JWE()
+                jwe.from_json(jwe_json)
+                ro = await sd.stream.readable(jwe)
                 await ro.open()
                 try:
-                    actual_data = await ro.read()
+                    try:
+                        actual_data = await ro.read()
+                    except Exception as e:
+                        raise e
                 finally:
                     await ro.close()
                 assert actual_data == test_data
