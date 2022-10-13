@@ -49,7 +49,7 @@ class DIDDoc(dict):
                     ret = service
                 else:
                     if high_priority:
-                        if service.get("priority", 0) > ret.get("priority", 0):
+                        if service.get("priority", 0) < ret.get("priority", 0):
                             ret = service
             return ret
         else:

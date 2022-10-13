@@ -2,6 +2,8 @@ import json
 from typing import Sequence
 from collections import OrderedDict
 
+import nacl.bindings
+
 from sirius_sdk.errors.exceptions import SiriusCryptoError
 from sirius_sdk.encryption.custom import *
 
@@ -172,7 +174,7 @@ def encrypt_plaintext(
     nonce = nacl.utils.random(
         nacl.bindings.crypto_aead_chacha20poly1305_ietf_NPUBBYTES
     )
-    message_bin = message.encode("ascii")
+    message_bin = message.encode()
     output = nacl.bindings.crypto_aead_chacha20poly1305_ietf_encrypt(
         message_bin, add_data, nonce, key
     )
@@ -197,7 +199,7 @@ def decrypt_plaintext(
     output = nacl.bindings.crypto_aead_chacha20poly1305_ietf_decrypt(
         ciphertext, recips_bin, nonce, key
     )
-    return output.decode("ascii")
+    return output.decode()
 
 
 def pack_message(
@@ -309,3 +311,16 @@ def unpack_message(
     message = decrypt_plaintext(payload_bin, protected_bin, nonce, cek)
 
     return message, sender_vk, recip_vk
+
+
+def crypto_box_seal_open(verkey: bytes, sigkey: bytes, encrypted_msg: bytes) -> bytes:
+    pk = nacl.bindings.crypto_sign_ed25519_pk_to_curve25519(verkey)
+    sk = nacl.bindings.crypto_sign_ed25519_sk_to_curve25519(sigkey)
+    decrypt = nacl.bindings.crypto_box_seal_open(encrypted_msg, pk, sk)
+    return decrypt
+
+
+def crypto_box_seal(message: bytes, verkey: bytes) -> bytes:
+    pk = nacl.bindings.crypto_sign_ed25519_pk_to_curve25519(verkey)
+    encrypt = nacl.bindings.crypto_box_seal(message, pk)
+    return encrypt

@@ -4,8 +4,9 @@ from typing import List, Optional
 from collections import UserDict
 
 from sirius_sdk.errors.exceptions import *
-from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport
 from sirius_sdk.agent.aries_rfc.feature_0015_acks.messages import Ack
+from sirius_sdk.agent.aries_rfc.decorators import *
 
 
 CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"

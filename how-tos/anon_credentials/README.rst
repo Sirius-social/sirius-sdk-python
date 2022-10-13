@@ -42,7 +42,7 @@ To breathe life into this idea **Hyperledger Indy** implements 3 techniques:
         PKI with root-of-trust as a part of it brings many issues in complex relationships.
 
 3. `DKMS <https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0051-dkms>`_
-   decentralized key management system is based on blockchain distributed ledger and maintained
+   decentralized key management system is based on blockchain distributed dkms and maintained
    by independent participants (like Sovrin network). DKMS acts as independent **arbiter** in the following
    mechanisms:
 
@@ -133,7 +133,7 @@ Let's pay attention to some lines of code
     .. code-block:: python
 
         # You may select what DKMS network you should work with (Sovrin, IndicioNet, etc.)
-        dkms = await sirius_sdk.ledger(network_name)
+        dkms = await sirius_sdk.dkms(network_name)
 
 
 2. **Sirius SDK** wraps Indy credential mechanism tools to Native object-oriented-mechanisms. Thanks
@@ -153,10 +153,10 @@ Let's pay attention to some lines of code
 
    .. code-block:: python
 
-        dkms = await sirius_sdk.ledger(network_name)
+        dkms = await sirius_sdk.dkms(network_name)
         feature_0037 = sirius_sdk.aries_rfc.Verifier(
             prover=prover,
-            ledger=dkms
+            dkms=dkms
         )
         success = await feature_0037.verify(proof_request)
 

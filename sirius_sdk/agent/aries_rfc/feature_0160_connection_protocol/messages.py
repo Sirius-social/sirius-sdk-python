@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from sirius_sdk.errors.exceptions import *
 from sirius_sdk.messaging import Message, check_for_attributes
 from sirius_sdk.agent.agent import Agent
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, AriesProblemReport, THREAD_DECORATOR
 from sirius_sdk.agent.aries_rfc.did_doc import DIDDoc
 from sirius_sdk.agent.aries_rfc.utils import sign, verify_signed
@@ -24,16 +24,17 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
     PROTOCOL = 'connections'
 
     @staticmethod
-    async def sign_field(crypto: AbstractCrypto, field_value: Any, my_verkey: str) -> dict:
+    async def sign_field(crypto: APICrypto, field_value: Any, my_verkey: str) -> dict:
         return await sign(crypto, field_value, my_verkey)
 
     @staticmethod
-    async def verify_signed_field(crypto: AbstractCrypto, signed_field: dict) -> (Any, bool):
+    async def verify_signed_field(crypto: APICrypto, signed_field: dict) -> (Any, bool):
         return await verify_signed(crypto, signed_field)
 
     @staticmethod
     def build_did_doc(did: str, verkey: str, endpoint: str, **extra):
         key_id = did + '#1'
+        routing_keys = extra.pop('routing_keys', [])
         doc = {
             "@context": "https://w3id.org/did/v1",
             "id": did,
@@ -59,6 +60,7 @@ class ConnProtocolMessage(AriesProtocolMessage, metaclass=RegisterMessage):
                 "recipientKeys": [verkey],
                 # <<<<<<
                 "serviceEndpoint": endpoint,
+                'routingKeys': routing_keys
             }],
         }
         doc.update(extra)
@@ -173,7 +175,7 @@ class Invitation(ConnProtocolMessage, metaclass=RegisterMessage):
         )
 
     @classmethod
-    def from_url(cls, url: str) -> ConnProtocolMessage:
+    def from_url(cls, url: str) -> "Invitation":
         matches = re.match("(.+)?c_i=(.+)", url)
         if not matches:
             raise SiriusInvalidMessage("Invite string is improperly formatted")
@@ -226,13 +228,15 @@ class ConnRequest(ConnProtocolMessage, metaclass=RegisterMessage):
 
     def __init__(
             self, label: Optional[str] = None, did: Optional[str] = None, verkey: Optional[str] = None,
-            endpoint: Optional[str] = None, did_doc_extra: dict = None, *args, **kwargs
+            endpoint: Optional[str] = None, did_doc_extra: dict = None, routing_keys: List[str] = None, *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
         if label is not None:
             self['label'] = label
         if (did is not None) and (verkey is not None) and (endpoint is not None):
             extra = did_doc_extra or {}
+            if routing_keys:
+                extra['routing_keys'] = routing_keys
             self['connection'] = {
                 'DID': did,
                 'DIDDoc': self.build_did_doc(did, verkey, endpoint, **extra)
@@ -273,14 +277,14 @@ class ConnResponse(ConnProtocolMessage, metaclass=RegisterMessage):
             ['connection~sig']
         )
 
-    async def sign_connection(self, crypto: AbstractCrypto, key: str):
+    async def sign_connection(self, crypto: APICrypto, key: str):
         self['connection~sig'] = \
             await self.sign_field(
                 crypto=crypto, field_value=self['connection'], my_verkey=key
             )
         del self['connection']
 
-    async def verify_connection(self, crypto: AbstractCrypto) -> bool:
+    async def verify_connection(self, crypto: APICrypto) -> bool:
         connection, success = await self.verify_signed_field(
             crypto=crypto, signed_field=self['connection~sig']
         )

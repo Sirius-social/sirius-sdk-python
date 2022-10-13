@@ -3,11 +3,9 @@ import copy
 import logging
 import contextlib
 from datetime import datetime
-from typing import Union, Tuple
 
 import sirius_sdk
-from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, AbstractMicroledger, AbstractBatchedAPI
+from sirius_sdk.agent.microledgers.abstract import AbstractBatchedAPI
 from sirius_sdk.hub import CoProtocolThreadedTheirs, CoProtocolThreadedP2P
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status

@@ -1,74 +1,9 @@
-import sys
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from urllib.parse import urlparse, urlunparse
 
+from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.pairwise import AbstractPairwise
-
-
-class TheirEndpoint:
-
-    def __init__(self, endpoint: str, verkey: str, routing_keys: List[str]=None):
-        self.endpoint = endpoint
-        self.verkey = verkey
-        self.routing_keys = routing_keys or []
-
-    @property
-    def netloc(self) -> Optional[str]:
-        if self.endpoint:
-            return urlparse(self.endpoint).netloc
-        else:
-            return None
-
-    @netloc.setter
-    def netloc(self, value: str):
-        if self.endpoint:
-            components = list(urlparse(self.endpoint))
-            components[1] = value
-            self.endpoint = urlunparse(components)
-
-
-class Pairwise:
-
-    class Their(TheirEndpoint):
-
-        def __init__(
-                self, did: str, label: str, endpoint: str, verkey: str,
-                routing_keys: List[str] = None, did_doc: dict = None
-        ):
-            self.did = did
-            self.label = label
-            self.did_doc = did_doc
-            super().__init__(endpoint, verkey, routing_keys)
-
-    class Me:
-
-        def __init__(self, did, verkey, did_doc: dict = None):
-            self.did = did
-            self.verkey = verkey
-            self.did_doc = did_doc
-
-        def __eq__(self, other):
-            if isinstance(other, Pairwise.Me):
-                return self.did == other.did and self.verkey == other.verkey and self.did_doc == other.did_doc
-
-    def __init__(self, me: Me, their: Their, metadata: dict=None):
-        self.__me = me
-        self.__their = their
-        self.__metadata = metadata
-
-    @property
-    def their(self) -> Their:
-        return self.__their
-
-    @property
-    def me(self) -> Me:
-        return self.__me
-
-    @property
-    def metadata(self) -> dict:
-        return self.__metadata
 
 
 class AbstractPairwiseList(ABC):

@@ -1,18 +1,18 @@
 from typing import Optional, List, Union, Any
 
 from sirius_sdk.agent.pairwise import AbstractPairwiseList
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.wallet.abstract.cache import AbstractCache
 from sirius_sdk.agent.wallet.abstract.did import AbstractDID
 from sirius_sdk.agent.wallet.abstract.anoncreds import AbstractAnonCreds
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets
-from sirius_sdk.agent.pairwise import Pairwise
+from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList, LedgerMeta, Transaction, \
     AbstractMicroledger, AbstractBatchedAPI
+from sirius_sdk.agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
+from sirius_sdk.agent.wallet.abstract import AnonCredSchema
 
 from .core import _current_hub
-from ..agent.wallet import PurgeOptions, CacheOptions, RetrieveRecordOptions
-from ..agent.wallet.abstract import AnonCredSchema
 
 
 class DIDProxy(AbstractDID):
@@ -277,7 +277,7 @@ class AnonCredsProxy(AbstractAnonCreds):
         return await service.to_unqualified(entity=entity)
 
 
-class CryptoProxy(AbstractCrypto):
+class CryptoProxy(APICrypto):
 
     async def create_key(self, seed: str = None, crypto_type: str = None) -> str:
         service = await _current_hub().get_crypto()

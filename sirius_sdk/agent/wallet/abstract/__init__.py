@@ -2,7 +2,6 @@ from enum import Enum
 
 from sirius_sdk.agent.wallet.abstract.did import *
 from sirius_sdk.agent.wallet.abstract.cache import *
-from sirius_sdk.agent.wallet.abstract.crypto import *
 from sirius_sdk.agent.wallet.abstract.ledger import *
 from sirius_sdk.agent.wallet.abstract.pairwise import *
 from sirius_sdk.agent.wallet.abstract.anoncreds import *
@@ -31,4 +30,7 @@ class KeyDerivationMethod(Enum):
             raise RuntimeError('Unexpected value "%s"' % buffer)
 
 
-__all__ = ["KeyDerivationMethod"]
+__all__ = [
+    "KeyDerivationMethod", "AbstractDID", "AbstractAnonCreds", "AbstractCache",
+    "AbstractLedger", "AbstractPairwise", "AbstractNonSecrets"
+]

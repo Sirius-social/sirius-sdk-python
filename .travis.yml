@@ -20,24 +20,4 @@ install:
   - pip install -r requirements.txt
 
 script:
-  - pytest tests/test_messages.py
-  - pytest tests/test_encryption.py
-  - pytest tests/test_future_promise.py
-  - pytest tests/test_hub.py
-  - pytest tests/test_agent.py
-  - pytest tests/test_storages.py
-  - pytest tests/test_wallet.py
-  - pytest tests/test_microledgers.py
-  - pytest tests/test_ledgers.py
-  - pytest tests/test_coprotocols.py
-  - pytest tests/test_pairwise.py
-  - pytest tests/test_consensus_simple.py
-  - pytest tests/test_0113_query_answer.py
-  - pytest tests/test_0160_conn_protocol.py
-  - pytest tests/test_0048_trust_ping.py
-  - pytest tests/test_0036_issue_credential.py
-  - pytest tests/test_0037_verify_proof.py
-  - pytest tests/test_performance.py
-  - pytest tests/test_non_secrets.py
-  - pytest tests/test_locks.py
-  - pytest tests/test_timeouts.py
+  - pytest tests

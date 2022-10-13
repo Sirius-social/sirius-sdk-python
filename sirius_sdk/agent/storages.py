@@ -3,7 +3,7 @@ import uuid
 from typing import List, Any
 
 from sirius_sdk.base import JsonSerializable
-from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractImmutableCollection
 from sirius_sdk.agent.wallet.abstract.non_secrets import AbstractNonSecrets, RetrieveRecordOptions
 
 

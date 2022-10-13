@@ -1,6 +1,7 @@
 from typing import Optional
 
-from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage, THREAD_DECORATOR
+from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage
+from sirius_sdk.agent.aries_rfc.decorators import *
 
 
 class Ping(AriesProtocolMessage, metaclass=RegisterMessage):

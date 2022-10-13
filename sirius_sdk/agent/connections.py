@@ -3,58 +3,42 @@ import aiohttp
 import asyncio
 import datetime
 from abc import ABC, abstractmethod
-from typing import List, Any, Union, Optional
+from typing import List, Union, Optional
 
+from sirius_sdk.abstract.batching import RoutingBatch
+from sirius_sdk.abstract.p2p import Endpoint
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.base import WebSocketConnector
 from sirius_sdk.encryption import P2PConnection
 from sirius_sdk.rpc import AddressedTunnel, build_request, Future
 from sirius_sdk.messaging import Message, Type as MessageType
 from sirius_sdk.errors.exceptions import *
-from sirius_sdk.agent.transport import http_send
-
-
-class Endpoint:
-    """Active Agent endpoints
-    https://github.com/hyperledger/aries-rfcs/tree/master/concepts/0094-cross-domain-messaging
-    """
-
-    def __init__(self, address: str, routing_keys: List[str], is_default: bool=False):
-        self.__url = address
-        self.__routing_keys = routing_keys
-        self.__is_default = is_default
-
-    @property
-    def address(self):
-        return self.__url
-
-    @property
-    def routing_keys(self) -> List[str]:
-        return self.__routing_keys
-
-    @property
-    def is_default(self):
-        return self.__is_default
+from sirius_sdk.messaging.transport import http_send
 
 
 class BaseAgentConnection(ABC):
 
-    IO_TIMEOUT = 30
+    IO_TIMEOUT = 60
     MSG_TYPE_CONTEXT = 'did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/context'
 
     def __init__(
             self, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int = IO_TIMEOUT, loop: asyncio.AbstractEventLoop = None
+            p2p: P2PConnection, timeout: int = IO_TIMEOUT,
+            loop: asyncio.AbstractEventLoop = None, external_crypto: APICrypto = None,
+            extra: dict = None
     ):
         self._connector = WebSocketConnector(
             server_address=server_address,
             path=self._path(),
             credentials=credentials,
             timeout=timeout,
-            loop=loop
+            loop=loop,
+            extra=extra
         )
         self.__loop = loop or asyncio.get_event_loop()
         self._p2p = p2p
         self._timeout = timeout
+        self._external_crypto_service = external_crypto
 
     def __del__(self):
         if self.__loop and self.__loop.is_running():
@@ -83,9 +67,11 @@ class BaseAgentConnection(ABC):
     @classmethod
     async def create(
             cls, server_address: str, credentials: bytes,
-            p2p: P2PConnection, timeout: int = IO_TIMEOUT, loop: asyncio.AbstractEventLoop = None
+            p2p: P2PConnection, timeout: int = IO_TIMEOUT,
+            loop: asyncio.AbstractEventLoop = None, external_crypto: APICrypto = None,
+            extra: dict = None
     ):
-        instance = cls(server_address, credentials, p2p, timeout, loop)
+        instance = cls(server_address, credentials, p2p, timeout, loop, external_crypto, extra)
         await instance._connector.open()
         payload = await instance._connector.read(timeout=timeout)
         context = Message.deserialize(payload.decode())
@@ -105,22 +91,6 @@ class BaseAgentConnection(ABC):
 
     async def _setup(self, context: Message):
         pass
-
-
-class RoutingBatch(dict):
-
-    def __init__(
-            self, their_vk: Union[List[str], str], endpoint: str,
-            my_vk: Optional[str] = None, routing_keys: Optional[List[str]] = None, *args, **kwargs
-    ):
-        super().__init__(*args, **kwargs)
-        if isinstance(their_vk, str):
-            self['recipient_verkeys'] = [their_vk]
-        else:
-            self['recipient_verkeys'] = their_vk
-        self['endpoint_address'] = endpoint
-        self['sender_verkey'] = my_vk
-        self['routing_keys'] = routing_keys or []
 
 
 class AgentRPC(BaseAgentConnection):
@@ -144,6 +114,10 @@ class AgentRPC(BaseAgentConnection):
     @property
     def endpoints(self) -> List[Endpoint]:
         return self.__endpoints
+
+    @property
+    def connector(self) -> WebSocketConnector:
+        return self._connector
 
     @property
     def networks(self) -> List[str]:
@@ -177,7 +151,7 @@ class AgentRPC(BaseAgentConnection):
                 params=params or {}
             )
             msg_typ = MessageType.from_str(msg_type)
-            encrypt = msg_typ.protocol not in ['admin', 'microledgers', 'microledgers-batched']
+            encrypt = msg_typ.protocol not in ['admin', 'microledgers', 'microledgers-batched', 'bus']
             if not await self.__tunnel_rpc.post(message=request, encrypt=encrypt):
                 raise SiriusRPCError()
             if wait_response:
@@ -222,31 +196,54 @@ class AgentRPC(BaseAgentConnection):
             recipient_verkeys = [their_vk]
         else:
             recipient_verkeys = their_vk
-        params = {
-            'message': message,
-            'routing_keys': routing_keys or [],
-            'recipient_verkeys': recipient_verkeys,
-            'sender_verkey': my_vk
-        }
-        if self.__prefer_agent_side:
-            params['timeout'] = self.timeout
-            params['endpoint_address'] = endpoint
-            ok, body = await self.remote_call(
-                msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message',
-                params=params
+        if self._external_crypto_service:
+            wired = await self._external_crypto_service.pack_message(
+                message, recipient_verkeys, my_vk
             )
-        else:
-            wired = await self.remote_call(
-                msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
-                params=params
-            )
-            if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
-                ws = await self.__get_websocket(endpoint)
-                await ws.send_bytes(wired)
-                ok, body = True, b''
+            if self.__prefer_agent_side:
+                params = {
+                    'message': wired,
+                    'timeout': self.timeout,
+                    'endpoint_address': endpoint
+                }
+                ok, body = await self.remote_call(
+                    msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/send_enc_message',
+                    params=params
+                )
             else:
-                ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__tcp_connector)
-            body = body.decode()
+                if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
+                    ws = await self.__get_websocket(endpoint)
+                    await ws.send_bytes(wired)
+                    ok, body = True, b''
+                else:
+                    ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__tcp_connector)
+                body = body.decode()
+        else:
+            params = {
+                'message': message,
+                'routing_keys': routing_keys or [],
+                'recipient_verkeys': recipient_verkeys,
+                'sender_verkey': my_vk
+            }
+            if self.__prefer_agent_side:
+                params['timeout'] = self.timeout
+                params['endpoint_address'] = endpoint
+                ok, body = await self.remote_call(
+                    msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/send_message',
+                    params=params
+                )
+            else:
+                wired = await self.remote_call(
+                    msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/sirius_rpc/1.0/prepare_message_for_send',
+                    params=params
+                )
+                if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
+                    ws = await self.__get_websocket(endpoint)
+                    await ws.send_bytes(wired)
+                    ok, body = True, b''
+                else:
+                    ok, body = await http_send(wired, endpoint, timeout=self.timeout, connector=self.__tcp_connector)
+                body = body.decode()
         if not ok:
             if not ignore_errors:
                 raise SiriusRPCError(body)
@@ -432,7 +429,7 @@ class AgentEvents(BaseAgentConnection):
     def balancing_group(self) -> str:
         return self.__balancing_group
 
-    async def pull(self, timeout: int=None) -> Message:
+    async def pull(self, timeout: int = None) -> Message:
         if not self._connector.is_open:
             raise SiriusConnectionClosed('Open agent connection at first')
         data = None
@@ -468,5 +465,6 @@ class AgentEvents(BaseAgentConnection):
         # Extract load balancing info
         balancing = context.get('~balancing', [])
         for balance in balancing:
-            if balance['id'] == 'kafka':
-                self.__balancing_group = balance['data']['json']['group_id']
+            group_id = balance.get('data', {}).get('json', {}).get('group_id')
+            if group_id:
+                self.__balancing_group = group_id

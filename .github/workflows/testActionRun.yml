@@ -1,0 +1,32 @@
+name: run tests
+on: [push]
+jobs:
+  run_python_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+
+      - uses: docker/setup-buildx-action@v1.6.0
+      - uses: actions/checkout@v2
+
+      - name: Start containers
+        working-directory: ./test_suite
+        run: docker-compose up -d
+
+      - name: Pip install requirements
+        run: pip install -r requirements.txt
+        
+      - run: sleep 30
+
+      - name: Run tests
+        env:
+          REGRESSION_SEED_1: ${{ secrets.REGRESSION_SEED_1 }}
+        run: pytest --junitxml=tests_results/result.xml tests
+
+      - name: Publish Unit Test Results
+        uses: EnricoMi/publish-unit-test-result-action/composite@v1
+        if: always()
+        with:
+          files: tests_results/result.xml

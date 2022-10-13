@@ -154,3 +154,7 @@ class OperationAbortedManually(BaseSiriusException):
 
 class StateMachineAborted(BaseSiriusException):
     pass
+
+
+class SiriusTransportError(BaseSiriusException):
+    pass

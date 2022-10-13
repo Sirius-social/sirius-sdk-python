@@ -9,7 +9,7 @@ from sirius_sdk.agent.consensus.simple import MicroLedgerSimpleConsensus, Propos
     InitRequestLedgerMessage
 from sirius_sdk.agent.microledgers.abstract import Transaction
 from sirius_sdk.base import AbstractStateMachine
-from sirius_sdk.agent.listener import Event
+from sirius_sdk.abstract.listener import Event
 
 
 class Logger:

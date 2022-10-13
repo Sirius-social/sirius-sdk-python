@@ -1,6 +1,7 @@
 import asyncio
+import json
 from abc import ABC, abstractmethod
-from typing import Any, Union, List
+from typing import Any, Union, List, Optional
 from urllib.parse import urljoin
 from inspect import iscoroutinefunction
 
@@ -8,6 +9,9 @@ import aiohttp
 
 from sirius_sdk.messaging import Message
 from sirius_sdk.errors.exceptions import *
+
+
+INFINITE_TIMEOUT = -1
 
 
 class JsonSerializable:
@@ -72,23 +76,28 @@ class BaseConnector(ReadOnlyChannel, WriteOnlyChannel):
 
 class WebSocketConnector(BaseConnector):
 
-    DEF_TIMEOUT = 30.0
+    DEF_TIMEOUT = 60.0
     ENC = 'utf-8'
 
     def __init__(
             self, server_address: str, path: str, credentials: bytes,
-            timeout: float=DEF_TIMEOUT, loop: asyncio.AbstractEventLoop=None
+            timeout: float = DEF_TIMEOUT, loop: asyncio.AbstractEventLoop = None,
+            extra: dict = None
     ):
+        headers = {
+            'origin': server_address,
+            'credentials': credentials.decode('ascii')
+        }
+        if extra:
+            headers['extra'] = json.dumps(extra)
         self.__session = aiohttp.ClientSession(
             loop=loop,
-            timeout=aiohttp.ClientTimeout(total=timeout, sock_read=timeout),
-            headers={
-                'origin': server_address,
-                'credentials': credentials.decode('ascii')
-            },
+            timeout=aiohttp.ClientTimeout(total=timeout),
+            headers=headers
         )
         self._url = urljoin(server_address, path)
         self._ws = None
+        self.__timeout = timeout
 
     def __del__(self):
         asyncio.ensure_future(self.__session.close())
@@ -110,9 +119,13 @@ class WebSocketConnector(BaseConnector):
         await self.close()
         await self.open()
 
-    async def read(self, timeout: int=None) -> bytes:
+    async def read(self, timeout: float = None) -> bytes:
+        if timeout == INFINITE_TIMEOUT:
+            _timeout = None
+        else:
+            _timeout = timeout or self.__timeout
         try:
-            msg = await self._ws.receive(timeout=timeout)
+            msg = await self._ws.receive(timeout=_timeout)
         except asyncio.TimeoutError as e:
             raise SiriusTimeoutIO() from e
         if msg.type in [aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED]:
@@ -125,17 +138,20 @@ class WebSocketConnector(BaseConnector):
             raise SiriusIOError()
 
     async def write(self, message: Union[Message, bytes]) -> bool:
-        if isinstance(message, Message):
-            payload = message.serialize().encode(self.ENC)
+        if self.is_open:
+            if isinstance(message, Message):
+                payload = message.serialize().encode(self.ENC)
+            else:
+                payload = message
+            await self._ws.send_bytes(payload)
+            return True
         else:
-            payload = message
-        await self._ws.send_bytes(payload)
-        return True
+            return False
 
 
 class AbstractStateMachine(ABC):
 
-    def __init__(self, time_to_live: int = 60, logger=None, *args, **kwargs):
+    def __init__(self, time_to_live: Optional[int] = 60, logger=None, *args, **kwargs):
         """
         :param time_to_live: state machine time to live to finish progress
         """
@@ -150,7 +166,7 @@ class AbstractStateMachine(ABC):
         self.__coprotocols = []
 
     @property
-    def time_to_live(self) -> int:
+    def time_to_live(self) -> Optional[int]:
         return self.__time_to_live
 
     @property
@@ -177,3 +193,24 @@ class AbstractStateMachine(ABC):
 
     def _unregister_for_aborting(self, co):
         self.__coprotocols = [item for item in self.__coprotocols if id(item) != id(co)]
+
+
+class PersistentMixin:
+
+    @abstractmethod
+    async def load(self):
+        """Load states from external persistent storage"""
+        raise NotImplemented
+
+    @abstractmethod
+    async def save(self):
+        """Save states to external persistent storage"""
+        raise NotImplemented
+
+    @property
+    @abstractmethod
+    def edited(self) -> bool:
+        """Indicate instance state was changed and woult be need to save"""
+        raise NotImplemented
+
+

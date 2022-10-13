@@ -6,9 +6,10 @@ import asyncio
 from abc import abstractmethod
 from typing import List, Dict
 
-from sirius_sdk.agent.microledgers_.microledgers import Transaction
+import sirius_sdk
+from sirius_sdk.agent.microledgers import Transaction
 from sirius_sdk.agent.consensus import simple as simple_consensus
-from sirius_sdk.agent.microledgers_.microledgers import AbstractMicroledgerList
+from sirius_sdk.agent.microledgers import AbstractMicroledgerList
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from consts import *
@@ -115,17 +116,17 @@ class BaseSmartContract:
                         # (run in async thread)
                         asyncio.ensure_future(self.process_text_message(event.message, event.pairwise))
                 elif isinstance(event.message, simple_consensus.messages.InitRequestLedgerMessage):
-                    # Process request for creation new goods Track blockchain ledger
+                    # Process request for creation new goods Track blockchain dkms
                     log(f'{self.caption}: received request for new tracking of goods')
                     consensus = simple_consensus.MicroLedgerSimpleConsensus(self.me)
                     propose: simple_consensus.messages.InitRequestLedgerMessage = event.message
-                    log(f'{self.caption}: start to create new ledger [{propose.ledger["name"]}] for tracking...')
+                    log(f'{self.caption}: start to create new dkms [{propose.ledger["name"]}] for tracking...')
                     ok, ledger = await consensus.accept_microledger(
                         leader=event.pairwise,
                         propose=propose
                     )
                     if ok:
-                        log(f'{self.caption}: ledger [{ledger.name}] was created, root_hash: {ledger.root_hash}')
+                        log(f'{self.caption}: dkms [{ledger.name}] was created, root_hash: {ledger.root_hash}')
                         transactions = await ledger.get_all_transactions()
                         # Process new transactions
                         for txn in transactions:
@@ -135,7 +136,7 @@ class BaseSmartContract:
                                 actor=event.pairwise
                             )
                     else:
-                        log(f'{self.caption}: ledger [{propose.ledger["name"]}] creation ERROR!!!')
+                        log(f'{self.caption}: dkms [{propose.ledger["name"]}] creation ERROR!!!')
                         if consensus.problem_report:
                             log(f'{self.caption}: problem-report')
                             log(json.dumps(consensus.problem_report, indent=2, sort_keys=True))
@@ -148,7 +149,7 @@ class BaseSmartContract:
                         propose=propose
                     )
                     if ok:
-                        log(f'{self.caption}: new transactions to ledger [{propose.state.name}] was successfully '
+                        log(f'{self.caption}: new transactions to dkms [{propose.state.name}] was successfully '
                             f'committed')
                         # Process new transactions
                         for txn in propose.transactions:
@@ -158,7 +159,7 @@ class BaseSmartContract:
                                 actor=event.pairwise
                             )
                     else:
-                        log(f'{self.caption}: new transactions to ledger [{propose.state.name}] commit ERROR!!!')
+                        log(f'{self.caption}: new transactions to dkms [{propose.state.name}] commit ERROR!!!')
                         if consensus.problem_report:
                             log(f'{self.caption}: problem-report')
                             log(json.dumps(consensus.problem_report, indent=2, sort_keys=True))
@@ -224,7 +225,7 @@ class MarketplaceSmartContract(BaseSmartContract):
                     locale='en'
                 )
                 ask.set_ttl(15)  # Set timeout for answer
-                success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+                success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                     query=ask,
                     to=p2p
                 )
@@ -280,7 +281,7 @@ class MarketplaceSmartContract(BaseSmartContract):
                 locale='en'
             )
             ask.set_ttl(60)  # Set timeout for answer
-            success, answer = await sirius_sdk.aries_rfc.ask_and_wait_answer(
+            success, answer = await sirius_sdk.recipes.ask_and_wait_answer(
                 query=ask,
                 to=p2p
             )

@@ -10,7 +10,7 @@ with open(os.path.join(HERE, "README.rst")) as fid:
 
 setup(
     name="sirius-sdk",
-    version="1.3.3",  # + os.getenv('BUILD_NUMBER'),
+    version="2.1.3",  # + os.getenv('BUILD_NUMBER'),
     description="SDK for developing Smart-Contracts in Self-sovereign-identity world.",
     long_description=README,
     long_description_content_type="text/x-rst",
@@ -35,17 +35,20 @@ setup(
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft :: Windows',
     ],
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests"]),
     python_requires='>=3.7',
     include_package_data=True,
     install_requires=[
+        'aiofiles>=0.8.0',
         'aiohttp>=3.7.4',
         'base58>=2.0.0',
         'multipledispatch==0.6.0',
         'PyNaCl==1.3.0',
+        'pyqrcode==1.2.1',
         'python-dateutil>=2.8.1',
         'pytime>=0.2.0',
         'semver>=2.10.1',
         'sortedcontainers~=2.3.0'
-    ]
+    ],
+    keywords=["didcomm", "sdk", "self-sovereign-identity", "ssi", "smart-contract"],
 )

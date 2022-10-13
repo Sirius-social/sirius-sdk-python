@@ -2,13 +2,12 @@ import hashlib
 import datetime
 from typing import Optional, List
 
-from sirius_sdk.agent.wallet.abstract.crypto import AbstractCrypto
+from sirius_sdk.abstract.api import APICrypto
 from sirius_sdk.agent.aries_rfc.utils import sign
-from sirius_sdk.agent.aries_rfc.mixins import ThreadMixin
 from sirius_sdk.agent.aries_rfc.base import AriesProtocolMessage, RegisterMessage
 
 
-class Question(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
+class Question(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Question
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0113-question-answer
@@ -77,7 +76,7 @@ class Question(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
         self['~timing'] = timing
 
 
-class Answer(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
+class Answer(AriesProtocolMessage, metaclass=RegisterMessage):
     """Implementation of Answer
 
     https://github.com/hyperledger/aries-rfcs/tree/master/features/0113-question-answer
@@ -113,7 +112,7 @@ class Answer(ThreadMixin, AriesProtocolMessage, metaclass=RegisterMessage):
         timing['out_time'] = datetime.datetime.now().astimezone().replace(microsecond=0).isoformat()
         self['~timing'] = timing
 
-    async def sign(self, crypto: AbstractCrypto, q: Question, verkey: str):
+    async def sign(self, crypto: APICrypto, q: Question, verkey: str):
         data = q.question_text or '' + self.response or '' + q.nonce or ''
         hashfunc = hashlib.sha256
         hasher = hashfunc()

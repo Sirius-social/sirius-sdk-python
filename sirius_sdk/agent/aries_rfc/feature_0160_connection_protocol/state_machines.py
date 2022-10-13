@@ -4,9 +4,9 @@ import contextlib
 import sirius_sdk
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.errors.exceptions import SiriusValidationError, StateMachineAborted, StateMachineTerminatedWithError
-from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol
-from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
-from sirius_sdk.agent.agent import Endpoint
+from sirius_sdk.hub.coprotocols import AbstractP2PCoProtocol, CoProtocolP2PAnon
+from sirius_sdk.abstract.p2p import TheirEndpoint, Pairwise
+from sirius_sdk.abstract.p2p import Endpoint
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
 from sirius_sdk.agent.aries_rfc.feature_0048_trust_ping import Ping, Pong
 from sirius_sdk.agent.aries_rfc.feature_0160_connection_protocol.messages import *
@@ -50,7 +50,7 @@ class BaseConnectionStateMachine(AbstractStateMachine):
 
     @contextlib.asynccontextmanager
     async def coprotocol(self, endpoint: TheirEndpoint):
-        co = self.__coprotocol or sirius_sdk.CoProtocolP2PAnon(
+        co = self.__coprotocol or CoProtocolP2PAnon(
             my_verkey=self.me.verkey,
             endpoint=endpoint,
             protocols=[ConnProtocolMessage.PROTOCOL, Ack.PROTOCOL, Ping.PROTOCOL],
@@ -241,7 +241,8 @@ class Invitee(BaseConnectionStateMachine):
         connection_key = invitation.recipient_keys[0]
         inviter_endpoint = TheirEndpoint(
             endpoint=invitation.endpoint,
-            verkey=connection_key
+            verkey=connection_key,
+            routing_keys=invitation.routing_keys
         )
         # Allocate transport channel between self and theirs by verkeys factor
         async with self.coprotocol(endpoint=inviter_endpoint) as co:
@@ -253,7 +254,8 @@ class Invitee(BaseConnectionStateMachine):
                     verkey=self.me.verkey,
                     endpoint=self.my_endpoint.address,
                     doc_uri=doc_uri,
-                    did_doc_extra=did_doc
+                    did_doc_extra=did_doc,
+                    routing_keys=self.my_endpoint.routing_keys
                 )
 
                 await self.log(progress=50, message='Step-1: send connection request to Inviter', payload=dict(request))

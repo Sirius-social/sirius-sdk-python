@@ -2,57 +2,30 @@ import asyncio
 import logging
 from enum import IntEnum
 from abc import ABC, abstractmethod
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Any, Tuple
 from urllib.parse import urlparse
 
 from multipledispatch import dispatch
 
 from sirius_sdk.messaging import Message
+from sirius_sdk.errors.exceptions import SiriusConnectionClosed
+from sirius_sdk.abstract.bus import AbstractBus
+from sirius_sdk.abstract.api import APIContents, APICoProtocols, APINetworks, APIRouter, APIDistributedLocks, \
+    APITransport, APICrypto
+from sirius_sdk.abstract.batching import RoutingBatch
 from sirius_sdk.encryption import P2PConnection
-from sirius_sdk.storages import AbstractImmutableCollection
+from sirius_sdk.abstract.storage import AbstractImmutableCollection
 from sirius_sdk.agent.listener import Listener
-from sirius_sdk.agent.pairwise import Pairwise, TheirEndpoint
 from sirius_sdk.agent.wallet.wallets import DynamicWallet
-from sirius_sdk.agent.ledger import Ledger
+from sirius_sdk.agent.dkms import DKMS
 from sirius_sdk.agent.pairwise import AbstractPairwiseList, WalletPairwiseList
 from sirius_sdk.agent.storages import InWalletImmutableCollection
 from sirius_sdk.agent.microledgers.abstract import AbstractMicroledgerList
 from sirius_sdk.agent.microledgers.impl import MicroledgerList
-from sirius_sdk.agent.coprotocols import PairwiseCoProtocolTransport, ThreadBasedCoProtocolTransport, TheirEndpointCoProtocolTransport
-from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection, Endpoint
+from sirius_sdk.agent.connections import AgentRPC, AgentEvents, BaseAgentConnection
+from sirius_sdk.abstract.p2p import Endpoint, TheirEndpoint, Pairwise
 
-
-class TransportLayers(ABC):
-
-    @dispatch(str, TheirEndpoint)
-    @abstractmethod
-    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(Pairwise)
-    @abstractmethod
-    async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str, Pairwise)
-    @abstractmethod
-    async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str)
-    @abstractmethod
-    async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str, Pairwise, str)
-    @abstractmethod
-    async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
-
-    @dispatch(str, str)
-    @abstractmethod
-    async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
-        raise NotImplemented
+from .bus import RpcBus
 
 
 class SpawnStrategy(IntEnum):
@@ -60,7 +33,7 @@ class SpawnStrategy(IntEnum):
     CONCURRENT = 2
 
 
-class Agent(TransportLayers):
+class Agent(APIContents, APICoProtocols, APINetworks, APIRouter, APITransport, APIDistributedLocks):
     """
     Agent connection in the self-sovereign identity ecosystem.
 
@@ -73,7 +46,8 @@ class Agent(TransportLayers):
             self, server_address: str, credentials: bytes,
             p2p: P2PConnection, timeout: int = BaseAgentConnection.IO_TIMEOUT,
             loop: asyncio.AbstractEventLoop = None, storage: AbstractImmutableCollection = None,
-            name: str = None, spawn_strategy: SpawnStrategy = SpawnStrategy.PARALLEL
+            name: str = None, spawn_strategy: SpawnStrategy = SpawnStrategy.PARALLEL,
+            external_crypto: APICrypto = None
     ):
         """
         :param server_address: example https://my-cloud-provider.com
@@ -99,6 +73,8 @@ class Agent(TransportLayers):
         self.__microledgers = None
         self.__name = name
         self.__spawn_strategy = spawn_strategy
+        self.__external_crypto_service = external_crypto
+        self.__bus: Optional[AbstractBus] = None
 
     @property
     def name(self) -> Optional[str]:
@@ -114,7 +90,7 @@ class Agent(TransportLayers):
         self.__check_is_open()
         return self.__wallet
 
-    def ledger(self, name: str) -> Optional[Ledger]:
+    def dkms(self, name: str) -> Optional[DKMS]:
         self.__check_is_open()
         return self.__ledgers.get(name, None)
 
@@ -124,7 +100,7 @@ class Agent(TransportLayers):
         return self.__endpoints
 
     @property
-    def microledgers(self) -> AbstractMicroledgerList:
+    def microledgers(self) -> Optional[AbstractMicroledgerList]:
         self.__check_is_open()
         return self.__microledgers
 
@@ -133,113 +109,48 @@ class Agent(TransportLayers):
         self.__check_is_open()
         return self.__pairwise_list
 
-    @dispatch(str, TheirEndpoint)
-    async def spawn(self, my_verkey: str, endpoint: TheirEndpoint) -> TheirEndpointCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-            )
-        else:
-            rpc = self.__rpc
-        return TheirEndpointCoProtocolTransport(
-            my_verkey=my_verkey,
-            endpoint=endpoint,
-            rpc=rpc
-        )
+    @property
+    def bus(self) -> Optional[AbstractBus]:
+        return self.__bus
 
-    @dispatch(Pairwise)
-    async def spawn(self, pairwise: Pairwise) -> PairwiseCoProtocolTransport:
+    async def spawn_coprotocol(self) -> AbstractBus:
         if self.__spawn_strategy == SpawnStrategy.PARALLEL:
             rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+                self.__server_address, self.__credentials, self.__p2p,
+                self.__timeout, self.__loop, self.__external_crypto_service
             )
         else:
             rpc = self.__rpc
-        return PairwiseCoProtocolTransport(
-            pairwise=pairwise,
-            rpc=rpc
-        )
-
-    @dispatch(str, Pairwise)
-    async def spawn(self, thid: str, pairwise: Pairwise) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=pairwise,
-            rpc=rpc
-        )
-
-    @dispatch(str)
-    @abstractmethod
-    async def spawn(self, thid: str) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=None,
-            rpc=rpc
-        )
-
-    @dispatch(str, Pairwise, str)
-    async def spawn(self, thid: str, pairwise: Pairwise, pthid: str) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=pairwise,
-            rpc=rpc,
-            pthid=pthid
-        )
-
-    @dispatch(str, str)
-    @abstractmethod
-    async def spawn(self, thid: str, pthid: str) -> ThreadBasedCoProtocolTransport:
-        if self.__spawn_strategy == SpawnStrategy.PARALLEL:
-            rpc = await AgentRPC.create(
-                self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
-            )
-        else:
-            rpc = self.__rpc
-        return ThreadBasedCoProtocolTransport(
-            thid=thid,
-            pairwise=None,
-            rpc=rpc,
-            pthid=pthid
-        )
+        bus = RpcBus(connector=rpc.connector, p2p=self.__p2p)
+        return bus
 
     async def open(self):
         self.__rpc = await AgentRPC.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            self.__server_address, self.__credentials, self.__p2p,
+            self.__timeout, self.__loop, self.__external_crypto_service
         )
+        self.__bus = RpcBus(connector=self.__rpc.connector, p2p=self.__p2p)
         self.__endpoints = self.__rpc.endpoints
         self.__wallet = DynamicWallet(rpc=self.__rpc)
         if self.__storage is None:
             self.__storage = InWalletImmutableCollection(self.__wallet.non_secrets)
         for network in self.__rpc.networks:
-            self.__ledgers[network] = Ledger(
+            self.__ledgers[network] = DKMS(
                 name=network, api=self.__wallet.ledger,
                 issuer=self.__wallet.anoncreds, cache=self.__wallet.cache, storage=self.__storage
             )
         self.__pairwise_list = WalletPairwiseList(api=(self.__wallet.pairwise, self.__wallet.did))
         self.__microledgers = MicroledgerList(api=self.__rpc)
 
-    async def subscribe(self) -> Listener:
+    async def subscribe(self, group_id: str = None) -> Listener:
         self.__check_is_open()
+        if group_id:
+            extra = {'group_id': group_id}
+        else:
+            extra = None
         self.__events = await AgentEvents.create(
-            self.__server_address, self.__credentials, self.__p2p, self.__timeout, self.__loop
+            self.__server_address, self.__credentials, self.__p2p,
+            self.__timeout, self.__loop, self.__external_crypto_service, extra
         )
         return Listener(self.__events, self.pairwise_list)
 
@@ -256,9 +167,9 @@ class Agent(TransportLayers):
         )
         return success
 
-    async def send_message(
+    async def send(
             self, message: Message, their_vk: Union[List[str], str],
-            endpoint: str, my_vk: Optional[str], routing_keys: Optional[List[str]] = None
+            endpoint: str, my_vk: Optional[str] = None, routing_keys: Optional[List[str]] = None
     ) -> (bool, Message):
         """
         Implementation of basicmessage feature
@@ -292,13 +203,18 @@ class Agent(TransportLayers):
         :param to: Pairwise (P2P) connection that have been established outside
         """
         self.__check_is_open()
-        await self.send_message(
+        await self.send(
             message=message,
             their_vk=to.their.verkey,
             endpoint=to.their.endpoint,
             my_vk=to.me.verkey,
             routing_keys=to.their.routing_keys
         )
+
+    async def send_batched(self, message: Message, batches: List[RoutingBatch]) -> List[Tuple[bool, str]]:
+        self.__check_is_open()
+        results = await self.__rpc.send_message_batched(message, batches)
+        return results
 
     async def generate_qr_code(self, value: str) -> str:
         """Service for QR codes generation
@@ -340,6 +256,9 @@ class Agent(TransportLayers):
             msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/release'
         )
 
+    async def get_endpoints(self) -> List[Endpoint]:
+        return self.endpoints
+
     async def reopen(self, kill_tasks: bool = False):
         self.__check_is_open()
         await self.__rpc.remote_call(
@@ -349,8 +268,21 @@ class Agent(TransportLayers):
             }
         )
 
+    async def echo(self, message: Any, data: Optional[Any] = None) -> Any:
+        self.__check_is_open()
+        params = {
+            'message': message
+        }
+        if data:
+            params['data'] = data
+        ret = await self.__rpc.remote_call(
+            msg_type='did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/admin/1.0/echo',
+            params=params
+        )
+        return ret
+
     def __check_is_open(self):
         if self.__rpc and self.__rpc.is_open:
             return self.__endpoints
         else:
-            raise RuntimeError('Open Agent at first!')
+            raise SiriusConnectionClosed('Open Agent at first!')

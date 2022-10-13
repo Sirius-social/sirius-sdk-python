@@ -5,9 +5,9 @@ from typing import Union
 from datetime import datetime, timedelta
 
 import sirius_sdk
-from sirius_sdk.agent.pairwise import Pairwise
-from sirius_sdk.hub import CoProtocolP2P
-from sirius_sdk.agent.ledger import Ledger
+from sirius_sdk.abstract.p2p import Pairwise
+from sirius_sdk.hub.coprotocols import CoProtocolP2P
+from sirius_sdk.agent.dkms import DKMS
 from sirius_sdk.agent.aries_rfc.utils import utc_to_str
 from sirius_sdk.agent.wallet.abstract.cache import CacheOptions
 from sirius_sdk.base import AbstractStateMachine
@@ -97,17 +97,17 @@ class Verifier(BaseVerifyStateMachine):
     See details: https://github.com/hyperledger/aries-rfcs/tree/master/features/0037-present-proof
     """
 
-    def __init__(self, prover: Pairwise, ledger: Ledger, time_to_live: int = 60, logger=None, *args, **kwargs):
+    def __init__(self, prover: Pairwise, dkms: DKMS, time_to_live: int = 60, logger=None, *args, **kwargs):
         """
         :param prover: Prover described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
         :param ledger: network (DKMS) name that is used to verify credentials presented by prover
-          (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
+          (Assumed dkms was configured earlier - pool-genesis file was uploaded and name was set)
         """
 
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__prover = prover
-        self.__pool_name = ledger.name
+        self.__pool_name = dkms.name
         self.__requested_proof = None
         self.__revealed_attrs = None
 
@@ -232,20 +232,20 @@ class Prover(BaseVerifyStateMachine):
     """
 
     def __init__(
-            self, verifier: Pairwise, ledger: Ledger,
+            self, verifier: Pairwise, dkms: DKMS,
             time_to_live: int = 60, logger=None, self_attested_identity: dict = None, *args, **kwargs
     ):
         """
         :param verifier: Verifier described as pairwise instance.
           (Assumed pairwise was established earlier: statically or via connection-protocol)
         :param ledger: network (DKMS) name that is used to verify credentials presented by prover
-          (Assumed Ledger was configured earlier - pool-genesis file was uploaded and name was set)
+          (Assumed dkms was configured earlier - pool-genesis file was uploaded and name was set)
         :param self_attested_identity: attributes dictionary {attr_name: value} to fill self_attested_attributes for requested attribs with no restrictions
         """
 
         super().__init__(time_to_live=time_to_live, logger=logger, *args, **kwargs)
         self.__verifier = verifier
-        self.__pool_name = ledger.name
+        self.__pool_name = dkms.name
         self.__self_attested_identity = self_attested_identity or {}
         self.__interactive: Optional[ProverInteractiveMode] = None
 
