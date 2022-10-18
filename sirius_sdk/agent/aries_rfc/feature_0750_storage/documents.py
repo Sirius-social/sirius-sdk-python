@@ -25,9 +25,9 @@ class Document:
     async def save(self, stream: AbstractWriteOnlyStream):
         await stream.truncate()
         if isinstance(self.__content, str):
-            await stream.write(self.__content.encode())
+            await stream.write_chunk(self.__content.encode())
         else:
-            await stream.write(self.__content)
+            await stream.write_chunk(self.__content)
 
     async def load(self, stream: AbstractReadOnlyStream):
         await stream.seek_to_chunk(0)
