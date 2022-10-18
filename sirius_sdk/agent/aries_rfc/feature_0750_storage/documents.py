@@ -25,8 +25,10 @@ class Document:
     async def save(self, stream: AbstractWriteOnlyStream):
         await stream.truncate()
         if isinstance(self.__content, str):
+            # Storing operation of the document should be atomic
             await stream.write_chunk(self.__content.encode())
         else:
+            # Storing operation of the document should be atomic
             await stream.write_chunk(self.__content)
 
     async def load(self, stream: AbstractReadOnlyStream):
