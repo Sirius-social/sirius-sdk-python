@@ -24,3 +24,4 @@ How-tos guide for business automation with Sirius approach via blockchain and Sm
 - `Sirius Smart-Contracts <https://github.com/Sirius-social/sirius-sdk-python/tree/master/how-tos/smart_contracts>`_
    Separation of imperative and declarative logic, pluggable consensus, trust and business-logic over co-protocols.
    App centralization continuum and useful outcomes.
+
