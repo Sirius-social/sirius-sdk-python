@@ -290,6 +290,8 @@ def __restore_config_from_kwargs(*args, **kwargs) -> Config:
         cfg.setup_cloud(server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout)
 
     cfg.override(**kwargs)
+    if not (cfg.cloud_opts.is_filled or cfg.mediator_opts.is_filled):
+        raise SiriusInitializationError('Invalid configuration')
     return cfg
 
 
@@ -307,7 +309,7 @@ def init(cfg: Config = None, *args, **kwargs):
     root = Hub(cfg)
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        raise SiriusInitializationError('You must call this method outside coroutine')
+        logging.warning('You should call this method outside coroutine')
     loop.run_until_complete(root.open())
     __ROOT_HUB = root
 
