@@ -6,9 +6,12 @@ import logging
 from typing import Any
 from datetime import datetime, timedelta
 from typing import Optional
+from contextlib import contextmanager
 
 from pytime import pytime
 
+from sirius_sdk.errors.indy_exceptions import IndyError
+from sirius_sdk.errors.exceptions import StateMachineTerminatedWithError
 from sirius_sdk.abstract.api import APICrypto
 
 
@@ -69,3 +72,15 @@ async def verify_signed(crypto: APICrypto, signed: dict) -> (Any, bool):
     if isinstance(field_json, bytes):
         field_json = field_json.decode('utf-8')
     return json.loads(field_json), sig_verified
+
+
+@contextmanager
+def terminate_state_machine_on_indy_error(problem_code: str):
+    try:
+        yield
+    except IndyError as e:
+        term = StateMachineTerminatedWithError(
+            problem_code=problem_code,
+            explain=e.message
+        )
+        raise term
