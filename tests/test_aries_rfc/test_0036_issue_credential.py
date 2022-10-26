@@ -344,9 +344,13 @@ async def test_problem_report_on_indy_exception(config_a: dict, config_b: dict, 
         timeout=15
     )
     assert len(tasks) == 2, 'All tasks should be terminated'
-    issuer_status = tasks[1]
-    assert issuer_status is False, 'Issuer state-machine should be terminated with error'
-    holder_status, holder_problem_report = tasks[0]
-    assert holder_status is False, 'Holder state-machine should be terminated with error'
-    assert holder_problem_report is not None, 'Holder state-machine should have the problem code and explain'
+    for ret in tasks:
+        if isinstance(ret, tuple):
+            holder_status, holder_problem_report = ret
+            assert holder_status is False, 'Holder state-machine should be terminated with error'
+            assert holder_problem_report is not None, 'Holder state-machine should have the problem code and explain'
+        else:
+            issuer_status = ret
+            assert issuer_status is False, 'Issuer state-machine should be terminated with error'
+
 
