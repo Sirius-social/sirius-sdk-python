@@ -290,8 +290,6 @@ def __restore_config_from_kwargs(*args, **kwargs) -> Config:
         cfg.setup_cloud(server_uri=server_uri, credentials=credentials, p2p=p2p, io_timeout=io_timeout)
 
     cfg.override(**kwargs)
-    if not (cfg.cloud_opts.is_filled or cfg.mediator_opts.is_filled):
-        raise SiriusInitializationError('Invalid configuration')
     return cfg
 
 
