@@ -13,7 +13,7 @@ from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.state_machines imp
     AttribTranslation, ProposedAttrib, OfferCredentialMessage
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
 
-from tests.conftest import get_pairwise
+from tests.conftest import get_pairwise, get_pairwise3
 from tests.defs import BIG_SCHEMA_ATTRS
 from tests.helpers import run_coroutines, IndyAgent, ServerTestSuite, ensure_cred_def_exists_in_dkms
 
@@ -277,3 +277,76 @@ async def test_holder_back_compatibility(
     async with sirius_sdk.context(holder['server_address'], holder['credentials'], holder['p2p']):
         cred = await sirius_sdk.AnonCreds.prover_get_credential(cred_id)
     assert cred
+
+
+@pytest.mark.asyncio
+async def test_problem_report_on_indy_exception(config_a: dict, config_b: dict, prover_master_secret_name: str):
+    issuer_cfg = config_a
+    holder_cfg = config_b
+    i2h = await get_pairwise3(me=issuer_cfg, their=holder_cfg)
+    h2i = await get_pairwise3(me=holder_cfg, their=issuer_cfg)
+
+    did_issuer, verkey_issuer = i2h.me.did, i2h.me.verkey
+    schema_name = 'schema_' + uuid.uuid4().hex
+
+    # Prepare Issuer
+    async with sirius_sdk.context(**issuer_cfg):
+        schema_id, anoncred_schema = await sirius_sdk.AnonCreds.issuer_create_schema(
+            did_issuer, schema_name, '1.0', ['attr1', 'attr2', 'attr3', 'attr4']
+        )
+        did_issuer, verkey_issuer = i2h.me.did, i2h.me.verkey
+        dkms = await sirius_sdk.dkms('default')
+        ok, schema = await dkms.register_schema(schema=anoncred_schema, submitter_did=did_issuer)
+        assert ok is True
+
+        ok, cred_def = await dkms.register_cred_def(
+            cred_def=CredentialDefinition(tag='TAG', schema=schema),
+            submitter_did=did_issuer
+        )
+        assert ok is True
+
+    # Prepare Holder
+    async with sirius_sdk.context(**holder_cfg):
+        try:
+            await sirius_sdk.AnonCreds.prover_create_master_secret(prover_master_secret_name)
+        except AnoncredsMasterSecretDuplicateNameError:
+            pass
+
+    async def issuer_routine(values: dict):
+        try:
+            async with sirius_sdk.context(**issuer_cfg):
+                protocol = Issuer(holder=i2h)
+                success = await protocol.issue(
+                    values=values,
+                    schema=schema,
+                    cred_def=cred_def
+                )
+                return success
+        except Exception as e:
+            raise e
+
+    async def holder_routine(master_secret_id: str):
+        try:
+            async with sirius_sdk.context(**holder_cfg):
+                listener = await sirius_sdk.subscribe()
+                async for event in listener:
+                    if event.pairwise is not None and isinstance(event.message, OfferCredentialMessage):
+                        offer = event.message
+                        protocol = Holder(issuer=h2i)
+                        success, cred_id = await protocol.accept(offer, master_secret_id)
+                        return success, protocol.problem_report
+        except Exception as e:
+            raise e
+
+    tasks = await run_coroutines(
+        issuer_routine(values={}),  # Empty values will raise Indy error CommonInvalidStructure
+        holder_routine(prover_master_secret_name),
+        timeout=15
+    )
+    assert len(tasks) == 2, 'All tasks should be terminated'
+    issuer_status = tasks[1]
+    assert issuer_status is False, 'Issuer state-machine should be terminated with error'
+    holder_status, holder_problem_report = tasks[0]
+    assert holder_status is False, 'Holder state-machine should be terminated with error'
+    assert holder_problem_report is not None, 'Holder state-machine should have the problem code and explain'
+
