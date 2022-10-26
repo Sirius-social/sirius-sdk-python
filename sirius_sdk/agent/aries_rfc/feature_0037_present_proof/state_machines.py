@@ -8,7 +8,7 @@ import sirius_sdk
 from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolP2P
 from sirius_sdk.agent.dkms import DKMS
-from sirius_sdk.agent.aries_rfc.utils import utc_to_str
+from sirius_sdk.agent.aries_rfc.utils import utc_to_str, terminate_state_machine_on_indy_error
 from sirius_sdk.agent.wallet.abstract.cache import CacheOptions
 from sirius_sdk.base import AbstractStateMachine
 from sirius_sdk.agent.aries_rfc.feature_0015_acks import Ack, Status
@@ -172,14 +172,15 @@ class Verifier(BaseVerifyStateMachine):
                         credential_defs[cred_def_id] = await sirius_sdk.Cache.get_cred_def(
                             self.__pool_name, self.__prover.me.did, cred_def_id, opts
                         )
-                success = await sirius_sdk.AnonCreds.verifier_verify_proof(
-                    proof_request=proof_request,
-                    proof=presentation.proof,
-                    schemas=schemas,
-                    credential_defs=credential_defs,
-                    rev_reg_defs=rev_reg_defs,
-                    rev_regs=rev_regs
-                )
+                with terminate_state_machine_on_indy_error(problem_code=VERIFY_ERROR):
+                    success = await sirius_sdk.AnonCreds.verifier_verify_proof(
+                        proof_request=proof_request,
+                        proof=presentation.proof,
+                        schemas=schemas,
+                        credential_defs=credential_defs,
+                        rev_reg_defs=rev_reg_defs,
+                        rev_regs=rev_regs
+                    )
                 if success:
                     self.__requested_proof = presentation.proof['requested_proof']
 
@@ -277,14 +278,15 @@ class Prover(BaseVerifyStateMachine):
 
                 if cred_infos.get('requested_attributes', None) or cred_infos.get('requested_predicates', None) or cred_infos.get('self_attested_attributes', None):
                     # Step-2: Build proof
-                    proof = await sirius_sdk.AnonCreds.prover_create_proof(
-                        proof_req=request.proof_request,
-                        requested_credentials=cred_infos,
-                        master_secret_name=master_secret_id,
-                        schemas=schemas,
-                        credential_defs=credential_defs,
-                        rev_states=rev_states
-                    )
+                    with terminate_state_machine_on_indy_error(problem_code=RESPONSE_PROCESSING_ERROR):
+                        proof = await sirius_sdk.AnonCreds.prover_create_proof(
+                            proof_req=request.proof_request,
+                            requested_credentials=cred_infos,
+                            master_secret_name=master_secret_id,
+                            schemas=schemas,
+                            credential_defs=credential_defs,
+                            rev_states=rev_states
+                        )
                     # Step-3: Send proof and wait Ack to check success from Verifier side
                     presentation_msg = PresentationMessage(proof, version=request.version)
                     presentation_msg.please_ack = True
