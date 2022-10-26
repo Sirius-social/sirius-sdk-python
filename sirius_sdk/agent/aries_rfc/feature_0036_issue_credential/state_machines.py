@@ -10,7 +10,7 @@ from sirius_sdk.abstract.p2p import Pairwise
 from sirius_sdk.hub.coprotocols import CoProtocolP2P
 from sirius_sdk.agent.codec import encode
 from sirius_sdk.agent.dkms import DKMS
-from sirius_sdk.agent.aries_rfc.utils import utc_to_str
+from sirius_sdk.agent.aries_rfc.utils import utc_to_str, terminate_state_machine_on_indy_error
 from sirius_sdk.agent.dkms import Schema, CredentialDefinition
 from sirius_sdk.errors.indy_exceptions import WalletItemNotFound
 from sirius_sdk.base import AbstractStateMachine
@@ -163,14 +163,15 @@ class Issuer(BaseIssuingStateMachine):
                     encoded_cred_values[key] = dict(raw=str(value), encoded=encode(value))
                 await self.log(progress=70, message='Build credential with values', payload=encoded_cred_values)
 
-                ret = await sirius_sdk.AnonCreds.issuer_create_credential(
-                    cred_offer=offer,
-                    cred_req=request_msg.cred_request,
-                    cred_values=encoded_cred_values,
-                    rev_reg_id=None,
-                    blob_storage_reader_handle=None
-                )
-                cred, cred_revoc_id, revoc_reg_delta = ret
+                with terminate_state_machine_on_indy_error(problem_code=ISSUE_PROCESSING_ERROR):
+                    ret = await sirius_sdk.AnonCreds.issuer_create_credential(
+                        cred_offer=offer,
+                        cred_req=request_msg.cred_request,
+                        cred_values=encoded_cred_values,
+                        rev_reg_id=None,
+                        blob_storage_reader_handle=None
+                    )
+                    cred, cred_revoc_id, revoc_reg_delta = ret
 
                 # Step-3: Issue and wait Ack
                 issue_msg = IssueCredentialMessage(
@@ -259,12 +260,14 @@ class Holder(BaseIssuingStateMachine):
                     raise StateMachineTerminatedWithError(
                         OFFER_PROCESSING_ERROR, 'Error while parsing cred_def', notify=True
                     )
-                cred_request, cred_metadata = await sirius_sdk.AnonCreds.prover_create_credential_req(
-                    prover_did=self.__issuer.me.did,
-                    cred_offer=offer_body,
-                    cred_def=cred_def_body,
-                    master_secret_id=master_secret_id
-                )
+
+                with terminate_state_machine_on_indy_error(problem_code=OFFER_PROCESSING_ERROR):
+                    cred_request, cred_metadata = await sirius_sdk.AnonCreds.prover_create_credential_req(
+                        prover_did=self.__issuer.me.did,
+                        cred_offer=offer_body,
+                        cred_def=cred_def_body,
+                        master_secret_id=master_secret_id
+                    )
 
                 # Step-2: Send request to Issuer
                 request_msg = RequestCredentialMessage(
@@ -291,9 +294,10 @@ class Holder(BaseIssuingStateMachine):
                     raise StateMachineTerminatedWithError(REQUEST_NOT_ACCEPTED, e.message)
 
                 # Step-3: Store credential
-                cred_id = await self._store_credential(
-                    cred_metadata, issue_msg.cred, cred_def_body, None, issue_msg.cred_id
-                )
+                with terminate_state_machine_on_indy_error(problem_code=OFFER_PROCESSING_ERROR):
+                    cred_id = await self._store_credential(
+                        cred_metadata, issue_msg.cred, cred_def_body, None, issue_msg.cred_id
+                    )
                 await self._store_mime_types(cred_id, offer.preview)
                 ack = CredentialAck(
                     thread_id=issue_msg.ack_message_id if issue_msg.please_ack else issue_msg.id,
