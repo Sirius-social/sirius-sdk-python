@@ -43,7 +43,7 @@ setup(
         'aiohttp>=3.7.4',
         'base58>=2.0.0',
         'multipledispatch==0.6.0',
-        'PyNaCl==1.3.0',
+        'PyNaCl==1.6.2',
         'pyqrcode==1.2.1',
         'python-dateutil>=2.8.1',
         'pytime>=0.2.0',
